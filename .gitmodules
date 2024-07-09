@@ -1,0 +1,4 @@
+[submodule "third-party/glfw"]
+	path = third-party/glfw
+	url = https://github.com/glfw/glfw.git
+	branch = 7b6aead
