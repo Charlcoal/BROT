@@ -13,12 +13,12 @@ pub fn build(b: *std.Build) void {
     exe.linkLibC();
     exe.linkSystemLibrary2("glfw", .{});
     exe.linkSystemLibrary2("vulkan", .{});
-    exe.linkSystemLibrary2("dl", .{});
-    exe.linkSystemLibrary2("pthread", .{});
-    exe.linkSystemLibrary2("X11", .{});
-    exe.linkSystemLibrary2("Xxf86vm", .{});
-    exe.linkSystemLibrary2("Xrandr", .{});
-    exe.linkSystemLibrary2("Xi", .{});
+    //exe.linkSystemLibrary2("dl", .{});
+    //exe.linkSystemLibrary2("pthread", .{});
+    //exe.linkSystemLibrary2("X11", .{});
+    //exe.linkSystemLibrary2("Xxf86vm", .{});
+    //exe.linkSystemLibrary2("Xrandr", .{});
+    //exe.linkSystemLibrary2("Xi", .{});
     exe.addIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "third-party/glfw/include/" } });
 
     b.installArtifact(exe);
@@ -40,12 +40,12 @@ pub fn build(b: *std.Build) void {
     exe_unit_tests.linkLibC();
     exe_unit_tests.linkSystemLibrary2("glfw", .{});
     exe_unit_tests.linkSystemLibrary2("vulkan", .{});
-    exe_unit_tests.linkSystemLibrary2("dl", .{});
-    exe_unit_tests.linkSystemLibrary2("pthread", .{});
-    exe_unit_tests.linkSystemLibrary2("X11", .{});
-    exe_unit_tests.linkSystemLibrary2("Xxf86vm", .{});
-    exe_unit_tests.linkSystemLibrary2("Xrandr", .{});
-    exe_unit_tests.linkSystemLibrary2("Xi", .{});
+    //exe_unit_tests.linkSystemLibrary2("dl", .{});
+    //exe_unit_tests.linkSystemLibrary2("pthread", .{});
+    //exe_unit_tests.linkSystemLibrary2("X11", .{});
+    //exe_unit_tests.linkSystemLibrary2("Xxf86vm", .{});
+    //exe_unit_tests.linkSystemLibrary2("Xrandr", .{});
+    //exe_unit_tests.linkSystemLibrary2("Xi", .{});
     exe_unit_tests.addIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "third-party/glfw/include/" } });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
