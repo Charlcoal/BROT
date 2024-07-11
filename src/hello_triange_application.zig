@@ -13,6 +13,8 @@ const InitVulkanError = error{
     failed_to_find_gpu_with_vulkan_support,
     failed_to_find_suitable_gpu,
     failed_to_create_logical_device,
+    failed_to_create_swap_chain,
+    failde_to_create_image_views,
 } || Allocator.Error;
 pub const Error = InitWindowError || InitVulkanError;
 
@@ -22,6 +24,17 @@ const validation_layers = [_][*:0]const u8{
     "VK_LAYER_KHRONOS_validation",
 };
 
+const device_extensions = [_][*:0]const u8{
+    glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+const SwapChainSupportDetails = struct {
+    capabilities: glfw.VkSurfaceCapabilitiesKHR,
+    formats: []glfw.VkSurfaceFormatKHR,
+    presentModes: []glfw.VkPresentModeKHR,
+};
+
+//result of following OOP-based tutorial, change in future
 const AppData = struct {
     window: *glfw.GLFWwindow,
     height: i32,
@@ -33,6 +46,11 @@ const AppData = struct {
     device: glfw.VkDevice,
     graphics_queue: glfw.VkQueue,
     present_queue: glfw.VkQueue,
+    swap_chain: glfw.VkSwapchainKHR,
+    swap_chain_images: []glfw.VkImage,
+    swap_chain_image_format: glfw.VkFormat,
+    swap_chain_extent: glfw.VkExtent2D,
+    swap_chain_image_views: []glfw.VkImageView,
 };
 
 pub fn run(alloc: Allocator) Error!void {
@@ -47,12 +65,17 @@ pub fn run(alloc: Allocator) Error!void {
         .device = null,
         .graphics_queue = null,
         .present_queue = null,
+        .swap_chain = null,
+        .swap_chain_images = undefined,
+        .swap_chain_image_format = undefined,
+        .swap_chain_extent = undefined,
+        .swap_chain_image_views = undefined,
     };
 
     try initWindow(&app_data);
     try initVulkan(&app_data, alloc);
     mainLoop(app_data);
-    cleanup(app_data);
+    cleanup(app_data, alloc);
 }
 
 fn initWindow(data: *AppData) InitWindowError!void {
@@ -70,6 +93,8 @@ fn initVulkan(data: *AppData, alloc: Allocator) InitVulkanError!void {
     try createSurface(data);
     try pickPhysicalDevice(data, alloc);
     try createLogicalDevice(data, alloc);
+    try createSwapChain(data, alloc);
+    try createImageViews(data, alloc);
 }
 
 fn mainLoop(data: AppData) void {
@@ -78,11 +103,19 @@ fn mainLoop(data: AppData) void {
     }
 }
 
-fn cleanup(data: AppData) void {
+fn cleanup(data: AppData, alloc: Allocator) void {
+    for (data.swap_chain_image_views) |view| {
+        glfw.vkDestroyImageView(data.device, view, null);
+    }
+    alloc.free(data.swap_chain_image_views);
+
+    glfw.vkDestroySwapchainKHR(data.device, data.swap_chain, null);
+    alloc.free(data.swap_chain_images);
+
     glfw.vkDestroyDevice(data.device, null);
 
     if (enable_validation_layers) {
-        DestroyDebugUtilsMessengerEXT(data.instance, data.debug_messenger, null);
+        destroyDebugUtilsMessengerEXT(data.instance, data.debug_messenger, null);
     }
 
     glfw.vkDestroySurfaceKHR(data.instance, data.surface, null);
@@ -152,7 +185,7 @@ fn CreateDebugUtilsMessengerEXT(
     }
 }
 
-fn DestroyDebugUtilsMessengerEXT(
+fn destroyDebugUtilsMessengerEXT(
     instance: glfw.VkInstance,
     debug_messenger: glfw.VkDebugUtilsMessengerEXT,
     p_vulkan_alloc: [*c]const glfw.VkAllocationCallbacks,
@@ -164,6 +197,115 @@ fn DestroyDebugUtilsMessengerEXT(
             debug_messenger,
             p_vulkan_alloc,
         );
+    }
+}
+
+fn querySwapChainSupport(surface: glfw.VkSurfaceKHR, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
+    var details: SwapChainSupportDetails = .{
+        .formats = undefined,
+        .capabilities = undefined,
+        .presentModes = undefined,
+    };
+
+    _ = glfw.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+    var format_count: u32 = undefined;
+    _ = glfw.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, null);
+
+    details.formats = try alloc.alloc(glfw.VkSurfaceFormatKHR, format_count);
+    _ = glfw.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.ptr);
+
+    var present_mode_count: u32 = undefined;
+    _ = glfw.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
+
+    details.presentModes = try alloc.alloc(glfw.VkPresentModeKHR, present_mode_count);
+    _ = glfw.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.presentModes.ptr);
+
+    return details;
+}
+
+fn createSwapChain(data: *AppData, alloc: Allocator) InitVulkanError!void {
+    const swap_chain_support = try querySwapChainSupport(data.surface, data.physical_device, alloc);
+    defer alloc.free(swap_chain_support.formats);
+    defer alloc.free(swap_chain_support.presentModes);
+
+    const surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
+    const present_mode = chooseSwapPresentMode(swap_chain_support.presentModes);
+    const extent = chooseSwapExtent(data.*, &swap_chain_support.capabilities);
+
+    var image_count: u32 = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 and image_count > swap_chain_support.capabilities.maxImageCount) {
+        image_count = swap_chain_support.capabilities.maxImageCount;
+    }
+
+    var create_info: glfw.VkSwapchainCreateInfoKHR = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = data.surface,
+        .minImageCount = image_count,
+        .imageFormat = surface_format.format,
+        .imageColorSpace = surface_format.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = glfw.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .preTransform = swap_chain_support.capabilities.currentTransform,
+        .compositeAlpha = glfw.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = present_mode,
+        .clipped = glfw.VK_TRUE,
+    };
+
+    const indices = try findQueueFamilies(data.*, data.physical_device, alloc);
+    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+
+    if (indices.graphics_family != indices.present_family) {
+        create_info.imageSharingMode = glfw.VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = &queue_family_indices;
+    } else {
+        create_info.imageSharingMode = glfw.VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0;
+        create_info.pQueueFamilyIndices = null;
+        create_info.oldSwapchain = @ptrCast(glfw.VK_NULL_HANDLE);
+    }
+
+    if (glfw.vkCreateSwapchainKHR(data.device, &create_info, null, &data.swap_chain) != glfw.VK_SUCCESS) {
+        return InitVulkanError.failed_to_create_swap_chain;
+    }
+
+    _ = glfw.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &image_count, null);
+    data.swap_chain_images = try alloc.alloc(glfw.VkImage, image_count);
+    _ = glfw.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &image_count, data.swap_chain_images.ptr);
+
+    data.swap_chain_image_format = surface_format.format;
+    data.swap_chain_extent = extent;
+}
+
+fn createImageViews(data: *AppData, alloc: Allocator) InitVulkanError!void {
+    data.swap_chain_image_views = try alloc.alloc(glfw.VkImageView, data.swap_chain_images.len);
+
+    for (data.swap_chain_images, 0..) |image, i| {
+        const create_info: glfw.VkImageViewCreateInfo = .{
+            .sType = glfw.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = image,
+            .viewType = glfw.VK_IMAGE_VIEW_TYPE_2D,
+            .format = data.swap_chain_image_format,
+            .components = .{
+                .r = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .g = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .b = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .a = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
+            .subresourceRange = .{
+                .aspectMask = glfw.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        if (glfw.vkCreateImageView(data.device, &create_info, null, &data.swap_chain_image_views[i]) != glfw.VK_SUCCESS) {
+            return InitVulkanError.failde_to_create_image_views;
+        }
     }
 }
 
@@ -206,10 +348,87 @@ fn findQueueFamilies(data: AppData, device: glfw.VkPhysicalDevice, alloc: Alloca
     return indices;
 }
 
-fn device_is_suitable(data: AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+fn chooseSwapSurfaceFormat(availible_formats: []const glfw.VkSurfaceFormatKHR) glfw.VkSurfaceFormatKHR {
+    for (availible_formats) |format| {
+        if (format.format == glfw.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == glfw.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return format;
+        }
+    }
+
+    return availible_formats[0];
+}
+
+fn chooseSwapPresentMode(availible_present_modes: []const glfw.VkPresentModeKHR) glfw.VkPresentModeKHR {
+    for (availible_present_modes) |mode| {
+        if (mode == glfw.VK_PRESENT_MODE_MAILBOX_KHR) {
+            return mode;
+        }
+    }
+
+    //always availible
+    return glfw.VK_PRESENT_MODE_FIFO_KHR;
+}
+
+fn chooseSwapExtent(data: AppData, capabilities: *const glfw.VkSurfaceCapabilitiesKHR) glfw.VkExtent2D {
+    if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
+        return capabilities.currentExtent;
+    } else {
+        var height: c_int = undefined;
+        var width: c_int = undefined;
+        glfw.glfwGetFramebufferSize(data.window, &width, &height);
+
+        var actualExtent: glfw.VkExtent2D = .{
+            .height = @intCast(height),
+            .width = @intCast(width),
+        };
+
+        actualExtent.width = std.math.clamp(
+            actualExtent.width,
+            capabilities.minImageExtent.width,
+            capabilities.maxImageExtent.width,
+        );
+        actualExtent.height = std.math.clamp(
+            actualExtent.height,
+            capabilities.minImageExtent.height,
+            capabilities.maxImageExtent.height,
+        );
+
+        return actualExtent;
+    }
+}
+
+fn deviceIsSuitable(data: AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
     const indices = try findQueueFamilies(data, device, alloc);
 
-    return indices.isComplete();
+    const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
+
+    var swap_chain_adequate: bool = false;
+    if (extensions_supported) {
+        const swap_chain_support = try querySwapChainSupport(data.surface, device, alloc);
+        defer alloc.free(swap_chain_support.presentModes);
+        defer alloc.free(swap_chain_support.formats);
+        swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
+    }
+
+    return indices.isComplete() and extensions_supported and swap_chain_adequate;
+}
+
+fn checkDeviceExtensionSupport(device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+    var extension_count: u32 = undefined;
+    _ = glfw.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+
+    const availibleExtensions = try alloc.alloc(glfw.VkExtensionProperties, extension_count);
+    defer alloc.free(availibleExtensions);
+    _ = glfw.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
+
+    outer: for (device_extensions) |extension| {
+        for (availibleExtensions) |availible| {
+            if (str_eq(extension, @ptrCast(&availible.extensionName))) continue :outer;
+        }
+        return false;
+    }
+
+    return true;
 }
 
 fn pickPhysicalDevice(data: *AppData, alloc: Allocator) InitVulkanError!void {
@@ -225,7 +444,7 @@ fn pickPhysicalDevice(data: *AppData, alloc: Allocator) InitVulkanError!void {
     _ = glfw.vkEnumeratePhysicalDevices(data.instance, &device_count, devices.ptr);
 
     for (devices) |device| {
-        if (try device_is_suitable(data.*, device, alloc)) {
+        if (try deviceIsSuitable(data.*, device, alloc)) {
             data.physical_device = device;
             break;
         }
@@ -268,6 +487,8 @@ fn createLogicalDevice(data: *AppData, alloc: Allocator) InitVulkanError!void {
         .pQueueCreateInfos = queue_create_infos.ptr,
         .queueCreateInfoCount = unique_queue_num,
         .pEnabledFeatures = &device_features,
+        .ppEnabledExtensionNames = &device_extensions,
+        .enabledExtensionCount = @intCast(device_extensions.len),
     };
 
     if (enable_validation_layers) {
