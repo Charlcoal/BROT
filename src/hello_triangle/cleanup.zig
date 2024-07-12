@@ -4,7 +4,20 @@ const glfw = common.glfw;
 const Allocator = std.mem.Allocator;
 
 pub fn cleanup(data: common.AppData, alloc: Allocator) void {
-    glfw.vkDestroyPipelineLayout(data.device, data.pipelineLayout, null);
+    //vulkan
+    glfw.vkDestroySemaphore(data.device, data.image_availible_semaphore, null);
+    glfw.vkDestroySemaphore(data.device, data.render_finished_semaphore, null);
+    glfw.vkDestroyFence(data.device, data.in_flight_fence, null);
+    glfw.vkDestroyCommandPool(data.device, data.command_pool, null);
+
+    for (data.swap_chain_framebuffers) |framebuffer| {
+        glfw.vkDestroyFramebuffer(data.device, framebuffer, null);
+    }
+    alloc.free(data.swap_chain_framebuffers);
+
+    glfw.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
+    glfw.vkDestroyPipelineLayout(data.device, data.pipeline_layout, null);
+    glfw.vkDestroyRenderPass(data.device, data.render_pass, null);
 
     for (data.swap_chain_image_views) |view| {
         glfw.vkDestroyImageView(data.device, view, null);
@@ -22,6 +35,10 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
 
     glfw.vkDestroySurfaceKHR(data.instance, data.surface, null);
     glfw.vkDestroyInstance(data.instance, null);
+
+    // ---------------------------------------------------------------------------------------------
+
+    //glfw
     glfw.glfwDestroyWindow(data.window);
     glfw.glfwTerminate();
 }

@@ -2,8 +2,120 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const glfw = common.glfw;
 
-pub fn mainLoop(data: common.AppData) void {
+const MainLoopError = common.MainLoopError;
+
+pub fn mainLoop(data: *common.AppData) MainLoopError!void {
     while (glfw.glfwWindowShouldClose(data.window) == 0) {
         glfw.glfwPollEvents();
+        try drawFrame(data);
+    }
+
+    _ = glfw.vkDeviceWaitIdle(data.device);
+}
+
+fn drawFrame(data: *common.AppData) MainLoopError!void {
+    _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fence, glfw.VK_TRUE, std.math.maxInt(u64));
+
+    var image_index: u32 = undefined;
+    _ = glfw.vkAcquireNextImageKHR(
+        data.device,
+        data.swap_chain,
+        std.math.maxInt(u64),
+        data.image_availible_semaphore,
+        @ptrCast(glfw.VK_NULL_HANDLE),
+        &image_index,
+    );
+
+    _ = glfw.vkResetCommandBuffer(data.command_buffer, 0);
+    try recordCommandBuffer(data.*, data.command_buffer, image_index);
+
+    const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphore};
+    const wait_stages = [_]glfw.VkPipelineStageFlags{glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    const signal_semaphors = [_]glfw.VkSemaphore{data.render_finished_semaphore};
+    const submit_info: glfw.VkSubmitInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = @intCast(wait_semaphors.len),
+        .pWaitSemaphores = &wait_semaphors,
+        .pWaitDstStageMask = &wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &data.command_buffer,
+        .signalSemaphoreCount = @intCast(signal_semaphors.len),
+        .pSignalSemaphores = &signal_semaphors,
+    };
+
+    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fence);
+
+    if (glfw.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fence) != glfw.VK_SUCCESS) {
+        return MainLoopError.draw_command_buffer_submit_failed;
+    }
+
+    const swap_chains = [_]glfw.VkSwapchainKHR{data.swap_chain};
+    const present_info: glfw.VkPresentInfoKHR = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = @intCast(signal_semaphors.len),
+        .pWaitSemaphores = &signal_semaphors,
+        .swapchainCount = @intCast(swap_chains.len),
+        .pSwapchains = &swap_chains,
+        .pImageIndices = &image_index,
+        .pResults = null,
+    };
+
+    _ = glfw.vkQueuePresentKHR(data.present_queue, &present_info);
+}
+
+fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffer, image_index: u32) MainLoopError!void {
+    const begin_info: glfw.VkCommandBufferBeginInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = 0,
+        .pInheritanceInfo = null,
+    };
+
+    if (glfw.vkBeginCommandBuffer(command_buffer, &begin_info) != glfw.VK_SUCCESS) {
+        return MainLoopError.command_buffer_recording_begin_failed;
+    }
+
+    const clear_color: glfw.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
+    const render_pass_info: glfw.VkRenderPassBeginInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass = data.render_pass,
+        .framebuffer = data.swap_chain_framebuffers[image_index],
+        .renderArea = .{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = data.swap_chain_extent,
+        },
+        .clearValueCount = 1,
+        .pClearValues = &clear_color,
+    };
+
+    glfw.vkCmdBeginRenderPass(data.command_buffer, &render_pass_info, glfw.VK_SUBPASS_CONTENTS_INLINE);
+    glfw.vkCmdBindPipeline(data.command_buffer, glfw.VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphics_pipeline);
+
+    const viewport: glfw.VkViewport = .{
+        .x = 0,
+        .y = 0,
+        .width = @floatFromInt(data.swap_chain_extent.width),
+        .height = @floatFromInt(data.swap_chain_extent.height),
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+    glfw.vkCmdSetViewport(data.command_buffer, 0, 1, &viewport);
+
+    const scissor: glfw.VkRect2D = .{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = data.swap_chain_extent,
+    };
+    glfw.vkCmdSetScissor(data.command_buffer, 0, 1, &scissor);
+
+    glfw.vkCmdDraw(
+        data.command_buffer,
+        3,
+        1,
+        0,
+        0,
+    );
+    glfw.vkCmdEndRenderPass(data.command_buffer);
+
+    if (glfw.vkEndCommandBuffer(data.command_buffer) != glfw.VK_SUCCESS) {
+        return MainLoopError.command_buffer_record_failed;
     }
 }

@@ -17,8 +17,19 @@ pub const InitVulkanError = error{
     swap_chain_creation_failed,
     image_views_creation_failed,
     shader_module_creation_failed,
+    render_pass_creation_failed,
     pipeline_layout_creation_failed,
+    graphics_pipeline_creation_failed,
+    framebuffer_creation_failed,
+    command_pool_creation_failed,
+    command_buffer_allocation_failed,
+    semaphore_creation_failed,
 } || ReadFileError;
+pub const MainLoopError = error{
+    command_buffer_recording_begin_failed,
+    command_buffer_record_failed,
+    draw_command_buffer_submit_failed,
+};
 
 const Allocator = std.mem.Allocator;
 
@@ -47,7 +58,15 @@ pub const AppData = struct {
     swap_chain_image_format: glfw.VkFormat = undefined,
     swap_chain_extent: glfw.VkExtent2D = undefined,
     swap_chain_image_views: []glfw.VkImageView = undefined,
-    pipelineLayout: glfw.VkPipelineLayout = undefined,
+    render_pass: glfw.VkRenderPass = undefined,
+    pipeline_layout: glfw.VkPipelineLayout = undefined,
+    graphics_pipeline: glfw.VkPipeline = undefined,
+    swap_chain_framebuffers: []glfw.VkFramebuffer = undefined,
+    command_pool: glfw.VkCommandPool = undefined,
+    command_buffer: glfw.VkCommandBuffer = undefined,
+    image_availible_semaphore: glfw.VkSemaphore = undefined,
+    render_finished_semaphore: glfw.VkSemaphore = undefined,
+    in_flight_fence: glfw.VkFence = undefined,
 };
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {

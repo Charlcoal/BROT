@@ -14,6 +14,10 @@ const createSwapChain = @import("swap_chain.zig").createSwapChain;
 const createImageViews = @import("image_views.zig").createImageViews;
 const createRenderPass = @import("render_pass.zig").createRenderPass;
 const createGraphicsPipeline = @import("graphics_pipeline.zig").createGraphicsPipeline;
+const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
+const createCommandPool = @import("command_pool.zig").createCommandPool;
+const createCommandBuffer = @import("command_buffer.zig").createCommandBuffer;
+const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     try createInstance(data, alloc);
@@ -23,6 +27,10 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createLogicalDevice(data, alloc);
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
-    try createRenderPass(data, alloc);
+    try createRenderPass(data);
     try createGraphicsPipeline(data, alloc);
+    try createFrameBuffers(data, alloc);
+    try createCommandPool(data, alloc);
+    try createCommandBuffer(data);
+    try createSyncObjects(data);
 }

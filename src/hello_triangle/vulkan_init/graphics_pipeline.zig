@@ -33,7 +33,6 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         vert_shader_stage_info,
         frag_shader_stage_info,
     };
-    _ = shader_stages;
 
     const dynamic_states = [_]glfw.VkDynamicState{
         glfw.VK_DYNAMIC_STATE_VIEWPORT,
@@ -44,7 +43,6 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .dynamicStateCount = @intCast(dynamic_states.len),
         .pDynamicStates = &dynamic_states,
     };
-    _ = dynamic_state;
 
     const vertex_input_info: glfw.VkPipelineVertexInputStateCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -53,37 +51,18 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .vertexAttributeDescriptionCount = 0,
         .pVertexAttributeDescriptions = null,
     };
-    _ = vertex_input_info;
 
     const input_assembly: glfw.VkPipelineInputAssemblyStateCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = glfw.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .primitiveRestartEnable = glfw.VK_FALSE,
     };
-    _ = input_assembly;
-
-    //const viewport: glfw.VkViewport = .{
-    //    .x = 0,
-    //    .y = 0,
-    //    .width = @floatFromInt(data.swap_chain_extent.width),
-    //    .height = @floatFromInt(data.swap_chain_extent.height),
-    //    .minDepth = 0,
-    //    .maxDepth = 1,
-    //};
-    //_ = viewport;
-
-    //const scissor: glfw.VkRect2D = .{
-    //    .offset = .{.x = 0, .y = 0},
-    //    .extent = data.swap_chain_extent,
-    //};
-    //_ = scissor;
 
     const viewport_state: glfw.VkPipelineViewportStateCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount = 1,
     };
-    _ = viewport_state;
 
     const rasterizer: glfw.VkPipelineRasterizationStateCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -98,7 +77,6 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .depthBiasClamp = 0,
         .depthBiasSlopeFactor = 0,
     };
-    _ = rasterizer;
 
     const multisampling: glfw.VkPipelineMultisampleStateCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -109,7 +87,6 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .alphaToCoverageEnable = glfw.VK_FALSE,
         .alphaToOneEnable = glfw.VK_FALSE,
     };
-    _ = multisampling;
 
     const color_blend_attachment: glfw.VkPipelineColorBlendAttachmentState = .{
         .colorWriteMask = glfw.VK_COLOR_COMPONENT_R_BIT | glfw.VK_COLOR_COMPONENT_G_BIT | glfw.VK_COLOR_COMPONENT_B_BIT | glfw.VK_COLOR_COMPONENT_A_BIT,
@@ -130,7 +107,6 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .pAttachments = &color_blend_attachment,
         .blendConstants = .{ 0, 0, 0, 0 },
     };
-    _ = color_blending;
 
     const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -139,8 +115,31 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
-    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipelineLayout) != glfw.VK_SUCCESS) {
+    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != glfw.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
+    }
+
+    const pipeline_info: glfw.VkGraphicsPipelineCreateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = 2,
+        .pStages = &shader_stages,
+        .pVertexInputState = &vertex_input_info,
+        .pInputAssemblyState = &input_assembly,
+        .pViewportState = &viewport_state,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = null,
+        .pColorBlendState = &color_blending,
+        .pDynamicState = &dynamic_state,
+        .layout = data.pipeline_layout,
+        .renderPass = data.render_pass,
+        .subpass = 0,
+        .basePipelineHandle = @ptrCast(glfw.VK_NULL_HANDLE),
+        .basePipelineIndex = -1,
+    };
+
+    if (glfw.vkCreateGraphicsPipelines(data.device, @ptrCast(glfw.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != glfw.VK_SUCCESS) {
+        return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 

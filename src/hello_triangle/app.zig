@@ -8,7 +8,7 @@ const vulkan_init = @import("vulkan_init/all.zig");
 const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
 
-pub const Error = common.InitWindowError || common.InitVulkanError;
+pub const Error = common.InitWindowError || common.InitVulkanError || common.MainLoopError;
 const Allocator = std.mem.Allocator;
 
 //result of following OOP-based tutorial, change in future
@@ -22,6 +22,6 @@ pub fn run(alloc: Allocator) Error!void {
 
     try window_init.initWindow(&app_data);
     try vulkan_init.initVulkan(&app_data, alloc);
-    main_loop.mainLoop(app_data);
+    try main_loop.mainLoop(&app_data);
     clean_up.cleanup(app_data, alloc);
 }
