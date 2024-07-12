@@ -30,7 +30,7 @@ pub fn createImageViews(data: *common.AppData, alloc: Allocator) InitVulkanError
         };
 
         if (glfw.vkCreateImageView(data.device, &create_info, null, &data.swap_chain_image_views[i]) != glfw.VK_SUCCESS) {
-            return InitVulkanError.failde_to_create_image_views;
+            return InitVulkanError.image_views_creation_failed;
         }
     }
 }

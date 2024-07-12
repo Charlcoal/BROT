@@ -7,6 +7,6 @@ const InitVulkanError = common.InitVulkanError;
 
 pub fn createSurface(data: *common.AppData) InitVulkanError!void {
     if (glfw.glfwCreateWindowSurface(data.instance, data.window, null, &data.surface) != glfw.VK_SUCCESS) {
-        return InitVulkanError.failed_to_create_window_surface;
+        return InitVulkanError.window_surface_creation_failed;
     }
 }

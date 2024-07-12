@@ -52,7 +52,7 @@ pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanEr
     }
 
     if (glfw.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != glfw.VK_SUCCESS) {
-        return InitVulkanError.failed_to_create_logical_device;
+        return InitVulkanError.logical_device_creation_failed;
     }
 
     glfw.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);

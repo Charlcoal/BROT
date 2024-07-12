@@ -2,7 +2,7 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const glfw = common.glfw;
 
-pub const InitWindowError = common.InitWindowError;
+const InitWindowError = common.InitWindowError;
 
 pub fn initWindow(data: *common.AppData) InitWindowError!void {
     _ = glfw.glfwInit();

@@ -46,7 +46,7 @@ pub fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!v
 
     const result = glfw.vkCreateInstance(&create_info, null, &data.instance);
     if (result != glfw.VK_SUCCESS) {
-        return InitVulkanError.create_instance_failed;
+        return InitVulkanError.instance_creation_failed;
     }
 }
 

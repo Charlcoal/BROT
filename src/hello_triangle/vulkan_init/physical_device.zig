@@ -11,7 +11,7 @@ pub fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanErr
     _ = glfw.vkEnumeratePhysicalDevices(data.instance, &device_count, null);
 
     if (device_count == 0) {
-        return InitVulkanError.failed_to_find_gpu_with_vulkan_support;
+        return InitVulkanError.gpu_with_vulkan_support_not_found;
     }
 
     const devices = try alloc.alloc(glfw.VkPhysicalDevice, device_count);
@@ -24,7 +24,7 @@ pub fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanErr
             break;
         }
     } else {
-        return InitVulkanError.failed_to_find_suitable_gpu;
+        return InitVulkanError.suitable_gpu_not_found;
     }
 }
 

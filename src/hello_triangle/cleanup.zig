@@ -4,6 +4,8 @@ const glfw = common.glfw;
 const Allocator = std.mem.Allocator;
 
 pub fn cleanup(data: common.AppData, alloc: Allocator) void {
+    glfw.vkDestroyPipelineLayout(data.device, data.pipelineLayout, null);
+
     for (data.swap_chain_image_views) |view| {
         glfw.vkDestroyImageView(data.device, view, null);
     }

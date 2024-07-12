@@ -50,7 +50,7 @@ pub fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!
     }
 
     if (glfw.vkCreateSwapchainKHR(data.device, &create_info, null, &data.swap_chain) != glfw.VK_SUCCESS) {
-        return InitVulkanError.failed_to_create_swap_chain;
+        return InitVulkanError.logical_device_creation_failed;
     }
 
     _ = glfw.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &image_count, null);

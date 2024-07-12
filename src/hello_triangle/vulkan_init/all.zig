@@ -12,6 +12,7 @@ const pickPhysicalDevice = @import("physical_device.zig").pickPhysicalDevice;
 const createLogicalDevice = @import("logical_device.zig").createLogicalDevice;
 const createSwapChain = @import("swap_chain.zig").createSwapChain;
 const createImageViews = @import("image_views.zig").createImageViews;
+const createRenderPass = @import("render_pass.zig").createRenderPass;
 const createGraphicsPipeline = @import("graphics_pipeline.zig").createGraphicsPipeline;
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
@@ -22,5 +23,6 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createLogicalDevice(data, alloc);
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
+    try createRenderPass(data, alloc);
     try createGraphicsPipeline(data, alloc);
 }
