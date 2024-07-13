@@ -16,8 +16,9 @@ const createRenderPass = @import("render_pass.zig").createRenderPass;
 const createGraphicsPipeline = @import("graphics_pipeline.zig").createGraphicsPipeline;
 const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
 const createCommandPool = @import("command_pool.zig").createCommandPool;
-const createCommandBuffer = @import("command_buffer.zig").createCommandBuffer;
+const createCommandBuffers = @import("command_buffer.zig").createCommandBuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
+const cleanup = @import("../cleanup.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     try createInstance(data, alloc);
@@ -31,6 +32,24 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
     try createCommandPool(data, alloc);
-    try createCommandBuffer(data);
-    try createSyncObjects(data);
+    try createCommandBuffers(data, alloc);
+    try createSyncObjects(data, alloc);
+}
+
+pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+    var width: c_int = 0;
+    var height: c_int = 0;
+    glfw.glfwGetFramebufferSize(data.window, &width, &height);
+    while (width == 0 or height == 0) {
+        glfw.glfwGetFramebufferSize(data.window, &width, &height);
+        glfw.glfwWaitEvents();
+    }
+
+    _ = glfw.vkDeviceWaitIdle(data.device);
+
+    cleanup.cleanupSwapChain(data.*, alloc);
+
+    try createSwapChain(data, alloc);
+    try createImageViews(data, alloc);
+    try createFrameBuffers(data, alloc);
 }

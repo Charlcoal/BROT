@@ -2,8 +2,23 @@ const std = @import("std");
 pub const glfw = @import("imports.zig").glfw;
 const builtin = @import("builtin");
 
-pub const dbg = builtin.mode == std.builtin.Mode.Debug;
+// ------------------- settings -------------------------
+
+pub const max_frames_in_flight: i32 = 2;
+
 pub const enable_validation_layers = dbg;
+
+pub const validation_layers = [_][*:0]const u8{
+    "VK_LAYER_KHRONOS_validation",
+};
+
+pub const device_extensions = [_][*:0]const u8{
+    glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+// ------------------- program defs ---------------------
+
+pub const dbg = builtin.mode == std.builtin.Mode.Debug;
 
 pub const InitWindowError = error{create_window_failed};
 pub const InitVulkanError = error{
@@ -29,17 +44,10 @@ pub const MainLoopError = error{
     command_buffer_recording_begin_failed,
     command_buffer_record_failed,
     draw_command_buffer_submit_failed,
-};
+    swap_chain_image_acquisition_failed,
+} || InitVulkanError;
 
 const Allocator = std.mem.Allocator;
-
-pub const validation_layers = [_][*:0]const u8{
-    "VK_LAYER_KHRONOS_validation",
-};
-
-pub const device_extensions = [_][*:0]const u8{
-    glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
 
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
@@ -63,10 +71,12 @@ pub const AppData = struct {
     graphics_pipeline: glfw.VkPipeline = undefined,
     swap_chain_framebuffers: []glfw.VkFramebuffer = undefined,
     command_pool: glfw.VkCommandPool = undefined,
-    command_buffer: glfw.VkCommandBuffer = undefined,
-    image_availible_semaphore: glfw.VkSemaphore = undefined,
-    render_finished_semaphore: glfw.VkSemaphore = undefined,
-    in_flight_fence: glfw.VkFence = undefined,
+    command_buffers: []glfw.VkCommandBuffer = undefined,
+    image_availible_semaphores: []glfw.VkSemaphore = undefined,
+    render_finished_semaphores: []glfw.VkSemaphore = undefined,
+    in_flight_fences: []glfw.VkFence = undefined,
+    current_frame: u32 = 0,
+    frame_buffer_resized: bool = false,
 };
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {

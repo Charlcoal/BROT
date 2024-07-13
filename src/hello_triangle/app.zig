@@ -22,6 +22,6 @@ pub fn run(alloc: Allocator) Error!void {
 
     try window_init.initWindow(&app_data);
     try vulkan_init.initVulkan(&app_data, alloc);
-    try main_loop.mainLoop(&app_data);
+    try main_loop.mainLoop(&app_data, alloc);
     clean_up.cleanup(app_data, alloc);
 }
