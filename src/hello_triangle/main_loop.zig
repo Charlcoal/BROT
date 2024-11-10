@@ -126,7 +126,7 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
 
     glfw.vkCmdDraw(
         command_buffer,
-        3,
+        6,
         1,
         0,
         0,
