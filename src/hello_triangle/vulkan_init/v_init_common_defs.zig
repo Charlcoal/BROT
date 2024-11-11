@@ -22,17 +22,17 @@ pub fn populateDebugMessengerCreateInfo(create_info: *glfw.VkDebugUtilsMessenger
 }
 
 pub const QueueFamilyIndices = struct {
-    graphics_family: ?u32,
+    graphics_compute_family: ?u32,
     present_family: ?u32,
 
     pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_family != null and self.present_family != null;
+        return self.graphics_compute_family != null and self.present_family != null;
     }
 };
 
 pub fn findQueueFamilies(data: AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
-        .graphics_family = null,
+        .graphics_compute_family = null,
         .present_family = null,
     };
 
@@ -44,8 +44,8 @@ pub fn findQueueFamilies(data: AppData, device: glfw.VkPhysicalDevice, alloc: Al
     _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
     for (queue_families, 0..) |queueFamily, i| {
-        if (queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) {
-            indices.graphics_family = @intCast(i);
+        if (queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0 and queueFamily.queueFlags & glfw.VK_QUEUE_COMPUTE_BIT != 0) {
+            indices.graphics_compute_family = @intCast(i);
         }
 
         var present_support: glfw.VkBool32 = glfw.VK_FALSE;

@@ -36,9 +36,9 @@ pub fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!
     };
 
     const indices = try v_common.findQueueFamilies(data.*, data.physical_device, alloc);
-    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+    const queue_family_indices = [_]u32{ indices.graphics_compute_family.?, indices.present_family.? };
 
-    if (indices.graphics_family != indices.present_family) {
+    if (indices.graphics_compute_family != indices.present_family) {
         create_info.imageSharingMode = glfw.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;

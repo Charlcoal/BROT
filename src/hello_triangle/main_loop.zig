@@ -66,7 +66,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (glfw.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != glfw.VK_SUCCESS) {
+    if (glfw.vkQueueSubmit(data.graphics_compute_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != glfw.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 

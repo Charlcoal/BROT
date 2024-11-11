@@ -12,7 +12,7 @@ pub fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanErro
     const pool_info: glfw.VkCommandPoolCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = glfw.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family_indices.graphics_family.?,
+        .queueFamilyIndex = queue_family_indices.graphics_compute_family.?,
     };
 
     if (glfw.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != glfw.VK_SUCCESS) {

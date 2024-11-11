@@ -1,0 +1,35 @@
+#version 450
+
+layout(binding = 0) uniform UniformBufferObject {
+    vec2 center;
+    float height_scale;
+    float width_to_height_ratio;
+} ubo;
+
+layout(binding = 1, rgba8) uniform writeonly image2D outImage;
+
+void main() {
+    vec2 fragLoc = gl_GlobalInvocationID.xy / 800.0;
+
+    const int max_count = 1000;
+    vec2 a = fragLoc * ubo.height_scale + ubo.center;
+    a.x *= ubo.width_to_height_ratio;
+    vec2 pos = vec2(0.0, 0.0);
+
+    int count = 0;
+    float x_sqr = pos.x * pos.x;
+    float y_sqr = pos.y * pos.y;
+    while (x_sqr + y_sqr < 4.0 && count < max_count) {
+        pos.y = 2.0 * pos.x * pos.y + a.y;
+        pos.x = x_sqr - y_sqr + a.x;
+        x_sqr = pos.x * pos.x;
+        y_sqr = pos.y * pos.y;
+        count++;
+    }
+
+    if (count == max_count) {
+        count = 0;
+    }
+
+    imageStore(outImage, ivec2(gl_GlobalInvocationID.xy), vec4(count / float(max_count), 0.0, 0.0, 1.0));
+}

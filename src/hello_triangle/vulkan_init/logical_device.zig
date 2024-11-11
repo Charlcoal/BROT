@@ -9,7 +9,7 @@ const InitVulkanError = common.InitVulkanError;
 pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const indicies = try v_common.findQueueFamilies(data.*, data.physical_device, alloc);
 
-    var unique_queue_families: [2]u32 = .{ indicies.graphics_family.?, indicies.present_family.? };
+    var unique_queue_families: [2]u32 = .{ indicies.graphics_compute_family.?, indicies.present_family.? };
     var unique_queue_num: u32 = 0;
 
     outer: for (unique_queue_families) |queue_family| {
@@ -55,6 +55,6 @@ pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanEr
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
+    glfw.vkGetDeviceQueue(data.device, indicies.graphics_compute_family.?, 0, &data.graphics_compute_queue);
     glfw.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
 }

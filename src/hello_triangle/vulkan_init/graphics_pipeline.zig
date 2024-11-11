@@ -5,6 +5,28 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
+//pub fn createComputePipeline(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+//    const comp_code = try common.readFile("src/hello_triangle/shaders/brot_comp.spv", alloc, 4);
+//    defer alloc.free(comp_code);
+//    const comp_shader_module = try createShaderModule(data.*, comp_code);
+//    defer _ = glfw.vkDestroyShaderModule(data.device, comp_shader_module, null);
+//
+//    const comp_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
+//        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+//        .stage = glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+//        .module = comp_shader_module,
+//        .pName = "main",
+//    };
+//
+//    const pipeline_layout_info: glfw.VkPipelineLayoutCreationInfo = .{
+//        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+//        .setLayoutCount = 1,
+//        .pSetLayouts
+//    };
+//    _ = comp_shader_stage_info;
+//    _ = pipeline_layout_info;
+//}
+
 pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const vert_code = try common.readFile("src/hello_triangle/shaders/triangle_vert.spv", alloc, 4);
     const frag_code = try common.readFile("src/hello_triangle/shaders/triangle_frag.spv", alloc, 4);
