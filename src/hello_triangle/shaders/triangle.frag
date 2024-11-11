@@ -3,9 +3,16 @@
 layout(location = 0) in vec2 fragLoc;
 layout(location = 0) out vec4 outColor;
 
+layout(binding = 0) uniform UniformBufferObject {
+    vec2 center;
+    float height_scale;
+    float width_to_height_ratio;
+} ubo;
+
 void main() {
     const int max_count = 1000;
-    vec2 a = 2.0 * fragLoc;
+    vec2 a = fragLoc * ubo.height_scale + ubo.center;
+    a.x *= ubo.width_to_height_ratio;
     vec2 pos = vec2(0.0, 0.0);
 
     int count = 0;

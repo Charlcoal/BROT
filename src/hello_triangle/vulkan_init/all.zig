@@ -18,6 +18,10 @@ const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
 const createCommandPool = @import("command_pool.zig").createCommandPool;
 const createCommandBuffers = @import("command_buffer.zig").createCommandBuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
+const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
+const createUniformBuffers = @import("uniform_buffers.zig").createUniformBuffers;
+const createDescriptorPool = @import("descriptor_pool.zig").createDescriptorPool;
+const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
@@ -29,9 +33,13 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
     try createRenderPass(data);
+    try createDescriptorSetLayout(data);
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
     try createCommandPool(data, alloc);
+    try createUniformBuffers(data, alloc);
+    try createDescriptorPool(data);
+    try createDescriptorSets(data, alloc);
     try createCommandBuffers(data, alloc);
     try createSyncObjects(data, alloc);
 }

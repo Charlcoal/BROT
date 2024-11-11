@@ -11,11 +11,13 @@ pub fn initWindow(data: *common.AppData) InitWindowError!void {
 
     data.window = glfw.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return InitWindowError.create_window_failed;
     glfw.glfwSetWindowUserPointer(data.window, @ptrCast(data));
+    _ = glfw.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
 }
 
-fn framebufferResizeCallback(window: *glfw.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
-    const data: *common.AppData = @ptrCast(glfw.glfwGetWindowUserPointer(window));
+fn framebufferResizeCallback(window: ?*glfw.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
+    const data: *common.AppData = @alignCast(@ptrCast(glfw.glfwGetWindowUserPointer(window)));
     data.frame_buffer_resized = true;
-    _ = width;
-    _ = height;
+    data.width = width;
+    data.height = height;
+    data.current_uniform_state.width_to_height_ratio = @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
 }

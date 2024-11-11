@@ -18,6 +18,16 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], glfw.VK_TRUE, std.math.maxInt(u64));
 
+    var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
+    if (delta_time < 1.0 / common.target_frame_rate) {
+        std.time.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
+        delta_time = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
+    } else {
+        std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
+    }
+    //std.debug.print("time: {d:.3}\n", .{delta_time});
+    data.prev_time = data.time.read();
+
     var image_index: u32 = undefined;
     const result = glfw.vkAcquireNextImageKHR(
         data.device,
@@ -39,6 +49,8 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 
     _ = glfw.vkResetCommandBuffer(data.command_buffers[data.current_frame], 0);
     try recordCommandBuffer(data.*, data.command_buffers[data.current_frame], image_index);
+
+    updateUniformBuffer(data, data.current_frame);
 
     const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
     const wait_stages = [_]glfw.VkPipelineStageFlags{glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -124,6 +136,17 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
     };
     glfw.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
+    glfw.vkCmdBindDescriptorSets(
+        command_buffer,
+        glfw.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        data.pipeline_layout,
+        0,
+        1,
+        &data.descriptor_sets[data.current_frame],
+        0,
+        null,
+    );
+
     glfw.vkCmdDraw(
         command_buffer,
         6,
@@ -136,4 +159,17 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
     if (glfw.vkEndCommandBuffer(command_buffer) != glfw.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
+}
+
+fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
+    @memcpy(
+        @as(
+            [*]common.UniformBufferObject,
+            @ptrCast(data.uniform_buffers_mapped[@intCast(current_image)]),
+        ),
+        @as(
+            *const [1]common.UniformBufferObject,
+            @ptrCast(&data.current_uniform_state),
+        ),
+    );
 }

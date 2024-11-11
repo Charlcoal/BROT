@@ -22,6 +22,18 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
     //vulkan
     cleanupSwapChain(data, alloc);
 
+    for (0..common.max_frames_in_flight) |i| {
+        glfw.vkDestroyBuffer(data.device, data.uniform_buffers[i], null);
+        glfw.vkFreeMemory(data.device, data.uniform_buffers_memory[i], null);
+    }
+    alloc.free(data.uniform_buffers);
+    alloc.free(data.uniform_buffers_memory);
+    alloc.free(data.uniform_buffers_mapped);
+
+    glfw.vkDestroyDescriptorPool(data.device, data.descriptor_pool, null);
+    glfw.vkDestroyDescriptorSetLayout(data.device, data.descriptor_set_layout, null);
+    alloc.free(data.descriptor_sets);
+
     glfw.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
     glfw.vkDestroyPipelineLayout(data.device, data.pipeline_layout, null);
 

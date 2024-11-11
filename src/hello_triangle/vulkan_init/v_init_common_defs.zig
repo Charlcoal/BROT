@@ -84,6 +84,54 @@ pub fn querySwapChainSupport(surface: glfw.VkSurfaceKHR, device: glfw.VkPhysical
     return details;
 }
 
+pub fn createBuffer(
+    data: *AppData,
+    size: glfw.VkDeviceSize,
+    usage: glfw.VkBufferUsageFlags,
+    properties: glfw.VkMemoryPropertyFlags,
+    buffer: *glfw.VkBuffer,
+    buffer_memory: *glfw.VkDeviceMemory,
+) common.InitVulkanError!void {
+    const buffer_info: glfw.VkBufferCreateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = glfw.VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    if (glfw.vkCreateBuffer(data.device, &buffer_info, null, buffer) != glfw.VK_SUCCESS) {
+        return common.InitVulkanError.buffer_creation_failed;
+    }
+
+    var mem_requirements: glfw.VkMemoryRequirements = undefined;
+    glfw.vkGetBufferMemoryRequirements(data.device, buffer.*, &mem_requirements);
+
+    const alloc_info: glfw.VkMemoryAllocateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+        .memoryTypeIndex = try findMemoryType(data, mem_requirements.memoryTypeBits, properties),
+    };
+
+    if (glfw.vkAllocateMemory(data.device, &alloc_info, null, buffer_memory) != glfw.VK_SUCCESS) {
+        return common.InitVulkanError.buffer_memory_allocation_failed;
+    }
+
+    _ = glfw.vkBindBufferMemory(data.device, buffer.*, buffer_memory.*, 0);
+}
+
+pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: glfw.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
+    var mem_properties: glfw.VkPhysicalDeviceMemoryProperties = undefined;
+    glfw.vkGetPhysicalDeviceMemoryProperties(data.physical_device, &mem_properties);
+
+    for (0..mem_properties.memoryTypeCount) |i| {
+        if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
+            return @intCast(i);
+        }
+    }
+
+    return common.InitVulkanError.suitable_memory_type_not_found;
+}
+
 fn debugCallback(
     message_severity: glfw.VkDebugUtilsMessageSeverityFlagBitsEXT,
     message_type: glfw.VkDebugUtilsMessageTypeFlagsEXT,

@@ -16,6 +16,15 @@ pub const device_extensions = [_][*:0]const u8{
     glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
+pub const UniformBufferObject = extern struct {
+    center_x: f32 align(2 * @alignOf(f32)), // x component of vec2 on glsl side
+    center_y: f32,
+    height_scale: f32,
+    width_to_height_ratio: f32,
+};
+
+pub const target_frame_rate: f64 = 60;
+
 // ------------------- program defs ---------------------
 
 pub const dbg = builtin.mode == std.builtin.Mode.Debug;
@@ -39,13 +48,19 @@ pub const InitVulkanError = error{
     command_pool_creation_failed,
     command_buffer_allocation_failed,
     semaphore_creation_failed,
+    descriptor_set_layout_creation_failed,
+    descriptor_pool_creation_failed,
+    descriptor_sets_allocation_failed,
+    buffer_creation_failed,
+    buffer_memory_allocation_failed,
+    suitable_memory_type_not_found,
 } || ReadFileError;
 pub const MainLoopError = error{
     command_buffer_recording_begin_failed,
     command_buffer_record_failed,
     draw_command_buffer_submit_failed,
     swap_chain_image_acquisition_failed,
-} || InitVulkanError;
+} || InitVulkanError || std.time.Timer.Error;
 
 const Allocator = std.mem.Allocator;
 
@@ -77,6 +92,18 @@ pub const AppData = struct {
     in_flight_fences: []glfw.VkFence = undefined,
     current_frame: u32 = 0,
     frame_buffer_resized: bool = false,
+
+    current_uniform_state: UniformBufferObject,
+    uniform_buffers: []glfw.VkBuffer = undefined,
+    uniform_buffers_memory: []glfw.VkDeviceMemory = undefined,
+    uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
+
+    descriptor_set_layout: glfw.VkDescriptorSetLayout = undefined,
+    descriptor_pool: glfw.VkDescriptorPool = undefined,
+    descriptor_sets: []glfw.VkDescriptorSet = undefined,
+
+    time: std.time.Timer,
+    prev_time: u64,
 };
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {

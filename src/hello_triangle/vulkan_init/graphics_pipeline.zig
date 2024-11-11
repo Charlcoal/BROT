@@ -110,8 +110,8 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
 
     const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 0,
-        .pSetLayouts = null,
+        .setLayoutCount = 1,
+        .pSetLayouts = &data.descriptor_set_layout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
