@@ -11,8 +11,9 @@ layout(binding = 0) uniform UniformBufferObject {
 
 void main() {
     const int max_count = 1000;
-    vec2 a = fragLoc * ubo.height_scale + ubo.center;
+    vec2 a = fragLoc * ubo.height_scale;
     a.x *= ubo.width_to_height_ratio;
+    a += ubo.center;
     vec2 pos = vec2(0.0, 0.0);
 
     int count = 0;
