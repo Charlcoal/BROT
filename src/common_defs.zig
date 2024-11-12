@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const glfw = @import("imports.zig").glfw;
+pub const c = @import("imports.zig").c;
 const builtin = @import("builtin");
 
 // ------------------- settings -------------------------
@@ -13,7 +13,7 @@ pub const validation_layers = [_][*:0]const u8{
 };
 
 pub const device_extensions = [_][*:0]const u8{
-    glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 pub const UniformBufferObject = extern struct {
@@ -66,41 +66,41 @@ const Allocator = std.mem.Allocator;
 
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
-    window: *glfw.GLFWwindow = undefined,
+    window: *c.GLFWwindow = undefined,
     height: i32,
     width: i32,
-    instance: glfw.VkInstance = null,
-    debug_messenger: glfw.VkDebugUtilsMessengerEXT = null,
-    surface: glfw.VkSurfaceKHR = null,
-    physical_device: glfw.VkPhysicalDevice = null,
-    device: glfw.VkDevice = null,
-    graphics_compute_queue: glfw.VkQueue = null,
-    present_queue: glfw.VkQueue = null,
-    swap_chain: glfw.VkSwapchainKHR = null,
-    swap_chain_images: []glfw.VkImage = undefined,
-    swap_chain_image_format: glfw.VkFormat = undefined,
-    swap_chain_extent: glfw.VkExtent2D = undefined,
-    swap_chain_image_views: []glfw.VkImageView = undefined,
-    render_pass: glfw.VkRenderPass = undefined,
-    pipeline_layout: glfw.VkPipelineLayout = undefined,
-    graphics_pipeline: glfw.VkPipeline = undefined,
-    swap_chain_framebuffers: []glfw.VkFramebuffer = undefined,
-    command_pool: glfw.VkCommandPool = undefined,
-    command_buffers: []glfw.VkCommandBuffer = undefined,
-    image_availible_semaphores: []glfw.VkSemaphore = undefined,
-    render_finished_semaphores: []glfw.VkSemaphore = undefined,
-    in_flight_fences: []glfw.VkFence = undefined,
+    instance: c.VkInstance = null,
+    debug_messenger: c.VkDebugUtilsMessengerEXT = null,
+    surface: c.VkSurfaceKHR = null,
+    physical_device: c.VkPhysicalDevice = null,
+    device: c.VkDevice = null,
+    graphics_compute_queue: c.VkQueue = null,
+    present_queue: c.VkQueue = null,
+    swap_chain: c.VkSwapchainKHR = null,
+    swap_chain_images: []c.VkImage = undefined,
+    swap_chain_image_format: c.VkFormat = undefined,
+    swap_chain_extent: c.VkExtent2D = undefined,
+    swap_chain_image_views: []c.VkImageView = undefined,
+    render_pass: c.VkRenderPass = undefined,
+    pipeline_layout: c.VkPipelineLayout = undefined,
+    graphics_pipeline: c.VkPipeline = undefined,
+    swap_chain_framebuffers: []c.VkFramebuffer = undefined,
+    command_pool: c.VkCommandPool = undefined,
+    command_buffers: []c.VkCommandBuffer = undefined,
+    image_availible_semaphores: []c.VkSemaphore = undefined,
+    render_finished_semaphores: []c.VkSemaphore = undefined,
+    in_flight_fences: []c.VkFence = undefined,
     current_frame: u32 = 0,
     frame_buffer_resized: bool = false,
 
     current_uniform_state: UniformBufferObject,
-    uniform_buffers: []glfw.VkBuffer = undefined,
-    uniform_buffers_memory: []glfw.VkDeviceMemory = undefined,
+    uniform_buffers: []c.VkBuffer = undefined,
+    uniform_buffers_memory: []c.VkDeviceMemory = undefined,
     uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
 
-    descriptor_set_layout: glfw.VkDescriptorSetLayout = undefined,
-    descriptor_pool: glfw.VkDescriptorPool = undefined,
-    descriptor_sets: []glfw.VkDescriptorSet = undefined,
+    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
+    descriptor_pool: c.VkDescriptorPool = undefined,
+    descriptor_sets: []c.VkDescriptorSet = undefined,
 
     time: std.time.Timer,
     prev_time: u64,

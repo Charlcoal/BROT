@@ -1,7 +1,7 @@
 const std = @import("std");
 const common = @import("../common_defs.zig");
 const v_common = @import("v_init_common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
@@ -20,23 +20,23 @@ pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanEr
         unique_queue_num += 1;
     }
 
-    const queue_create_infos = try alloc.alloc(glfw.VkDeviceQueueCreateInfo, unique_queue_num);
+    const queue_create_infos = try alloc.alloc(c.VkDeviceQueueCreateInfo, unique_queue_num);
     defer alloc.free(queue_create_infos);
 
     const queue_priority: f32 = 1;
     for (unique_queue_families[0..unique_queue_num], queue_create_infos) |queue_family, *queue_create_info| {
         queue_create_info.* = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
             .queueCount = 1,
             .pQueuePriorities = &queue_priority,
         };
     }
 
-    const device_features: glfw.VkPhysicalDeviceFeatures = .{};
+    const device_features: c.VkPhysicalDeviceFeatures = .{};
 
-    var createInfo: glfw.VkDeviceCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    var createInfo: c.VkDeviceCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pQueueCreateInfos = queue_create_infos.ptr,
         .queueCreateInfoCount = unique_queue_num,
         .pEnabledFeatures = &device_features,
@@ -51,10 +51,10 @@ pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanEr
         createInfo.enabledLayerCount = 0;
     }
 
-    if (glfw.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != glfw.VK_SUCCESS) {
+    if (c.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != c.VK_SUCCESS) {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_compute_family.?, 0, &data.graphics_compute_queue);
-    glfw.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
+    c.vkGetDeviceQueue(data.device, indicies.graphics_compute_family.?, 0, &data.graphics_compute_queue);
+    c.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
 }

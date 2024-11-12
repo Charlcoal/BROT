@@ -1,6 +1,6 @@
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
@@ -35,114 +35,114 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
 
     const vert_shader_module = try createShaderModule(data.*, vert_code);
     const frag_shader_module = try createShaderModule(data.*, frag_code);
-    defer _ = glfw.vkDestroyShaderModule(data.device, vert_shader_module, null);
-    defer _ = glfw.vkDestroyShaderModule(data.device, frag_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(data.device, vert_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(data.device, frag_shader_module, null);
 
-    const vert_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = glfw.VK_SHADER_STAGE_VERTEX_BIT,
+    const vert_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
         .module = vert_shader_module,
         .pName = "main",
     };
-    const frag_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = glfw.VK_SHADER_STAGE_FRAGMENT_BIT,
+    const frag_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
         .module = frag_shader_module,
         .pName = "main",
     };
 
-    const shader_stages = [_]glfw.VkPipelineShaderStageCreateInfo{
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{
         vert_shader_stage_info,
         frag_shader_stage_info,
     };
 
-    const dynamic_states = [_]glfw.VkDynamicState{
-        glfw.VK_DYNAMIC_STATE_VIEWPORT,
-        glfw.VK_DYNAMIC_STATE_SCISSOR,
+    const dynamic_states = [_]c.VkDynamicState{
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
     };
-    const dynamic_state: glfw.VkPipelineDynamicStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+    const dynamic_state: c.VkPipelineDynamicStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = @intCast(dynamic_states.len),
         .pDynamicStates = &dynamic_states,
     };
 
-    const vertex_input_info: glfw.VkPipelineVertexInputStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+    const vertex_input_info: c.VkPipelineVertexInputStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 0,
         .pVertexBindingDescriptions = null,
         .vertexAttributeDescriptionCount = 0,
         .pVertexAttributeDescriptions = null,
     };
 
-    const input_assembly: glfw.VkPipelineInputAssemblyStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = glfw.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .primitiveRestartEnable = glfw.VK_FALSE,
+    const input_assembly: c.VkPipelineInputAssemblyStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = c.VK_FALSE,
     };
 
-    const viewport_state: glfw.VkPipelineViewportStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+    const viewport_state: c.VkPipelineViewportStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount = 1,
     };
 
-    const rasterizer: glfw.VkPipelineRasterizationStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable = glfw.VK_FALSE,
-        .rasterizerDiscardEnable = glfw.VK_FALSE,
-        .polygonMode = glfw.VK_POLYGON_MODE_FILL,
+    const rasterizer: c.VkPipelineRasterizationStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
+        .polygonMode = c.VK_POLYGON_MODE_FILL,
         .lineWidth = 1,
-        .cullMode = glfw.VK_CULL_MODE_BACK_BIT,
-        .frontFace = glfw.VK_FRONT_FACE_CLOCKWISE,
-        .depthBiasEnable = glfw.VK_FALSE,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = c.VK_FALSE,
         .depthBiasConstantFactor = 0,
         .depthBiasClamp = 0,
         .depthBiasSlopeFactor = 0,
     };
 
-    const multisampling: glfw.VkPipelineMultisampleStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .sampleShadingEnable = glfw.VK_FALSE,
-        .rasterizationSamples = glfw.VK_SAMPLE_COUNT_1_BIT,
+    const multisampling: c.VkPipelineMultisampleStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = c.VK_FALSE,
+        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
         .minSampleShading = 1,
         .pSampleMask = null,
-        .alphaToCoverageEnable = glfw.VK_FALSE,
-        .alphaToOneEnable = glfw.VK_FALSE,
+        .alphaToCoverageEnable = c.VK_FALSE,
+        .alphaToOneEnable = c.VK_FALSE,
     };
 
-    const color_blend_attachment: glfw.VkPipelineColorBlendAttachmentState = .{
-        .colorWriteMask = glfw.VK_COLOR_COMPONENT_R_BIT | glfw.VK_COLOR_COMPONENT_G_BIT | glfw.VK_COLOR_COMPONENT_B_BIT | glfw.VK_COLOR_COMPONENT_A_BIT,
-        .blendEnable = glfw.VK_FALSE,
-        .srcColorBlendFactor = glfw.VK_BLEND_FACTOR_ONE,
-        .dstColorBlendFactor = glfw.VK_BLEND_FACTOR_ZERO,
-        .colorBlendOp = glfw.VK_BLEND_OP_ADD,
-        .srcAlphaBlendFactor = glfw.VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = glfw.VK_BLEND_FACTOR_ZERO,
-        .alphaBlendOp = glfw.VK_BLEND_OP_ADD,
+    const color_blend_attachment: c.VkPipelineColorBlendAttachmentState = .{
+        .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = c.VK_FALSE,
+        .srcColorBlendFactor = c.VK_BLEND_FACTOR_ONE,
+        .dstColorBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .colorBlendOp = c.VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = c.VK_BLEND_OP_ADD,
     };
 
-    const color_blending: glfw.VkPipelineColorBlendStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .logicOpEnable = glfw.VK_FALSE,
-        .logicOp = glfw.VK_LOGIC_OP_COPY,
+    const color_blending: c.VkPipelineColorBlendStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = c.VK_FALSE,
+        .logicOp = c.VK_LOGIC_OP_COPY,
         .attachmentCount = 1,
         .pAttachments = &color_blend_attachment,
         .blendConstants = .{ 0, 0, 0, 0 },
     };
 
-    const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &data.descriptor_set_layout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
-    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != glfw.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
-    const pipeline_info: glfw.VkGraphicsPipelineCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+    const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
         .pStages = &shader_stages,
         .pVertexInputState = &vertex_input_info,
@@ -156,23 +156,23 @@ pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulka
         .layout = data.pipeline_layout,
         .renderPass = data.render_pass,
         .subpass = 0,
-        .basePipelineHandle = @ptrCast(glfw.VK_NULL_HANDLE),
+        .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
         .basePipelineIndex = -1,
     };
 
-    if (glfw.vkCreateGraphicsPipelines(data.device, @ptrCast(glfw.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != glfw.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(data.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!glfw.VkShaderModule {
-    const create_info: glfw.VkShaderModuleCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
+    const create_info: c.VkShaderModuleCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = code.len,
         .pCode = @ptrCast(code.ptr),
     };
-    var shader_module: glfw.VkShaderModule = undefined;
-    if (glfw.vkCreateShaderModule(data.device, &create_info, null, &shader_module) != glfw.VK_SUCCESS) {
+    var shader_module: c.VkShaderModule = undefined;
+    if (c.vkCreateShaderModule(data.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
         return InitVulkanError.shader_module_creation_failed;
     }
     return shader_module;

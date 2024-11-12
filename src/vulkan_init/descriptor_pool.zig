@@ -1,13 +1,13 @@
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 
 const InitVulkanError = common.InitVulkanError;
 
 pub fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
-    const pool_sizes: [1]glfw.VkDescriptorPoolSize = .{
+    const pool_sizes: [1]c.VkDescriptorPoolSize = .{
         .{
-            .type = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = @intCast(common.max_frames_in_flight),
         },
         //.{
@@ -16,14 +16,14 @@ pub fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
         //}
     };
 
-    const pool_info: glfw.VkDescriptorPoolCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+    const pool_info: c.VkDescriptorPoolCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
         .maxSets = common.max_frames_in_flight,
     };
 
-    if (glfw.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != glfw.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
     }
 }

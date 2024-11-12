@@ -1,4 +1,3 @@
-const glfw = @import("imports.zig").glfw;
 const std = @import("std");
 const builtin = @import("builtin");
 const common = @import("common_defs.zig");

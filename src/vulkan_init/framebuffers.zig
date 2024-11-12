@@ -1,20 +1,20 @@
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
 pub fn createFramebuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.swap_chain_framebuffers = try alloc.alloc(glfw.VkFramebuffer, data.swap_chain_image_views.len);
+    data.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, data.swap_chain_image_views.len);
 
     for (0..data.swap_chain_image_views.len) |i| {
-        const attachments = [_]glfw.VkImageView{
+        const attachments = [_]c.VkImageView{
             data.swap_chain_image_views[i],
         };
 
-        const frame_buffer_info: glfw.VkFramebufferCreateInfo = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        const frame_buffer_info: c.VkFramebufferCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = data.render_pass,
             .attachmentCount = @intCast(attachments.len),
             .pAttachments = &attachments,
@@ -23,7 +23,7 @@ pub fn createFramebuffers(data: *common.AppData, alloc: Allocator) InitVulkanErr
             .layers = 1,
         };
 
-        if (glfw.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != glfw.VK_SUCCESS) {
+        if (c.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
             return InitVulkanError.framebuffer_creation_failed;
         }
     }

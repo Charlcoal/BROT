@@ -1,6 +1,6 @@
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
@@ -47,13 +47,13 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     var width: c_int = 0;
     var height: c_int = 0;
-    glfw.glfwGetFramebufferSize(data.window, &width, &height);
+    c.glfwGetFramebufferSize(data.window, &width, &height);
     while (width == 0 or height == 0) {
-        glfw.glfwGetFramebufferSize(data.window, &width, &height);
-        glfw.glfwWaitEvents();
+        c.glfwGetFramebufferSize(data.window, &width, &height);
+        c.glfwWaitEvents();
     }
 
-    _ = glfw.vkDeviceWaitIdle(data.device);
+    _ = c.vkDeviceWaitIdle(data.device);
 
     cleanup.cleanupSwapChain(data.*, alloc);
 
