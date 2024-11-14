@@ -9,8 +9,13 @@ layout(binding = 0) uniform UniformBufferObject {
     float width_to_height_ratio;
 } ubo;
 
+float fMod(float x, float M) {
+    return x - int(x/M)*M;
+}
+
 void main() {
     const int max_count = 1000;
+    const float R = 1000000;
     vec2 a = fragLoc * ubo.height_scale;
     a.x *= ubo.width_to_height_ratio;
     a += ubo.center;
@@ -28,8 +33,18 @@ void main() {
     }
 
     if (count == max_count) {
-        count = 0;
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
     }
 
-    outColor = vec4(count / float(max_count), 0.0, 0.0, 1.0);
+    for (int i = 0; i < 100 && x_sqr + y_sqr < R*R; i++) {
+        pos.y = 2.0 * pos.x * pos.y + a.y;
+        pos.x = x_sqr - y_sqr + a.x;
+        x_sqr = pos.x * pos.x;
+        y_sqr = pos.y * pos.y;
+        count++;
+    }
+    float f_count = float(count + 1) - log2(log(x_sqr + y_sqr)/2);
+
+    outColor = vec4(fMod(10*f_count, max_count) / float(max_count), f_count / float(max_count), 0.0, 1.0);
 }
