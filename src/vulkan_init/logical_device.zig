@@ -7,7 +7,7 @@ const Allocator = std.mem.Allocator;
 const InitVulkanError = common.InitVulkanError;
 
 pub fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const indicies = try v_common.findQueueFamilies(data.*, data.physical_device, alloc);
+    const indicies = try v_common.findQueueFamilies(data.physical_device, alloc, data.surface);
 
     var unique_queue_families: [2]u32 = .{ indicies.graphics_compute_family.?, indicies.present_family.? };
     var unique_queue_num: u32 = 0;

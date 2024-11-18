@@ -30,7 +30,7 @@ pub const QueueFamilyIndices = struct {
     }
 };
 
-pub fn findQueueFamilies(data: AppData, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
+pub fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
         .graphics_compute_family = null,
         .present_family = null,
@@ -49,7 +49,7 @@ pub fn findQueueFamilies(data: AppData, device: c.VkPhysicalDevice, alloc: Alloc
         }
 
         var present_support: c.VkBool32 = c.VK_FALSE;
-        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), data.surface, &present_support);
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface, &present_support);
 
         if (present_support != c.VK_FALSE) {
             indices.present_family = @intCast(i);

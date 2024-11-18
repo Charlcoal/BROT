@@ -7,7 +7,7 @@ const Allocator = std.mem.Allocator;
 const InitVulkanError = common.InitVulkanError;
 
 pub fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const queue_family_indices = try v_common.findQueueFamilies(data.*, data.physical_device, alloc);
+    const queue_family_indices = try v_common.findQueueFamilies(data.physical_device, alloc, data.surface);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,

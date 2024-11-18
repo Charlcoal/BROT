@@ -11,6 +11,8 @@ pub const Error = error{
     instance_creation_failed,
     debug_messenger_setup_failed,
     window_surface_creation_failed,
+    gpu_with_vulkan_support_not_found,
+    suitable_gpu_not_found,
 } || Allocator.Error;
 
 pub const InstanceSettings = struct {
@@ -29,14 +31,17 @@ pub const Instance = struct {
     vk_instance: c.VkInstance,
     debug_messenger: c.VkDebugUtilsMessengerEXT,
     surface: c.VkSurfaceKHR,
+    physical_device: c.VkPhysicalDevice,
 
     pub fn init(alloc: Allocator, settings: InstanceSettings, window: *c.GLFWwindow, validation_layers: []const [*:0]const u8) Error!Instance {
         var instance: Instance = .{
             .vk_instance = null,
             .debug_messenger = null,
             .surface = null,
+            .physical_device = null,
         };
 
+        // ----------------------------------- Vulkan Instance ------------------------------
         if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, validation_layers)) {
             return Error.validation_layer_unavailible;
         }
@@ -70,6 +75,7 @@ pub const Instance = struct {
             return Error.instance_creation_failed;
         }
 
+        // ------------------------ Debug Messenger -------------------------
         if (common.enable_validation_layers) {
             var debug_messenger_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
             v_common.populateDebugMessengerCreateInfo(&debug_messenger_create_info);
@@ -79,8 +85,30 @@ pub const Instance = struct {
             }
         }
 
+        // ------------------------ Surface ---------------------------------
         if (c.glfwCreateWindowSurface(instance.vk_instance, window, null, &instance.surface) != c.VK_SUCCESS) {
             return Error.window_surface_creation_failed;
+        }
+
+        // ----------------------- Physical Device ---------------------------
+        var device_count: u32 = 0;
+        _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
+
+        if (device_count == 0) {
+            return Error.gpu_with_vulkan_support_not_found;
+        }
+
+        const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
+        defer alloc.free(devices);
+        _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, devices.ptr);
+
+        for (devices) |device| {
+            if (try deviceIsSuitable(device, alloc, instance.surface)) {
+                instance.physical_device = device;
+                break;
+            }
+        } else {
+            return Error.suitable_gpu_not_found;
         }
 
         return instance;
@@ -138,4 +166,38 @@ fn getRequiredExtensions(alloc: Allocator, enable_validation_layers: bool) Alloc
     }
 
     return out;
+}
+
+fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!bool {
+    const indices = try v_common.findQueueFamilies(device, alloc, surface);
+
+    const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
+
+    var swap_chain_adequate: bool = false;
+    if (extensions_supported) {
+        const swap_chain_support = try v_common.querySwapChainSupport(surface, device, alloc);
+        defer alloc.free(swap_chain_support.presentModes);
+        defer alloc.free(swap_chain_support.formats);
+        swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
+    }
+
+    return indices.isComplete() and extensions_supported and swap_chain_adequate;
+}
+
+fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+    var extension_count: u32 = undefined;
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+
+    const availibleExtensions = try alloc.alloc(c.VkExtensionProperties, extension_count);
+    defer alloc.free(availibleExtensions);
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
+
+    outer: for (common.device_extensions) |extension| {
+        for (availibleExtensions) |availible| {
+            if (common.str_eq(extension, @ptrCast(&availible.extensionName))) continue :outer;
+        }
+        return false;
+    }
+
+    return true;
 }
