@@ -9,9 +9,10 @@ const InitVulkanError = common.InitVulkanError;
 pub const Error = error{
     validation_layer_unavailible,
     instance_creation_failed,
+    debug_messenger_setup_failed,
 } || Allocator.Error;
 
-pub const VulkanInstanceSettings = struct {
+pub const InstanceSettings = struct {
     enable_validation_layers: bool = true,
     app_info: c.VkApplicationInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -23,17 +24,21 @@ pub const VulkanInstanceSettings = struct {
     },
 };
 
-pub const VulkanInstance = struct {
+pub const Instance = struct {
     vk_instance: c.VkInstance,
+    debug_messenger: c.VkDebugUtilsMessengerEXT,
 
-    pub fn init(alloc: Allocator, settings: VulkanInstanceSettings, validation_layers: []const [*:0]const u8) Error!VulkanInstance {
-        var vulkan_instance: VulkanInstance = .{ .vk_instance = null };
+    pub fn init(alloc: Allocator, settings: InstanceSettings, validation_layers: []const [*:0]const u8) Error!Instance {
+        var instance: Instance = .{
+            .vk_instance = null,
+            .debug_messenger = undefined,
+        };
 
         if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, validation_layers)) {
             return Error.validation_layer_unavailible;
         }
 
-        var create_info = c.VkInstanceCreateInfo{
+        var vk_instance_create_info = c.VkInstanceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo = &settings.app_info,
             .enabledLayerCount = 0,
@@ -41,30 +46,53 @@ pub const VulkanInstance = struct {
 
         const extensions = try getRequiredExtensions(alloc, settings.enable_validation_layers);
         defer alloc.free(extensions);
-        create_info.enabledExtensionCount = @intCast(extensions.len);
-        create_info.ppEnabledExtensionNames = extensions.ptr;
+        vk_instance_create_info.enabledExtensionCount = @intCast(extensions.len);
+        vk_instance_create_info.ppEnabledExtensionNames = extensions.ptr;
 
         var debug_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
         if (settings.enable_validation_layers) {
-            create_info.enabledLayerCount = @intCast(validation_layers.len);
-            create_info.ppEnabledLayerNames = validation_layers.ptr;
+            vk_instance_create_info.enabledLayerCount = @intCast(validation_layers.len);
+            vk_instance_create_info.ppEnabledLayerNames = validation_layers.ptr;
 
             v_common.populateDebugMessengerCreateInfo(&debug_create_info);
-            create_info.pNext = @ptrCast(&debug_create_info);
+            vk_instance_create_info.pNext = @ptrCast(&debug_create_info);
         } else {
-            create_info.enabledLayerCount = 0;
+            vk_instance_create_info.enabledLayerCount = 0;
 
-            create_info.pNext = null;
+            vk_instance_create_info.pNext = null;
         }
 
-        const result = c.vkCreateInstance(&create_info, null, &vulkan_instance.vk_instance);
+        const result = c.vkCreateInstance(&vk_instance_create_info, null, &instance.vk_instance);
         if (result != c.VK_SUCCESS) {
             return Error.instance_creation_failed;
         }
 
-        return vulkan_instance;
+        if (!common.enable_validation_layers) return;
+
+        var debug_messenger_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
+        v_common.populateDebugMessengerCreateInfo(&debug_messenger_create_info);
+
+        if (createDebugUtilsMessengerEXT(instance.vk_instance, &debug_messenger_create_info, null, &instance.debug_messenger) != c.VK_SUCCESS) {
+            return Error.debug_messenger_setup_failed;
+        }
+
+        return instance;
     }
 };
+
+fn createDebugUtilsMessengerEXT(
+    instance: c.VkInstance,
+    p_create_info: [*c]const c.VkDebugUtilsMessengerCreateInfoEXT,
+    p_vulkan_alloc: [*c]const c.VkAllocationCallbacks,
+    p_debug_messenger: *c.VkDebugUtilsMessengerEXT,
+) c.VkResult {
+    const func: c.PFN_vkCreateDebugUtilsMessengerEXT = @ptrCast(c.vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+    if (func) |ptr| {
+        return ptr(instance, p_create_info, p_vulkan_alloc, p_debug_messenger);
+    } else {
+        return c.VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
 
 //pub fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
 //    if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc, &common.validation_layers)) {
