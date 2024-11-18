@@ -6,6 +6,10 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
+pub const DebugMessenger = struct {
+    vk_debug_messenger: c.VkDebugUtilsMessengerEXT,
+};
+
 pub fn setupDebugMessenger(data: *common.AppData) InitVulkanError!void {
     if (!common.enable_validation_layers) return;
 

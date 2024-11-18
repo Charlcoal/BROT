@@ -24,7 +24,7 @@ void main() {
     int count = 0;
     float x_sqr = pos.x * pos.x;
     float y_sqr = pos.y * pos.y;
-    while (x_sqr + y_sqr < 4.0 && count < max_count) {
+    while (x_sqr + y_sqr < 5.0 && count < max_count) {
         pos.y = 2.0 * pos.x * pos.y + a.y;
         pos.x = x_sqr - y_sqr + a.x;
         x_sqr = pos.x * pos.x;
@@ -37,7 +37,7 @@ void main() {
         return;
     }
 
-    for (int i = 0; i < 100 && x_sqr + y_sqr < R*R; i++) {
+    for (int i = 0; i < 10 && x_sqr + y_sqr < R*R; i++) {
         pos.y = 2.0 * pos.x * pos.y + a.y;
         pos.x = x_sqr - y_sqr + a.x;
         x_sqr = pos.x * pos.x;

@@ -25,7 +25,6 @@ const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets
 const cleanup = @import("../cleanup.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    //try createInstance(data, alloc);
     data.instance = (try instance.VulkanInstance.init(alloc, .{}, &common.validation_layers)).vk_instance;
     try setupDebugMessenger(data);
     try createSurface(data);
