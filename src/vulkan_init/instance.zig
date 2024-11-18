@@ -13,6 +13,7 @@ pub const Error = error{
     window_surface_creation_failed,
     gpu_with_vulkan_support_not_found,
     suitable_gpu_not_found,
+    logical_device_creation_failed,
 } || Allocator.Error;
 
 pub const InstanceSettings = struct {
@@ -32,6 +33,9 @@ pub const Instance = struct {
     debug_messenger: c.VkDebugUtilsMessengerEXT,
     surface: c.VkSurfaceKHR,
     physical_device: c.VkPhysicalDevice,
+    logical_device: c.VkDevice,
+    graphics_compute_queue: c.VkQueue,
+    present_queue: c.VkQueue,
 
     pub fn init(alloc: Allocator, settings: InstanceSettings, window: *c.GLFWwindow, validation_layers: []const [*:0]const u8) Error!Instance {
         var instance: Instance = .{
@@ -39,6 +43,9 @@ pub const Instance = struct {
             .debug_messenger = null,
             .surface = null,
             .physical_device = null,
+            .logical_device = null,
+            .graphics_compute_queue = null,
+            .present_queue = null,
         };
 
         // ----------------------------------- Vulkan Instance ------------------------------
@@ -111,6 +118,58 @@ pub const Instance = struct {
             return Error.suitable_gpu_not_found;
         }
 
+        // ----------------- Logical Device ------------------------------------
+
+        const indicies = try v_common.findQueueFamilies(instance.physical_device, alloc, instance.surface);
+
+        var unique_queue_families: [2]u32 = .{ indicies.graphics_compute_family.?, indicies.present_family.? };
+        var unique_queue_num: u32 = 0;
+
+        outer: for (unique_queue_families) |queue_family| {
+            for (unique_queue_families[0..unique_queue_num]) |existing_unique_queue_family| {
+                if (existing_unique_queue_family == queue_family) continue :outer;
+            }
+            unique_queue_families[unique_queue_num] = queue_family;
+            unique_queue_num += 1;
+        }
+
+        const queue_create_infos = try alloc.alloc(c.VkDeviceQueueCreateInfo, unique_queue_num);
+        defer alloc.free(queue_create_infos);
+
+        const queue_priority: f32 = 1;
+        for (unique_queue_families[0..unique_queue_num], queue_create_infos) |queue_family, *queue_create_info| {
+            queue_create_info.* = .{
+                .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                .queueFamilyIndex = queue_family,
+                .queueCount = 1,
+                .pQueuePriorities = &queue_priority,
+            };
+        }
+
+        const device_features: c.VkPhysicalDeviceFeatures = .{};
+
+        var createInfo: c.VkDeviceCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .pQueueCreateInfos = queue_create_infos.ptr,
+            .queueCreateInfoCount = unique_queue_num,
+            .pEnabledFeatures = &device_features,
+            .ppEnabledExtensionNames = &common.device_extensions,
+            .enabledExtensionCount = @intCast(common.device_extensions.len),
+        };
+
+        if (common.enable_validation_layers) {
+            createInfo.enabledLayerCount = @intCast(common.validation_layers.len);
+            createInfo.ppEnabledLayerNames = &common.validation_layers;
+        } else {
+            createInfo.enabledLayerCount = 0;
+        }
+
+        if (c.vkCreateDevice(instance.physical_device, &createInfo, null, &instance.logical_device) != c.VK_SUCCESS) {
+            return Error.logical_device_creation_failed;
+        }
+
+        c.vkGetDeviceQueue(instance.logical_device, indicies.graphics_compute_family.?, 0, &instance.graphics_compute_queue);
+        c.vkGetDeviceQueue(instance.logical_device, indicies.present_family.?, 0, &instance.present_queue);
         return instance;
     }
 };
