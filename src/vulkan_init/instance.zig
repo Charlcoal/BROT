@@ -10,6 +10,7 @@ pub const Error = error{
     validation_layer_unavailible,
     instance_creation_failed,
     debug_messenger_setup_failed,
+    window_surface_creation_failed,
 } || Allocator.Error;
 
 pub const InstanceSettings = struct {
@@ -27,11 +28,13 @@ pub const InstanceSettings = struct {
 pub const Instance = struct {
     vk_instance: c.VkInstance,
     debug_messenger: c.VkDebugUtilsMessengerEXT,
+    surface: c.VkSurfaceKHR,
 
-    pub fn init(alloc: Allocator, settings: InstanceSettings, validation_layers: []const [*:0]const u8) Error!Instance {
+    pub fn init(alloc: Allocator, settings: InstanceSettings, window: *c.GLFWwindow, validation_layers: []const [*:0]const u8) Error!Instance {
         var instance: Instance = .{
             .vk_instance = null,
-            .debug_messenger = undefined,
+            .debug_messenger = null,
+            .surface = null,
         };
 
         if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, validation_layers)) {
@@ -67,13 +70,17 @@ pub const Instance = struct {
             return Error.instance_creation_failed;
         }
 
-        if (!common.enable_validation_layers) return;
+        if (common.enable_validation_layers) {
+            var debug_messenger_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
+            v_common.populateDebugMessengerCreateInfo(&debug_messenger_create_info);
 
-        var debug_messenger_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
-        v_common.populateDebugMessengerCreateInfo(&debug_messenger_create_info);
+            if (createDebugUtilsMessengerEXT(instance.vk_instance, &debug_messenger_create_info, null, &instance.debug_messenger) != c.VK_SUCCESS) {
+                return Error.debug_messenger_setup_failed;
+            }
+        }
 
-        if (createDebugUtilsMessengerEXT(instance.vk_instance, &debug_messenger_create_info, null, &instance.debug_messenger) != c.VK_SUCCESS) {
-            return Error.debug_messenger_setup_failed;
+        if (c.glfwCreateWindowSurface(instance.vk_instance, window, null, &instance.surface) != c.VK_SUCCESS) {
+            return Error.window_surface_creation_failed;
         }
 
         return instance;
@@ -93,50 +100,6 @@ fn createDebugUtilsMessengerEXT(
         return c.VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
-
-//pub fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-//    if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc, &common.validation_layers)) {
-//        return InitVulkanError.validation_layer_unavailible;
-//    }
-//
-//    const app_info = c.VkApplicationInfo{
-//        .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-//        .pApplicationName = "Hello Triangle",
-//        .applicationVersion = c.VK_MAKE_API_VERSION(0, 1, 3, 0),
-//        .pEngineName = "No Engine",
-//        .engineVersion = c.VK_MAKE_API_VERSION(0, 1, 0, 0),
-//        .apiVersion = c.VK_API_VERSION_1_3,
-//    };
-//
-//    var create_info = c.VkInstanceCreateInfo{
-//        .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-//        .pApplicationInfo = &app_info,
-//        .enabledLayerCount = 0,
-//    };
-//
-//    const extensions = try getRequiredExtensions(alloc, common.enable_validation_layers);
-//    defer alloc.free(extensions);
-//    create_info.enabledExtensionCount = @intCast(extensions.len);
-//    create_info.ppEnabledExtensionNames = extensions.ptr;
-//
-//    var debug_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
-//    if (common.enable_validation_layers) {
-//        create_info.enabledLayerCount = common.validation_layers.len;
-//        create_info.ppEnabledLayerNames = &common.validation_layers;
-//
-//        v_common.populateDebugMessengerCreateInfo(&debug_create_info);
-//        create_info.pNext = @ptrCast(&debug_create_info);
-//    } else {
-//        create_info.enabledLayerCount = 0;
-//
-//        create_info.pNext = null;
-//    }
-//
-//    const result = c.vkCreateInstance(&create_info, null, &data.instance);
-//    if (result != c.VK_SUCCESS) {
-//        return InitVulkanError.instance_creation_failed;
-//    }
-//}
 
 fn checkValidationLayerSupport(alloc: Allocator, validation_layers: []const [*:0]const u8) Allocator.Error!bool {
     var layer_count: u32 = undefined;

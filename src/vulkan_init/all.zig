@@ -6,7 +6,6 @@ const Allocator = std.mem.Allocator;
 const InitVulkanError = common.InitVulkanError;
 
 const instance = @import("instance.zig");
-const createSurface = @import("surface.zig").createSurface;
 const pickPhysicalDevice = @import("physical_device.zig").pickPhysicalDevice;
 const createLogicalDevice = @import("logical_device.zig").createLogicalDevice;
 const createSwapChain = @import("swap_chain.zig").createSwapChain;
@@ -24,10 +23,11 @@ const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets
 const cleanup = @import("../cleanup.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const inst = try instance.Instance.init(alloc, .{}, &common.validation_layers);
+    const inst = try instance.Instance.init(alloc, .{}, data.window, &common.validation_layers);
     data.instance = inst.vk_instance;
     data.debug_messenger = inst.debug_messenger;
-    try createSurface(data);
+    //try createSurface(data);
+    data.surface = inst.surface;
     try pickPhysicalDevice(data, alloc);
     try createLogicalDevice(data, alloc);
     try createSwapChain(data, alloc);
