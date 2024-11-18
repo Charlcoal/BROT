@@ -11,16 +11,6 @@ pub const SwapChainSupportDetails = struct {
     presentModes: []c.VkPresentModeKHR,
 };
 
-pub fn populateDebugMessengerCreateInfo(create_info: *c.VkDebugUtilsMessengerCreateInfoEXT) void {
-    create_info.* = c.VkDebugUtilsMessengerCreateInfoEXT{
-        .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
-        .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
-        .pfnUserCallback = debugCallback,
-        .pUserData = null,
-    };
-}
-
 pub const QueueFamilyIndices = struct {
     graphics_compute_family: ?u32,
     present_family: ?u32,
@@ -130,32 +120,4 @@ pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkM
     }
 
     return common.InitVulkanError.suitable_memory_type_not_found;
-}
-
-fn debugCallback(
-    message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
-    message_type: c.VkDebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
-    p_user_data: ?*anyopaque,
-) callconv(.C) c.VkBool32 {
-    if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-        std.debug.print("ERROR ", .{});
-    } else if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std.debug.print("WARNING ", .{});
-    }
-
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) {
-        std.debug.print("[performance] ", .{});
-    }
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) {
-        std.debug.print("[validation] ", .{});
-    }
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) {
-        std.debug.print("[general] ", .{});
-    }
-
-    std.debug.print("{s}\n", .{p_callback_data.*.pMessage});
-    _ = p_user_data;
-
-    return c.VK_FALSE;
 }

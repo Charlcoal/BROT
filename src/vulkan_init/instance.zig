@@ -1,6 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const common = @import("../common_defs.zig");
-const v_common = @import("v_init_common_defs.zig");
 const c = common.c;
 const Allocator = std.mem.Allocator;
 
@@ -16,18 +16,6 @@ pub const Error = error{
     logical_device_creation_failed,
 } || Allocator.Error;
 
-pub const InstanceSettings = struct {
-    enable_validation_layers: bool = true,
-    app_info: c.VkApplicationInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "BROT",
-        .applicationVersion = c.VK_MAKE_API_VERSION(0, 1, 3, 0),
-        .pEngineName = "No Engine",
-        .engineVersion = c.VK_MAKE_API_VERSION(0, 1, 0, 0),
-        .apiVersion = c.VK_API_VERSION_1_3,
-    },
-};
-
 pub const Instance = struct {
     vk_instance: c.VkInstance,
     debug_messenger: c.VkDebugUtilsMessengerEXT,
@@ -36,8 +24,33 @@ pub const Instance = struct {
     logical_device: c.VkDevice,
     graphics_compute_queue: c.VkQueue,
     present_queue: c.VkQueue,
+    swap_chain_support: SwapChainSupportDetails,
 
-    pub fn init(alloc: Allocator, settings: InstanceSettings, window: *c.GLFWwindow, validation_layers: []const [*:0]const u8) Error!Instance {
+    const default_validation_layers: [1][*:0]const u8 = .{"VK_LAYER_KHRONOS_validation"};
+    const default_device_extensions: [1][*:0]const u8 = .{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+    const InitSettings = struct {
+        enable_validation_layers: bool = builtin.mode == std.builtin.Mode.Debug,
+        validation_layers: []const [*:0]const u8 = &default_validation_layers,
+        device_extensions: []const [*:0]const u8 = &default_device_extensions,
+        vk_app_info: c.VkApplicationInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+            .pApplicationName = "BROT",
+            .applicationVersion = c.VK_MAKE_API_VERSION(0, 1, 3, 0),
+            .pEngineName = "No Engine",
+            .engineVersion = c.VK_MAKE_API_VERSION(0, 1, 0, 0),
+            .apiVersion = c.VK_API_VERSION_1_3,
+        },
+        debug_messenger_info: c.VkDebugUtilsMessengerCreateInfoEXT = .{
+            .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+            .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+            .pfnUserCallback = debugCallback,
+            .pUserData = null,
+        },
+    };
+
+    pub fn init(alloc: Allocator, settings: InitSettings, window: *c.GLFWwindow) Error!Instance {
         var instance: Instance = .{
             .vk_instance = null,
             .debug_messenger = null,
@@ -46,16 +59,36 @@ pub const Instance = struct {
             .logical_device = null,
             .graphics_compute_queue = null,
             .present_queue = null,
+            .swap_chain_support = undefined,
         };
 
-        // ----------------------------------- Vulkan Instance ------------------------------
-        if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, validation_layers)) {
+        if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, settings.validation_layers)) {
             return Error.validation_layer_unavailible;
         }
 
+        try initVulkanInstance(&instance, alloc, settings);
+
+        if (settings.enable_validation_layers) {
+            if (createDebugUtilsMessengerEXT(instance.vk_instance, &settings.debug_messenger_info, null, &instance.debug_messenger) != c.VK_SUCCESS) {
+                return Error.debug_messenger_setup_failed;
+            }
+        }
+
+        if (c.glfwCreateWindowSurface(instance.vk_instance, window, null, &instance.surface) != c.VK_SUCCESS) {
+            return Error.window_surface_creation_failed;
+        }
+
+        try choosePhysicalDevice(&instance, alloc, settings);
+        try initLogicalDevice(&instance, alloc, settings);
+
+        instance.swap_chain_support = try SwapChainSupportDetails.query(instance.surface, instance.physical_device, alloc);
+        return instance;
+    }
+
+    fn initVulkanInstance(instance: *Instance, alloc: Allocator, settings: InitSettings) Error!void {
         var vk_instance_create_info = c.VkInstanceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-            .pApplicationInfo = &settings.app_info,
+            .pApplicationInfo = &settings.vk_app_info,
             .enabledLayerCount = 0,
         };
 
@@ -64,13 +97,11 @@ pub const Instance = struct {
         vk_instance_create_info.enabledExtensionCount = @intCast(extensions.len);
         vk_instance_create_info.ppEnabledExtensionNames = extensions.ptr;
 
-        var debug_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
         if (settings.enable_validation_layers) {
-            vk_instance_create_info.enabledLayerCount = @intCast(validation_layers.len);
-            vk_instance_create_info.ppEnabledLayerNames = validation_layers.ptr;
+            vk_instance_create_info.enabledLayerCount = @intCast(settings.validation_layers.len);
+            vk_instance_create_info.ppEnabledLayerNames = settings.validation_layers.ptr;
 
-            v_common.populateDebugMessengerCreateInfo(&debug_create_info);
-            vk_instance_create_info.pNext = @ptrCast(&debug_create_info);
+            vk_instance_create_info.pNext = @ptrCast(&settings.debug_messenger_info);
         } else {
             vk_instance_create_info.enabledLayerCount = 0;
 
@@ -81,23 +112,9 @@ pub const Instance = struct {
         if (result != c.VK_SUCCESS) {
             return Error.instance_creation_failed;
         }
+    }
 
-        // ------------------------ Debug Messenger -------------------------
-        if (common.enable_validation_layers) {
-            var debug_messenger_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
-            v_common.populateDebugMessengerCreateInfo(&debug_messenger_create_info);
-
-            if (createDebugUtilsMessengerEXT(instance.vk_instance, &debug_messenger_create_info, null, &instance.debug_messenger) != c.VK_SUCCESS) {
-                return Error.debug_messenger_setup_failed;
-            }
-        }
-
-        // ------------------------ Surface ---------------------------------
-        if (c.glfwCreateWindowSurface(instance.vk_instance, window, null, &instance.surface) != c.VK_SUCCESS) {
-            return Error.window_surface_creation_failed;
-        }
-
-        // ----------------------- Physical Device ---------------------------
+    fn choosePhysicalDevice(instance: *Instance, alloc: Allocator, settings: InitSettings) Error!void {
         var device_count: u32 = 0;
         _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
 
@@ -110,17 +127,17 @@ pub const Instance = struct {
         _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, devices.ptr);
 
         for (devices) |device| {
-            if (try deviceIsSuitable(device, alloc, instance.surface)) {
+            if (try deviceIsSuitable(device, alloc, instance.surface, settings.device_extensions)) {
                 instance.physical_device = device;
                 break;
             }
         } else {
             return Error.suitable_gpu_not_found;
         }
+    }
 
-        // ----------------- Logical Device ------------------------------------
-
-        const indicies = try v_common.findQueueFamilies(instance.physical_device, alloc, instance.surface);
+    fn initLogicalDevice(instance: *Instance, alloc: Allocator, settings: InitSettings) Error!void {
+        const indicies = try findQueueFamilies(instance.physical_device, alloc, instance.surface);
 
         var unique_queue_families: [2]u32 = .{ indicies.graphics_compute_family.?, indicies.present_family.? };
         var unique_queue_num: u32 = 0;
@@ -153,13 +170,13 @@ pub const Instance = struct {
             .pQueueCreateInfos = queue_create_infos.ptr,
             .queueCreateInfoCount = unique_queue_num,
             .pEnabledFeatures = &device_features,
-            .ppEnabledExtensionNames = &common.device_extensions,
-            .enabledExtensionCount = @intCast(common.device_extensions.len),
+            .ppEnabledExtensionNames = settings.device_extensions.ptr,
+            .enabledExtensionCount = @intCast(settings.device_extensions.len),
         };
 
-        if (common.enable_validation_layers) {
-            createInfo.enabledLayerCount = @intCast(common.validation_layers.len);
-            createInfo.ppEnabledLayerNames = &common.validation_layers;
+        if (settings.enable_validation_layers) {
+            createInfo.enabledLayerCount = @intCast(settings.validation_layers.len);
+            createInfo.ppEnabledLayerNames = settings.validation_layers.ptr;
         } else {
             createInfo.enabledLayerCount = 0;
         }
@@ -170,7 +187,6 @@ pub const Instance = struct {
 
         c.vkGetDeviceQueue(instance.logical_device, indicies.graphics_compute_family.?, 0, &instance.graphics_compute_queue);
         c.vkGetDeviceQueue(instance.logical_device, indicies.present_family.?, 0, &instance.present_queue);
-        return instance;
     }
 };
 
@@ -227,14 +243,14 @@ fn getRequiredExtensions(alloc: Allocator, enable_validation_layers: bool) Alloc
     return out;
 }
 
-fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!bool {
-    const indices = try v_common.findQueueFamilies(device, alloc, surface);
+fn deviceIsSuitable(physical_device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR, device_extensions: []const [*:0]const u8) Allocator.Error!bool {
+    const indices = try findQueueFamilies(physical_device, alloc, surface);
 
-    const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
+    const extensions_supported: bool = try checkDeviceExtensionSupport(physical_device, alloc, device_extensions);
 
     var swap_chain_adequate: bool = false;
     if (extensions_supported) {
-        const swap_chain_support = try v_common.querySwapChainSupport(surface, device, alloc);
+        const swap_chain_support = try SwapChainSupportDetails.query(surface, physical_device, alloc);
         defer alloc.free(swap_chain_support.presentModes);
         defer alloc.free(swap_chain_support.formats);
         swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
@@ -243,15 +259,15 @@ fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkS
     return indices.isComplete() and extensions_supported and swap_chain_adequate;
 }
 
-fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+fn checkDeviceExtensionSupport(physical_device: c.VkPhysicalDevice, alloc: Allocator, device_extensions: []const [*:0]const u8) Allocator.Error!bool {
     var extension_count: u32 = undefined;
-    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+    _ = c.vkEnumerateDeviceExtensionProperties(physical_device, null, &extension_count, null);
 
     const availibleExtensions = try alloc.alloc(c.VkExtensionProperties, extension_count);
     defer alloc.free(availibleExtensions);
-    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
+    _ = c.vkEnumerateDeviceExtensionProperties(physical_device, null, &extension_count, availibleExtensions.ptr);
 
-    outer: for (common.device_extensions) |extension| {
+    outer: for (device_extensions) |extension| {
         for (availibleExtensions) |availible| {
             if (common.str_eq(extension, @ptrCast(&availible.extensionName))) continue :outer;
         }
@@ -260,3 +276,107 @@ fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) All
 
     return true;
 }
+
+fn debugCallback(
+    message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
+    message_type: c.VkDebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
+    p_user_data: ?*anyopaque,
+) callconv(.C) c.VkBool32 {
+    if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        std.debug.print("ERROR ", .{});
+    } else if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        std.debug.print("WARNING ", .{});
+    }
+
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) {
+        std.debug.print("[performance] ", .{});
+    }
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) {
+        std.debug.print("[validation] ", .{});
+    }
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) {
+        std.debug.print("[general] ", .{});
+    }
+
+    std.debug.print("{s}\n", .{p_callback_data.*.pMessage});
+    _ = p_user_data;
+
+    return c.VK_FALSE;
+}
+
+const QueueFamilyIndices = struct {
+    graphics_compute_family: ?u32,
+    present_family: ?u32,
+
+    pub fn isComplete(self: QueueFamilyIndices) bool {
+        return self.graphics_compute_family != null and self.present_family != null;
+    }
+};
+
+fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!QueueFamilyIndices {
+    var indices = QueueFamilyIndices{
+        .graphics_compute_family = null,
+        .present_family = null,
+    };
+
+    var queue_family_count: u32 = 0;
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+
+    const queue_families = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_count);
+    defer alloc.free(queue_families);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
+
+    for (queue_families, 0..) |queueFamily, i| {
+        if (queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0 and queueFamily.queueFlags & c.VK_QUEUE_COMPUTE_BIT != 0) {
+            indices.graphics_compute_family = @intCast(i);
+        }
+
+        var present_support: c.VkBool32 = c.VK_FALSE;
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface, &present_support);
+
+        if (present_support != c.VK_FALSE) {
+            indices.present_family = @intCast(i);
+        }
+
+        if (indices.isComplete()) break;
+    }
+    return indices;
+}
+
+const SwapChainSupportDetails = struct {
+    capabilities: c.VkSurfaceCapabilitiesKHR,
+    formats: []c.VkSurfaceFormatKHR,
+    presentModes: []c.VkPresentModeKHR,
+    alloc: Allocator,
+
+    pub fn query(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
+        var details: SwapChainSupportDetails = .{
+            .formats = undefined,
+            .capabilities = undefined,
+            .presentModes = undefined,
+            .alloc = alloc,
+        };
+
+        _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+        var format_count: u32 = undefined;
+        _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, null);
+
+        details.formats = try alloc.alloc(c.VkSurfaceFormatKHR, format_count);
+        _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.ptr);
+
+        var present_mode_count: u32 = undefined;
+        _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
+
+        details.presentModes = try alloc.alloc(c.VkPresentModeKHR, present_mode_count);
+        _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.presentModes.ptr);
+
+        return details;
+    }
+
+    pub fn deinit(this: *SwapChainSupportDetails) void {
+        this.alloc.free(this.formats);
+        this.alloc.free(this.presentModes);
+    }
+};

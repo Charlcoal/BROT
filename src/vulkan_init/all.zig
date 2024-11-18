@@ -21,7 +21,7 @@ const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets
 const cleanup = @import("../cleanup.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const inst = try instance.Instance.init(alloc, .{}, data.window, &common.validation_layers);
+    var inst = try instance.Instance.init(alloc, .{}, data.window);
     data.instance = inst.vk_instance;
     data.debug_messenger = inst.debug_messenger;
     data.surface = inst.surface;
@@ -29,16 +29,22 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.device = inst.logical_device;
     data.graphics_compute_queue = inst.graphics_compute_queue;
     data.present_queue = inst.present_queue;
+
+    defer inst.swap_chain_support.deinit();
+
+    // "RenderPipeline" ??
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
     try createRenderPass(data);
     try createDescriptorSetLayout(data);
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
-    try createCommandPool(data, alloc);
     try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
+    // ---------------------------------
+
+    try createCommandPool(data, alloc);
     try createCommandBuffers(data, alloc);
     try createSyncObjects(data, alloc);
 }
