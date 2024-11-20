@@ -32,20 +32,21 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 
     defer inst.swap_chain_support.deinit();
 
+    try createDescriptorSetLayout(data);
+
     // "RenderPipeline" ??
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
     try createRenderPass(data);
-    try createDescriptorSetLayout(data);
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
     try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
-    // ---------------------------------
-
     try createCommandPool(data, alloc);
     try createCommandBuffers(data, alloc);
+    // ---------------------------------
+
     try createSyncObjects(data, alloc);
 }
 

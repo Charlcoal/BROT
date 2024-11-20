@@ -25,9 +25,19 @@ pub const Instance = struct {
     graphics_compute_queue: c.VkQueue,
     present_queue: c.VkQueue,
     swap_chain_support: SwapChainSupportDetails,
+    queue_family_indices: QueueFamilyIndices,
 
     const default_validation_layers: [1][*:0]const u8 = .{"VK_LAYER_KHRONOS_validation"};
     const default_device_extensions: [1][*:0]const u8 = .{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+    const QueueFamilyIndices = struct {
+        graphics_compute_family: ?u32,
+        present_family: ?u32,
+
+        pub fn isComplete(self: QueueFamilyIndices) bool {
+            return self.graphics_compute_family != null and self.present_family != null;
+        }
+    };
 
     const InitSettings = struct {
         enable_validation_layers: bool = builtin.mode == std.builtin.Mode.Debug,
@@ -60,6 +70,7 @@ pub const Instance = struct {
             .graphics_compute_queue = null,
             .present_queue = null,
             .swap_chain_support = undefined,
+            .queue_family_indices = undefined,
         };
 
         if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, settings.validation_layers)) {
@@ -137,9 +148,9 @@ pub const Instance = struct {
     }
 
     fn initLogicalDevice(instance: *Instance, alloc: Allocator, settings: InitSettings) Error!void {
-        const indicies = try findQueueFamilies(instance.physical_device, alloc, instance.surface);
+        instance.queue_family_indices = try findQueueFamilies(instance.physical_device, alloc, instance.surface);
 
-        var unique_queue_families: [2]u32 = .{ indicies.graphics_compute_family.?, indicies.present_family.? };
+        var unique_queue_families: [2]u32 = .{ instance.queue_family_indices.graphics_compute_family.?, instance.queue_family_indices.present_family.? };
         var unique_queue_num: u32 = 0;
 
         outer: for (unique_queue_families) |queue_family| {
@@ -185,8 +196,8 @@ pub const Instance = struct {
             return Error.logical_device_creation_failed;
         }
 
-        c.vkGetDeviceQueue(instance.logical_device, indicies.graphics_compute_family.?, 0, &instance.graphics_compute_queue);
-        c.vkGetDeviceQueue(instance.logical_device, indicies.present_family.?, 0, &instance.present_queue);
+        c.vkGetDeviceQueue(instance.logical_device, instance.queue_family_indices.graphics_compute_family.?, 0, &instance.graphics_compute_queue);
+        c.vkGetDeviceQueue(instance.logical_device, instance.queue_family_indices.present_family.?, 0, &instance.present_queue);
     }
 };
 
@@ -305,17 +316,8 @@ fn debugCallback(
     return c.VK_FALSE;
 }
 
-const QueueFamilyIndices = struct {
-    graphics_compute_family: ?u32,
-    present_family: ?u32,
-
-    pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_compute_family != null and self.present_family != null;
-    }
-};
-
-fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!QueueFamilyIndices {
-    var indices = QueueFamilyIndices{
+fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!Instance.QueueFamilyIndices {
+    var indices = Instance.QueueFamilyIndices{
         .graphics_compute_family = null,
         .present_family = null,
     };
