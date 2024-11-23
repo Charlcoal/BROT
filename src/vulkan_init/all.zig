@@ -31,14 +31,16 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.present_queue = inst.present_queue;
 
     defer inst.swap_chain_support.deinit();
+    const surface_format = chooseSwapSurfaceFormat(inst.swap_chain_support.formats);
+    _ = surface_format;
 
     try createDescriptorSetLayout(data);
 
     // "RenderPipeline" ??
-    try createSwapChain(data, alloc);
-    try createImageViews(data, alloc);
     try createRenderPass(data);
     try createGraphicsPipeline(data, alloc);
+    try createSwapChain(data, alloc);
+    try createImageViews(data, alloc);
     try createFrameBuffers(data, alloc);
     try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
@@ -48,6 +50,16 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     // ---------------------------------
 
     try createSyncObjects(data, alloc);
+}
+
+fn chooseSwapSurfaceFormat(availible_formats: []const c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
+    for (availible_formats) |format| {
+        if (format.format == c.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return format;
+        }
+    }
+
+    return availible_formats[0];
 }
 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
