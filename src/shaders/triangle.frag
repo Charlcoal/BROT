@@ -10,7 +10,7 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 float fMod(float x, float M) {
-    return x - int(x/M)*M;
+    return x - int(x / M) * M;
 }
 
 void main() {
@@ -24,7 +24,7 @@ void main() {
     int count = 0;
     float x_sqr = pos.x * pos.x;
     float y_sqr = pos.y * pos.y;
-    while (x_sqr + y_sqr < 5.0 && count < max_count) {
+    while (x_sqr + y_sqr < R * R && count < max_count) {
         pos.y = 2.0 * pos.x * pos.y + a.y;
         pos.x = x_sqr - y_sqr + a.x;
         x_sqr = pos.x * pos.x;
@@ -36,15 +36,7 @@ void main() {
         outColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
+    float f_count = float(count + 1) - log2(log(x_sqr + y_sqr) / 2);
 
-    for (int i = 0; i < 10 && x_sqr + y_sqr < R*R; i++) {
-        pos.y = 2.0 * pos.x * pos.y + a.y;
-        pos.x = x_sqr - y_sqr + a.x;
-        x_sqr = pos.x * pos.x;
-        y_sqr = pos.y * pos.y;
-        count++;
-    }
-    float f_count = float(count + 1) - log2(log(x_sqr + y_sqr)/2);
-
-    outColor = vec4(fMod(10*f_count, max_count) / float(max_count), f_count / float(max_count), 0.0, 1.0);
+    outColor = vec4(fMod(10 * f_count, max_count) / float(max_count), f_count / float(max_count), 0.0, 1.0);
 }
