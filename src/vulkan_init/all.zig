@@ -40,12 +40,13 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createRenderPass(data);
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
-    try createUniformBuffers(data, alloc);
-    try createDescriptorPool(data);
-    try createDescriptorSets(data, alloc);
     try createCommandPool(data, alloc);
     try createCommandBuffers(data, alloc);
     // ---------------------------------
+
+    try createUniformBuffers(data, alloc);
+    try createDescriptorPool(data);
+    try createDescriptorSets(data, alloc);
 
     try createSyncObjects(data, alloc);
 }
