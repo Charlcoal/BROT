@@ -15,7 +15,7 @@ const createCommandPool = @import("command_pool.zig").createCommandPool;
 const createCommandBuffers = @import("command_buffer.zig").createCommandBuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
 const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
-const createUniformBuffers = @import("uniform_buffers.zig").createUniformBuffers;
+const uniformBuffers = @import("uniform_buffers.zig");
 const createDescriptorPool = @import("descriptor_pool.zig").createDescriptorPool;
 const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
@@ -31,36 +31,25 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.present_queue = inst.present_queue;
 
     defer inst.swap_chain_support.deinit();
-    const surface_format = chooseSwapSurfaceFormat(inst.swap_chain_support.formats);
-    _ = surface_format;
 
-    try createDescriptorSetLayout(data);
+    const ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(inst);
+    data.descriptor_set_layout = ubo1.descriptor_set_layout;
 
     // "RenderPipeline" ??
-    try createRenderPass(data);
-    try createGraphicsPipeline(data, alloc);
     try createSwapChain(data, alloc);
     try createImageViews(data, alloc);
+    try createRenderPass(data);
+    try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);
     try createCommandPool(data, alloc);
     try createCommandBuffers(data, alloc);
-    // ---------------------------------
 
-    try createUniformBuffers(data, alloc);
+    try uniformBuffers.createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
+    // ---------------------------------
 
     try createSyncObjects(data, alloc);
-}
-
-fn chooseSwapSurfaceFormat(availible_formats: []const c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
-    for (availible_formats) |format| {
-        if (format.format == c.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return format;
-        }
-    }
-
-    return availible_formats[0];
 }
 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {

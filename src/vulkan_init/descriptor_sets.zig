@@ -6,45 +6,6 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
-pub const Error = error{
-    descriptor_set_layout_creation_failed,
-};
-pub const DescriptorSetType = enum { uniform_buffer };
-
-pub const UniformBuffer = struct {};
-
-pub const DescriptorSetData = union(DescriptorSetType) {
-    uniform_buffer: UniformBuffer,
-};
-
-pub const DescriptorSetLayout = struct {
-    descriptor_set_layout: c.VkDescriptorSetLayout,
-
-    pub fn init(inst: instance.Instance, set_type: DescriptorSetType, binding: u32) Error!DescriptorSetLayout {
-        var descriptor_set: DescriptorSetLayout = undefined;
-
-        const ubo_layout_binding: c.VkDescriptorSetLayoutBinding = switch (set_type) {
-            .uniform_buffer => .{
-                .binding = binding,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
-                .pImmutableSamplers = null,
-            },
-        };
-
-        var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings = &ubo_layout_binding,
-        };
-
-        if (c.vkCreateDescriptorSetLayout(inst.device, &layout_info, null, &descriptor_set.descriptor_set_layout) != c.VK_SUCCESS) {
-            return Error.descriptor_set_layout_creation_failed;
-        }
-    }
-};
-
 pub fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, common.max_frames_in_flight);
     defer alloc.free(layouts);

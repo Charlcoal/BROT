@@ -1,3 +1,4 @@
+const instance = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
 const v_init_common = @import("v_init_common_defs.zig");
@@ -5,6 +6,42 @@ const c = common.c;
 
 const InitVulkanError = common.InitVulkanError;
 const Allocator = std.mem.Allocator;
+
+pub const Error = error{descriptor_set_layout_creation_failed};
+
+pub fn UniformBuffer(UniformBufferObjectType: type) type {
+    return struct {
+        cpu_state: UniformBufferObjectType,
+        gpu_buffers: []c.VkBuffer,
+        gpu_memory: []c.VkDeviceMemory,
+        gpu_memory_mapped: []?*align(@alignOf(UniformBufferObjectType)) anyopaque,
+        descriptor_set_layout: c.VkDescriptorSetLayout,
+
+        pub fn blueprint(inst: instance.Instance) Error!UniformBuffer(UniformBufferObjectType) {
+            var out: UniformBuffer(UniformBufferObjectType) = undefined;
+
+            const ubo_layout_binding: c.VkDescriptorSetLayoutBinding = .{
+                .binding = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = null,
+            };
+
+            var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindings = &ubo_layout_binding,
+            };
+
+            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &layout_info, null, &out.descriptor_set_layout) != c.VK_SUCCESS) {
+                return Error.descriptor_set_layout_creation_failed;
+            }
+
+            return out;
+        }
+    };
+}
 
 pub fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
