@@ -19,6 +19,7 @@ const uniformBuffers = @import("uniform_buffers.zig");
 const createDescriptorPool = @import("descriptor_pool.zig").createDescriptorPool;
 const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
+const render_pipeline = @import("render_pipeline.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     var inst = try instance.Instance.init(alloc, .{}, data.window);
