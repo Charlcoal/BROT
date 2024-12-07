@@ -37,8 +37,12 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.descriptor_set_layout = ubo1.descriptor_set_layout;
 
     // "RenderPipeline" ??
-    try createSwapChain(data, alloc);
-    try createImageViews(data, alloc);
+    const swapchain = try render_pipeline.Swapchain.init(alloc, inst, data.window);
+    data.swap_chain = swapchain.vk_swapchain;
+    data.swap_chain_extent = swapchain.extent;
+    data.swap_chain_image_format = swapchain.format;
+    data.swap_chain_images = swapchain.images;
+    data.swap_chain_image_views = swapchain.image_views;
     try createRenderPass(data);
     try createGraphicsPipeline(data, alloc);
     try createFrameBuffers(data, alloc);

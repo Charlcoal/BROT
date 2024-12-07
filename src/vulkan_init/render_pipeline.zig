@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 pub const Error = error{
     logical_device_creation_failed,
     image_views_creation_failed,
-};
+} || Allocator.Error;
 
 pub const Swapchain = struct {
     vk_swapchain: c.VkSwapchainKHR,
@@ -18,7 +18,7 @@ pub const Swapchain = struct {
     images: []c.VkImage,
     image_views: []c.VkImageView,
 
-    fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow) Error!Swapchain {
+    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow) Error!Swapchain {
         const surface_format = chooseSwapSurfaceFormat(inst.swap_chain_support.formats);
         const present_mode = chooseSwapPresentMode(inst.swap_chain_support.presentModes);
         const extent = chooseSwapExtent(window, &inst.swap_chain_support.capabilities);
@@ -59,13 +59,13 @@ pub const Swapchain = struct {
 
         var vk_swapchain: c.VkSwapchainKHR = undefined;
 
-        if (c.vkCreateSwapchainKHR(inst.device, &create_info, null, &vk_swapchain) != c.VK_SUCCESS) {
+        if (c.vkCreateSwapchainKHR(inst.logical_device, &create_info, null, &vk_swapchain) != c.VK_SUCCESS) {
             return Error.logical_device_creation_failed;
         }
 
-        _ = c.vkGetSwapchainImagesKHR(inst.device, inst.swap_chain, &image_count, null);
+        _ = c.vkGetSwapchainImagesKHR(inst.logical_device, vk_swapchain, &image_count, null);
         const images = try alloc.alloc(c.VkImage, image_count);
-        _ = c.vkGetSwapchainImagesKHR(inst.device, inst.swap_chain, &image_count, inst.swap_chain_images.ptr);
+        _ = c.vkGetSwapchainImagesKHR(inst.logical_device, vk_swapchain, &image_count, images.ptr);
 
         var image_views = try alloc.alloc(c.VkImageView, images.len);
 
@@ -90,7 +90,7 @@ pub const Swapchain = struct {
                 },
             };
 
-            if (c.vkCreateImageView(inst.device, &view_create_info, null, &image_views[i]) != c.VK_SUCCESS) {
+            if (c.vkCreateImageView(inst.logical_device, &view_create_info, null, &image_views[i]) != c.VK_SUCCESS) {
                 return Error.image_views_creation_failed;
             }
         }
