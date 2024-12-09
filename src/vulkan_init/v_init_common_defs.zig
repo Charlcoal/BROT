@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const common = @import("../common_defs.zig");
 const c = common.c;
+const inst = @import("instance.zig");
 const AppData = common.AppData;
 const Allocator = std.mem.Allocator;
 
@@ -74,14 +75,20 @@ pub fn querySwapChainSupport(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice
     return details;
 }
 
+pub const BufferCreationError = error{
+    suitable_memory_type_not_found,
+    buffer_creation_failed,
+    buffer_memory_allocation_failed,
+};
+
 pub fn createBuffer(
-    data: *AppData,
+    instance: inst.Instance,
     size: c.VkDeviceSize,
     usage: c.VkBufferUsageFlags,
     properties: c.VkMemoryPropertyFlags,
     buffer: *c.VkBuffer,
     buffer_memory: *c.VkDeviceMemory,
-) common.InitVulkanError!void {
+) BufferCreationError!void {
     const buffer_info: c.VkBufferCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -89,29 +96,29 @@ pub fn createBuffer(
         .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    if (c.vkCreateBuffer(data.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
-        return common.InitVulkanError.buffer_creation_failed;
+    if (c.vkCreateBuffer(instance.logical_device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+        return BufferCreationError.buffer_creation_failed;
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(data.device, buffer.*, &mem_requirements);
+    c.vkGetBufferMemoryRequirements(instance.logical_device, buffer.*, &mem_requirements);
 
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = mem_requirements.size,
-        .memoryTypeIndex = try findMemoryType(data, mem_requirements.memoryTypeBits, properties),
+        .memoryTypeIndex = try findMemoryType(instance.physical_device, mem_requirements.memoryTypeBits, properties),
     };
 
-    if (c.vkAllocateMemory(data.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
-        return common.InitVulkanError.buffer_memory_allocation_failed;
+    if (c.vkAllocateMemory(instance.logical_device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
+        return BufferCreationError.buffer_memory_allocation_failed;
     }
 
-    _ = c.vkBindBufferMemory(data.device, buffer.*, buffer_memory.*, 0);
+    _ = c.vkBindBufferMemory(instance.logical_device, buffer.*, buffer_memory.*, 0);
 }
 
-pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
+pub fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) BufferCreationError!u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
-    c.vkGetPhysicalDeviceMemoryProperties(data.physical_device, &mem_properties);
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
 
     for (0..mem_properties.memoryTypeCount) |i| {
         if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
@@ -119,5 +126,5 @@ pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkM
         }
     }
 
-    return common.InitVulkanError.suitable_memory_type_not_found;
+    return BufferCreationError.suitable_memory_type_not_found;
 }

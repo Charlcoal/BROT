@@ -5,54 +5,54 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
-const instance = @import("instance.zig");
+const inst = @import("instance.zig");
 const createSwapChain = @import("swap_chain.zig").createSwapChain;
 const createImageViews = @import("image_views.zig").createImageViews;
-const createRenderPass = @import("render_pass.zig").createRenderPass;
-const createGraphicsPipeline = @import("graphics_pipeline.zig").createGraphicsPipeline;
 const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
-const createCommandPool = @import("command_pool.zig").createCommandPool;
-const createCommandBuffers = @import("command_buffer.zig").createCommandBuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
 const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
 const uniformBuffers = @import("uniform_buffers.zig");
 const createDescriptorPool = @import("descriptor_pool.zig").createDescriptorPool;
 const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
-const render_pipeline = @import("render_pipeline.zig");
+const screen_rend = @import("screen_renderer.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    var inst = try instance.Instance.init(alloc, .{}, data.window);
-    data.instance = inst.vk_instance;
-    data.debug_messenger = inst.debug_messenger;
-    data.surface = inst.surface;
-    data.physical_device = inst.physical_device;
-    data.device = inst.logical_device;
-    data.graphics_compute_queue = inst.graphics_compute_queue;
-    data.present_queue = inst.present_queue;
+    var instance = try inst.Instance.init(alloc, .{}, data.window);
+    data.instance = instance.vk_instance;
+    data.debug_messenger = instance.debug_messenger;
+    data.surface = instance.surface;
+    data.physical_device = instance.physical_device;
+    data.device = instance.logical_device;
+    data.graphics_compute_queue = instance.graphics_compute_queue;
+    data.present_queue = instance.present_queue;
 
-    defer inst.swap_chain_support.deinit();
+    defer instance.swap_chain_support.deinit();
 
-    const ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(inst);
+    var ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(instance);
     data.descriptor_set_layout = ubo1.descriptor_set_layout;
 
-    // "RenderPipeline" ??
-    const swapchain = try render_pipeline.Swapchain.init(alloc, inst, data.window);
+    const screen_renderer = try screen_rend.ScreenRenderer.init(alloc, instance, data.window, &.{ubo1.descriptor_set_layout});
+    const swapchain = screen_renderer.swapchain;
     data.swap_chain = swapchain.vk_swapchain;
     data.swap_chain_extent = swapchain.extent;
     data.swap_chain_image_format = swapchain.format;
     data.swap_chain_images = swapchain.images;
     data.swap_chain_image_views = swapchain.image_views;
-    try createRenderPass(data);
-    try createGraphicsPipeline(data, alloc);
-    try createFrameBuffers(data, alloc);
-    try createCommandPool(data, alloc);
-    try createCommandBuffers(data, alloc);
+    data.render_pass = screen_renderer.render_pass;
+    data.graphics_pipeline = screen_renderer.graphics_pipeline;
+    data.pipeline_layout = screen_renderer.pipeline_layout;
+    data.swap_chain_framebuffers = screen_renderer.swapchain.framebuffers;
+    data.command_pool = screen_renderer.command_pool;
+    data.command_buffers = screen_renderer.command_buffers;
 
-    try uniformBuffers.createUniformBuffers(data, alloc);
+    try ubo1.create(instance, alloc);
+    data.uniform_buffers = ubo1.gpu_buffers;
+    data.uniform_buffers_memory = ubo1.gpu_memory;
+    data.uniform_buffers_mapped = ubo1.gpu_memory_mapped;
+
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
-    // ---------------------------------
 
     try createSyncObjects(data, alloc);
 }
