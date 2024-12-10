@@ -22,11 +22,15 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             var out: @This() = undefined;
 
             var pool_sizes: [type_num]c.VkDescriptorPoolSize = undefined;
-            inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes) |*size, dType, dInternType| {
-                size.* = switch (dType) {
-                    UniformBuffer(dInternType.?) => .{ .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = sets },
-                    else => @compileError("Invalid Descriptor"),
-                };
+            inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes) |*size, DType, DInternType| {
+                if (DInternType) |InternType| {
+                    size.* = switch (DType) {
+                        UniformBuffer(InternType) => .{ .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = sets },
+                        else => @compileError("Invalid Descriptor"),
+                    };
+                } else {
+                    @compileError("Invalid Descriptor");
+                }
             }
 
             const pool_info: c.VkDescriptorPoolCreateInfo = .{
