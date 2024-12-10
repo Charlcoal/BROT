@@ -1,4 +1,4 @@
-const instance = @import("instance.zig");
+const inst = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
 const v_init_common = @import("v_init_common_defs.zig");
@@ -17,7 +17,7 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
         gpu_memory_mapped: []?*align(@alignOf(UniformBufferObjectType)) anyopaque,
         descriptor_set_layout: c.VkDescriptorSetLayout,
 
-        pub fn blueprint(inst: instance.Instance) Error!UniformBuffer(UniformBufferObjectType) {
+        pub fn blueprint(instance: inst.Instance) Error!UniformBuffer(UniformBufferObjectType) {
             var out: UniformBuffer(UniformBufferObjectType) = undefined;
 
             const ubo_layout_binding: c.VkDescriptorSetLayoutBinding = .{
@@ -34,14 +34,14 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
                 .pBindings = &ubo_layout_binding,
             };
 
-            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &layout_info, null, &out.descriptor_set_layout) != c.VK_SUCCESS) {
+            if (c.vkCreateDescriptorSetLayout(instance.logical_device, &layout_info, null, &out.descriptor_set_layout) != c.VK_SUCCESS) {
                 return Error.descriptor_set_layout_creation_failed;
             }
 
             return out;
         }
 
-        pub fn create(self: *UniformBuffer(UniformBufferObjectType), inst: instance.Instance, alloc: Allocator) Error!void {
+        pub fn create(self: *UniformBuffer(UniformBufferObjectType), instance: inst.Instance, alloc: Allocator) Error!void {
             const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
 
             self.gpu_buffers = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
@@ -50,7 +50,7 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
 
             for (0..common.max_frames_in_flight) |i| {
                 try v_init_common.createBuffer(
-                    inst,
+                    instance,
                     buffer_size,
                     c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                     c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -59,7 +59,7 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
                 );
 
                 _ = c.vkMapMemory(
-                    inst.logical_device,
+                    instance.logical_device,
                     self.gpu_memory[i],
                     0,
                     buffer_size,

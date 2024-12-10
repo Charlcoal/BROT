@@ -5,34 +5,34 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
-const inst = @import("instance.zig");
+const instance = @import("instance.zig");
 const createSwapChain = @import("swap_chain.zig").createSwapChain;
 const createImageViews = @import("image_views.zig").createImageViews;
 const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
 const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
-const uniformBuffers = @import("uniform_buffers.zig");
-const createDescriptorPool = @import("descriptor_pool.zig").createDescriptorPool;
+const uniformBuffers = @import("uniform_buffer.zig");
+const descriptor_pool = @import("descriptor_pool.zig");
 const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
 const screen_rend = @import("screen_renderer.zig");
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    var instance = try inst.Instance.init(alloc, .{}, data.window);
-    data.instance = instance.vk_instance;
-    data.debug_messenger = instance.debug_messenger;
-    data.surface = instance.surface;
-    data.physical_device = instance.physical_device;
-    data.device = instance.logical_device;
-    data.graphics_compute_queue = instance.graphics_compute_queue;
-    data.present_queue = instance.present_queue;
+    var inst = try instance.Instance.init(alloc, .{}, data.window);
+    data.instance = inst.vk_instance;
+    data.debug_messenger = inst.debug_messenger;
+    data.surface = inst.surface;
+    data.physical_device = inst.physical_device;
+    data.device = inst.logical_device;
+    data.graphics_compute_queue = inst.graphics_compute_queue;
+    data.present_queue = inst.present_queue;
 
-    defer instance.swap_chain_support.deinit();
+    defer inst.swap_chain_support.deinit();
 
-    var ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(instance);
+    var ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(inst);
     data.descriptor_set_layout = ubo1.descriptor_set_layout;
 
-    const screen_renderer = try screen_rend.ScreenRenderer.init(alloc, instance, data.window, &.{ubo1.descriptor_set_layout});
+    const screen_renderer = try screen_rend.ScreenRenderer.init(alloc, inst, data.window, &.{ubo1.descriptor_set_layout});
     const swapchain = screen_renderer.swapchain;
     data.swap_chain = swapchain.vk_swapchain;
     data.swap_chain_extent = swapchain.extent;
@@ -46,12 +46,21 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.command_pool = screen_renderer.command_pool;
     data.command_buffers = screen_renderer.command_buffers;
 
-    try ubo1.create(instance, alloc);
+    try ubo1.create(inst, alloc);
     data.uniform_buffers = ubo1.gpu_buffers;
     data.uniform_buffers_memory = ubo1.gpu_memory;
     data.uniform_buffers_mapped = ubo1.gpu_memory_mapped;
 
-    try createDescriptorPool(data);
+    const descript_pool = try descriptor_pool.DescriptorPool.init(
+        inst,
+        &.{.{
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = @intCast(common.max_frames_in_flight),
+        }},
+        common.max_frames_in_flight,
+    );
+
+    data.descriptor_pool = descript_pool.vk_descriptor_pool;
     try createDescriptorSets(data, alloc);
 
     try createSyncObjects(data, alloc);

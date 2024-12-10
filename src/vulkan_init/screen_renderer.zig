@@ -1,4 +1,4 @@
-const inst = @import("instance.zig");
+const instance = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
 const v_init_common = @import("v_init_common_defs.zig");
@@ -26,25 +26,25 @@ pub const ScreenRenderer = struct {
     command_pool: c.VkCommandPool,
     command_buffers: []c.VkCommandBuffer,
 
-    pub fn init(alloc: Allocator, instance: inst.Instance, window: *c.GLFWwindow, descriptor_set_layouts: []const c.VkDescriptorSetLayout) Error!ScreenRenderer {
+    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow, descriptor_set_layouts: []const c.VkDescriptorSetLayout) Error!ScreenRenderer {
         var render_pipeline: ScreenRenderer = undefined;
 
-        render_pipeline.swapchain = try Swapchain.init(alloc, instance, window);
-        render_pipeline.render_pass = try createRenderPass(instance, render_pipeline.swapchain);
+        render_pipeline.swapchain = try Swapchain.init(alloc, inst, window);
+        render_pipeline.render_pass = try createRenderPass(inst, render_pipeline.swapchain);
 
-        const graphics_pipeline_and_layout = try createGraphicsPipeline(instance, alloc, descriptor_set_layouts, render_pipeline.render_pass);
+        const graphics_pipeline_and_layout = try createGraphicsPipeline(inst, alloc, descriptor_set_layouts, render_pipeline.render_pass);
         render_pipeline.graphics_pipeline = graphics_pipeline_and_layout.pipeline;
         render_pipeline.pipeline_layout = graphics_pipeline_and_layout.layout;
 
-        try render_pipeline.swapchain.initFramebuffers(alloc, instance, render_pipeline.render_pass);
-        render_pipeline.command_pool = try createCommandPool(instance, alloc);
-        render_pipeline.command_buffers = try createCommandBuffers(instance, alloc, render_pipeline.command_pool);
+        try render_pipeline.swapchain.initFramebuffers(alloc, inst, render_pipeline.render_pass);
+        render_pipeline.command_pool = try createCommandPool(inst, alloc);
+        render_pipeline.command_buffers = try createCommandBuffers(inst, alloc, render_pipeline.command_pool);
 
         return render_pipeline;
     }
 };
 
-fn createCommandBuffers(instance: inst.Instance, alloc: Allocator, command_pool: c.VkCommandPool) Error![]c.VkCommandBuffer {
+fn createCommandBuffers(inst: instance.Instance, alloc: Allocator, command_pool: c.VkCommandPool) Error![]c.VkCommandBuffer {
     const command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
@@ -54,15 +54,15 @@ fn createCommandBuffers(instance: inst.Instance, alloc: Allocator, command_pool:
         .commandBufferCount = @intCast(command_buffers.len),
     };
 
-    if (c.vkAllocateCommandBuffers(instance.logical_device, &alloc_info, command_buffers.ptr) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(inst.logical_device, &alloc_info, command_buffers.ptr) != c.VK_SUCCESS) {
         return Error.command_buffer_allocation_failed;
     }
 
     return command_buffers;
 }
 
-fn createCommandPool(instance: inst.Instance, alloc: Allocator) Error!c.VkCommandPool {
-    const queue_family_indices = try v_init_common.findQueueFamilies(instance.physical_device, alloc, instance.surface);
+fn createCommandPool(inst: instance.Instance, alloc: Allocator) Error!c.VkCommandPool {
+    const queue_family_indices = try v_init_common.findQueueFamilies(inst.physical_device, alloc, inst.surface);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -72,7 +72,7 @@ fn createCommandPool(instance: inst.Instance, alloc: Allocator) Error!c.VkComman
 
     var out: c.VkCommandPool = undefined;
 
-    if (c.vkCreateCommandPool(instance.logical_device, &pool_info, null, &out) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(inst.logical_device, &pool_info, null, &out) != c.VK_SUCCESS) {
         return Error.command_pool_creation_failed;
     }
 
@@ -80,7 +80,7 @@ fn createCommandPool(instance: inst.Instance, alloc: Allocator) Error!c.VkComman
 }
 
 fn createGraphicsPipeline(
-    instance: inst.Instance,
+    inst: instance.Instance,
     alloc: Allocator,
     descriptor_set_layouts: []const c.VkDescriptorSetLayout,
     render_pass: c.VkRenderPass,
@@ -90,10 +90,10 @@ fn createGraphicsPipeline(
     defer alloc.free(vert_code);
     defer alloc.free(frag_code);
 
-    const vert_shader_module = try createShaderModule(instance, vert_code);
-    const frag_shader_module = try createShaderModule(instance, frag_code);
-    defer _ = c.vkDestroyShaderModule(instance.logical_device, vert_shader_module, null);
-    defer _ = c.vkDestroyShaderModule(instance.logical_device, frag_shader_module, null);
+    const vert_shader_module = try createShaderModule(inst, vert_code);
+    const frag_shader_module = try createShaderModule(inst, frag_code);
+    defer _ = c.vkDestroyShaderModule(inst.logical_device, vert_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(inst.logical_device, frag_shader_module, null);
 
     const vert_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -197,7 +197,7 @@ fn createGraphicsPipeline(
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
 
-    if (c.vkCreatePipelineLayout(instance.logical_device, &pipeline_layout_info, null, &pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(inst.logical_device, &pipeline_layout_info, null, &pipeline_layout) != c.VK_SUCCESS) {
         return Error.pipeline_layout_creation_failed;
     }
 
@@ -222,27 +222,27 @@ fn createGraphicsPipeline(
 
     var pipeline: c.VkPipeline = undefined;
 
-    if (c.vkCreateGraphicsPipelines(instance.logical_device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(inst.logical_device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &pipeline) != c.VK_SUCCESS) {
         return Error.graphics_pipeline_creation_failed;
     }
 
     return .{ .pipeline = pipeline, .layout = pipeline_layout };
 }
 
-fn createShaderModule(instance: inst.Instance, code: []align(4) const u8) Error!c.VkShaderModule {
+fn createShaderModule(inst: instance.Instance, code: []align(4) const u8) Error!c.VkShaderModule {
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = code.len,
         .pCode = @ptrCast(code.ptr),
     };
     var shader_module: c.VkShaderModule = undefined;
-    if (c.vkCreateShaderModule(instance.logical_device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
+    if (c.vkCreateShaderModule(inst.logical_device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
         return Error.shader_module_creation_failed;
     }
     return shader_module;
 }
 
-pub fn createRenderPass(instance: inst.Instance, swapchain: Swapchain) Error!c.VkRenderPass {
+pub fn createRenderPass(inst: instance.Instance, swapchain: Swapchain) Error!c.VkRenderPass {
     const color_attachment: c.VkAttachmentDescription = .{
         .format = swapchain.format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
@@ -286,7 +286,7 @@ pub fn createRenderPass(instance: inst.Instance, swapchain: Swapchain) Error!c.V
 
     var render_pass: c.VkRenderPass = undefined;
 
-    if (c.vkCreateRenderPass(instance.logical_device, &render_pass_info, null, &render_pass) != c.VK_SUCCESS) {
+    if (c.vkCreateRenderPass(inst.logical_device, &render_pass_info, null, &render_pass) != c.VK_SUCCESS) {
         return Error.render_pass_creation_failed;
     }
 
@@ -302,7 +302,7 @@ pub const Swapchain = struct {
     framebuffers: []c.VkFramebuffer,
 
     /// doesn't initiallize framebuffers
-    pub fn init(alloc: Allocator, instance: inst.Instance, window: *c.GLFWwindow) Error!Swapchain {
+    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow) Error!Swapchain {
         var out: Swapchain = .{
             .vk_swapchain = undefined,
             .extent = undefined,
@@ -311,42 +311,42 @@ pub const Swapchain = struct {
             .image_views = undefined,
             .framebuffers = &.{}, //empty slice that points to nothing (size 0)
         };
-        try createVkSwapchain(instance, alloc, window, &out);
-        try createSwapchainImageViews(instance, alloc, &out);
+        try createVkSwapchain(inst, alloc, window, &out);
+        try createSwapchainImageViews(inst, alloc, &out);
         return out;
     }
 
-    pub fn initFramebuffers(swapchain: *Swapchain, alloc: Allocator, instance: inst.Instance, render_pass: c.VkRenderPass) Error!void {
-        try createFramebuffers(instance, alloc, swapchain, render_pass);
+    pub fn initFramebuffers(swapchain: *Swapchain, alloc: Allocator, inst: instance.Instance, render_pass: c.VkRenderPass) Error!void {
+        try createFramebuffers(inst, alloc, swapchain, render_pass);
     }
 };
 
-fn createVkSwapchain(instance: inst.Instance, alloc: Allocator, window: *c.GLFWwindow, swapchain: *Swapchain) Error!void {
-    const surface_format = chooseSwapSurfaceFormat(instance.swap_chain_support.formats);
-    const present_mode = chooseSwapPresentMode(instance.swap_chain_support.presentModes);
-    swapchain.extent = chooseSwapExtent(window, &instance.swap_chain_support.capabilities);
+fn createVkSwapchain(inst: instance.Instance, alloc: Allocator, window: *c.GLFWwindow, swapchain: *Swapchain) Error!void {
+    const surface_format = chooseSwapSurfaceFormat(inst.swap_chain_support.formats);
+    const present_mode = chooseSwapPresentMode(inst.swap_chain_support.presentModes);
+    swapchain.extent = chooseSwapExtent(window, &inst.swap_chain_support.capabilities);
 
-    var image_count: u32 = instance.swap_chain_support.capabilities.minImageCount + 1;
-    if (instance.swap_chain_support.capabilities.maxImageCount > 0 and image_count > instance.swap_chain_support.capabilities.maxImageCount) {
-        image_count = instance.swap_chain_support.capabilities.maxImageCount;
+    var image_count: u32 = inst.swap_chain_support.capabilities.minImageCount + 1;
+    if (inst.swap_chain_support.capabilities.maxImageCount > 0 and image_count > inst.swap_chain_support.capabilities.maxImageCount) {
+        image_count = inst.swap_chain_support.capabilities.maxImageCount;
     }
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = instance.surface,
+        .surface = inst.surface,
         .minImageCount = image_count,
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
         .imageExtent = swapchain.extent,
         .imageArrayLayers = 1,
         .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .preTransform = instance.swap_chain_support.capabilities.currentTransform,
+        .preTransform = inst.swap_chain_support.capabilities.currentTransform,
         .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = present_mode,
         .clipped = c.VK_TRUE,
     };
 
-    const indices = try v_init_common.findQueueFamilies(instance.physical_device, alloc, instance.surface);
+    const indices = try v_init_common.findQueueFamilies(inst.physical_device, alloc, inst.surface);
     const queue_family_indices = [_]u32{ indices.graphics_compute_family.?, indices.present_family.? };
 
     if (indices.graphics_compute_family != indices.present_family) {
@@ -360,18 +360,18 @@ fn createVkSwapchain(instance: inst.Instance, alloc: Allocator, window: *c.GLFWw
         create_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     }
 
-    if (c.vkCreateSwapchainKHR(instance.logical_device, &create_info, null, &swapchain.vk_swapchain) != c.VK_SUCCESS) {
+    if (c.vkCreateSwapchainKHR(inst.logical_device, &create_info, null, &swapchain.vk_swapchain) != c.VK_SUCCESS) {
         return Error.logical_device_creation_failed;
     }
 
-    _ = c.vkGetSwapchainImagesKHR(instance.logical_device, swapchain.vk_swapchain, &image_count, null);
+    _ = c.vkGetSwapchainImagesKHR(inst.logical_device, swapchain.vk_swapchain, &image_count, null);
     swapchain.images = try alloc.alloc(c.VkImage, image_count);
-    _ = c.vkGetSwapchainImagesKHR(instance.logical_device, swapchain.vk_swapchain, &image_count, swapchain.images.ptr);
+    _ = c.vkGetSwapchainImagesKHR(inst.logical_device, swapchain.vk_swapchain, &image_count, swapchain.images.ptr);
 
     swapchain.format = surface_format.format;
 }
 
-fn createSwapchainImageViews(instance: inst.Instance, alloc: Allocator, swapchain: *Swapchain) Error!void {
+fn createSwapchainImageViews(inst: instance.Instance, alloc: Allocator, swapchain: *Swapchain) Error!void {
     swapchain.image_views = try alloc.alloc(c.VkImageView, swapchain.images.len);
 
     for (swapchain.images, 0..) |image, i| {
@@ -395,13 +395,13 @@ fn createSwapchainImageViews(instance: inst.Instance, alloc: Allocator, swapchai
             },
         };
 
-        if (c.vkCreateImageView(instance.logical_device, &view_create_info, null, &swapchain.image_views[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateImageView(inst.logical_device, &view_create_info, null, &swapchain.image_views[i]) != c.VK_SUCCESS) {
             return Error.image_views_creation_failed;
         }
     }
 }
 
-fn createFramebuffers(instance: inst.Instance, alloc: Allocator, swapchain: *Swapchain, render_pass: c.VkRenderPass) Error!void {
+fn createFramebuffers(inst: instance.Instance, alloc: Allocator, swapchain: *Swapchain, render_pass: c.VkRenderPass) Error!void {
     swapchain.framebuffers = try alloc.alloc(c.VkFramebuffer, swapchain.image_views.len);
 
     for (0..swapchain.image_views.len) |i| {
@@ -419,7 +419,7 @@ fn createFramebuffers(instance: inst.Instance, alloc: Allocator, swapchain: *Swa
             .layers = 1,
         };
 
-        if (c.vkCreateFramebuffer(instance.logical_device, &frame_buffer_info, null, &swapchain.framebuffers[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateFramebuffer(inst.logical_device, &frame_buffer_info, null, &swapchain.framebuffers[i]) != c.VK_SUCCESS) {
             return Error.framebuffer_creation_failed;
         }
     }
