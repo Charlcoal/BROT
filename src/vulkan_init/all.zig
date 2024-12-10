@@ -11,8 +11,9 @@ const createImageViews = @import("image_views.zig").createImageViews;
 const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
 const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
 const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
-const uniformBuffers = @import("uniform_buffer.zig");
-const descriptor_pool = @import("descriptor_pool.zig");
+//const uniform_buffer = @import("uniform_buffer.zig");
+//const descriptor_pool = @import("descriptor_pool.zig");
+const descriptors = @import("descriptors.zig");
 const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
 const screen_rend = @import("screen_renderer.zig");
@@ -29,7 +30,7 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 
     defer inst.swap_chain_support.deinit();
 
-    var ubo1 = try uniformBuffers.UniformBuffer(common.UniformBufferObject).blueprint(inst);
+    var ubo1 = try descriptors.UniformBuffer(common.UniformBufferObject).blueprint(inst);
     data.descriptor_set_layout = ubo1.descriptor_set_layout;
 
     const screen_renderer = try screen_rend.ScreenRenderer.init(alloc, inst, data.window, &.{ubo1.descriptor_set_layout});
@@ -51,16 +52,21 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.uniform_buffers_memory = ubo1.gpu_memory;
     data.uniform_buffers_mapped = ubo1.gpu_memory_mapped;
 
-    const descript_pool = try descriptor_pool.DescriptorPool.init(
-        inst,
-        &.{.{
-            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = @intCast(common.max_frames_in_flight),
-        }},
-        common.max_frames_in_flight,
-    );
+    const descriptor_set = try descriptors.DescriptorSet(
+        &.{descriptors.UniformBuffer(common.UniformBufferObject)},
+        &.{common.UniformBufferObject},
+    ).allocateDescriptorPool(inst, common.max_frames_in_flight);
 
-    data.descriptor_pool = descript_pool.vk_descriptor_pool;
+    //const descript_pool = try descriptor_pool.DescriptorPool.init(
+    //    inst,
+    //    &.{.{
+    //        .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    //        .descriptorCount = @intCast(common.max_frames_in_flight),
+    //    }},
+    //    common.max_frames_in_flight,
+    //);
+
+    data.descriptor_pool = descriptor_set.descriptor_pool;
     try createDescriptorSets(data, alloc);
 
     try createSyncObjects(data, alloc);

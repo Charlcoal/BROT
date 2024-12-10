@@ -4,7 +4,6 @@ const common = @import("../common_defs.zig");
 const v_init_common = @import("v_init_common_defs.zig");
 const c = common.c;
 
-const InitVulkanError = common.InitVulkanError;
 const Allocator = std.mem.Allocator;
 
 pub const Error = error{descriptor_set_layout_creation_failed} || Allocator.Error || v_init_common.BufferCreationError;
