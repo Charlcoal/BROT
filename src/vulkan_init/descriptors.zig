@@ -89,40 +89,98 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
                 return DescriptorSetError.descriptor_sets_allocation_failed;
             }
 
-            for (0..sets) |i| {
-                var descriptor_writes: [type_num]c.VkWriteDescriptorSet = undefined;
-
-                inline for (DescriptorTypes, DescriptorInternalTypes, 'a'.., &descriptor_writes) |DType, DInternType, field_name, *d_write| {
-                    switch (DType) {
-                        UniformBuffer(DInternType.?) => {
-                            const uniform_buffer: DType = @field(descriptors, &.{field_name});
-
-                            const buffer_info: c.VkDescriptorBufferInfo = .{
-                                .buffer = uniform_buffer.gpu_buffers[i],
-                                .offset = 0,
-                                .range = @sizeOf(DInternType.?),
-                            };
-
-                            d_write.* = .{
-                                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                .dstSet = this.vk_descriptor_sets[i],
-                                .dstBinding = 0,
-                                .dstArrayElement = 0,
-                                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                .descriptorCount = 1,
-                                .pBufferInfo = &buffer_info,
-                                .pImageInfo = null,
-                                .pTexelBufferView = null,
-                            };
-                        },
-                        else => unreachable,
-                    }
-                }
-
-                c.vkUpdateDescriptorSets(inst.logical_device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
-            }
+            updateDescriptorSets(
+                .{
+                    .DescriptorTypes = DescriptorTypes,
+                    .DescriptorInternalTypes = DescriptorInternalTypes,
+                    .SetCreationType = SetCreationType,
+                    .type_num = type_num,
+                },
+                inst,
+                descriptors,
+                this.vk_descriptor_sets,
+                sets,
+            );
         }
     };
+}
+
+const DescriptorComptimeInfo = struct {
+    DescriptorTypes: []const type,
+    DescriptorInternalTypes: []const ?type,
+    SetCreationType: type,
+    type_num: comptime_int,
+};
+
+fn updateDescriptorSets(
+    comptime_info: DescriptorComptimeInfo,
+    inst: instance.Instance,
+    descriptors: comptime_info.SetCreationType,
+    vk_descriptor_sets: []c.VkDescriptorSet,
+    sets: u32,
+) void {
+    for (0..sets) |i| {
+        var descriptor_buffs: [comptime_info.type_num]c.VkDescriptorBufferInfo = undefined;
+        var descriptor_writes: [comptime_info.type_num]c.VkWriteDescriptorSet = undefined;
+
+        inline for (
+            comptime_info.DescriptorTypes,
+            comptime_info.DescriptorInternalTypes,
+            'a'..,
+            &descriptor_buffs,
+            &descriptor_writes,
+        ) |DType, DInternType, field_name, *d_buff, *d_write| {
+            const uniform_buffer: DType = @field(descriptors, &.{field_name});
+            descriptorWrite(
+                DType,
+                DInternType,
+                uniform_buffer.gpu_buffers[i],
+                vk_descriptor_sets[i],
+                d_buff,
+                d_write,
+            );
+        }
+
+        c.vkUpdateDescriptorSets(
+            inst.logical_device,
+            @intCast(descriptor_writes.len),
+            &descriptor_writes,
+            0,
+            null,
+        );
+    }
+}
+
+fn descriptorWrite(
+    DType: type,
+    DInternType: ?type,
+    gpu_buffer: c.VkBuffer,
+    vk_descriptor_set: c.VkDescriptorSet,
+    descriptorBuff: *c.VkDescriptorBufferInfo,
+    writeDescriptor: *c.VkWriteDescriptorSet,
+) void {
+    switch (DType) {
+        UniformBuffer(DInternType.?) => {
+            descriptorBuff.* = .{
+                .buffer = gpu_buffer,
+                .offset = 0,
+                .range = @sizeOf(DInternType.?),
+            };
+
+            writeDescriptor.* = .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = vk_descriptor_set,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = descriptorBuff,
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            };
+        },
+        else => unreachable,
+    }
 }
 
 pub const UniformBufferError = error{descriptor_set_layout_creation_failed} || Allocator.Error || v_init_common.BufferCreationError;

@@ -29,7 +29,7 @@ pub const ScreenRenderer = struct {
     pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow, descriptor_set_layouts: []const c.VkDescriptorSetLayout) Error!ScreenRenderer {
         var render_pipeline: ScreenRenderer = undefined;
 
-        render_pipeline.swapchain = try Swapchain.init(alloc, inst, window);
+        render_pipeline.swapchain = try Swapchain.initSansFramebuffers(alloc, inst, window);
         render_pipeline.render_pass = try createRenderPass(inst, render_pipeline.swapchain);
 
         const graphics_pipeline_and_layout = try createGraphicsPipeline(inst, alloc, descriptor_set_layouts, render_pipeline.render_pass);
@@ -41,6 +41,22 @@ pub const ScreenRenderer = struct {
         render_pipeline.command_buffers = try createCommandBuffers(inst, alloc, render_pipeline.command_pool);
 
         return render_pipeline;
+    }
+
+    pub fn recreateSwapchain(screen_renderer: ScreenRenderer, inst: instance.Instance, alloc: Allocator, window: *c.GLFWwindow) Error!void {
+        var width: c_int = 0;
+        var height: c_int = 0;
+        c.glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 or height == 0) {
+            c.glfwGetFramebufferSize(window, &width, &height);
+            c.glfwWaitEvents();
+        }
+
+        _ = c.vkDeviceWaitIdle(inst.logical_device);
+
+        screen_renderer.swapchain.deinit(inst, alloc);
+        screen_renderer.swapchain.initSansFramebuffers(alloc, inst, window);
+        screen_renderer.swapchain.initFramebuffers(alloc, inst, screen_renderer.render_pass);
     }
 };
 
@@ -302,7 +318,7 @@ pub const Swapchain = struct {
     framebuffers: []c.VkFramebuffer,
 
     /// doesn't initiallize framebuffers
-    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow) Error!Swapchain {
+    pub fn initSansFramebuffers(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow) Error!Swapchain {
         var out: Swapchain = .{
             .vk_swapchain = undefined,
             .extent = undefined,
@@ -317,7 +333,23 @@ pub const Swapchain = struct {
     }
 
     pub fn initFramebuffers(swapchain: *Swapchain, alloc: Allocator, inst: instance.Instance, render_pass: c.VkRenderPass) Error!void {
+        // nested function to avoid many indents
         try createFramebuffers(inst, alloc, swapchain, render_pass);
+    }
+
+    pub fn deinit(swapchain: *Swapchain, inst: instance.Instance, alloc: Allocator) void {
+        for (swapchain.framebuffers) |framebuffer| {
+            c.vkDestroyFramebuffer(inst.logical_device, framebuffer, null);
+        }
+        alloc.free(swapchain.framebuffers);
+
+        for (swapchain.image_views) |view| {
+            c.vkDestroyImageView(inst.logical_device, view, null);
+        }
+        alloc.free(swapchain.image_views);
+
+        c.vkDestroySwapchainKHR(inst.logical_device, swapchain.vk_swapchain, null);
+        alloc.free(swapchain.images);
     }
 };
 

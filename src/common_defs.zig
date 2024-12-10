@@ -48,6 +48,7 @@ pub const InitVulkanError = error{
     command_pool_creation_failed,
     command_buffer_allocation_failed,
     semaphore_creation_failed,
+    fence_creation_failed,
     descriptor_set_layout_creation_failed,
     descriptor_pool_creation_failed,
     descriptor_sets_allocation_failed,

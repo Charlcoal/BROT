@@ -9,12 +9,8 @@ const instance = @import("instance.zig");
 const createSwapChain = @import("swap_chain.zig").createSwapChain;
 const createImageViews = @import("image_views.zig").createImageViews;
 const createFrameBuffers = @import("framebuffers.zig").createFramebuffers;
-const createSyncObjects = @import("sync_objects.zig").createSyncObjects;
-const createDescriptorSetLayout = @import("descriptor_set_layout.zig").createDescriptorSetLayout;
-//const uniform_buffer = @import("uniform_buffer.zig");
-//const descriptor_pool = @import("descriptor_pool.zig");
+const sync_objects = @import("sync_objects.zig");
 const descriptors = @import("descriptors.zig");
-const createDescriptorSets = @import("descriptor_sets.zig").createDescriptorSets;
 const cleanup = @import("../cleanup.zig");
 const screen_rend = @import("screen_renderer.zig");
 
@@ -59,20 +55,12 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 
     try descriptor_set.createSets(inst, .{ .a = ubo1 }, alloc, common.max_frames_in_flight);
 
-    //const descript_pool = try descriptor_pool.DescriptorPool.init(
-    //    inst,
-    //    &.{.{
-    //        .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    //        .descriptorCount = @intCast(common.max_frames_in_flight),
-    //    }},
-    //    common.max_frames_in_flight,
-    //);
-
     data.descriptor_pool = descriptor_set.descriptor_pool;
-    //try createDescriptorSets(data, alloc);
     data.descriptor_sets = descriptor_set.vk_descriptor_sets;
 
-    try createSyncObjects(data, alloc);
+    data.image_availible_semaphores = try sync_objects.createSemaphores(inst, alloc, common.max_frames_in_flight);
+    data.render_finished_semaphores = try sync_objects.createSemaphores(inst, alloc, common.max_frames_in_flight);
+    data.in_flight_fences = try sync_objects.createFences(inst, alloc, common.max_frames_in_flight);
 }
 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
