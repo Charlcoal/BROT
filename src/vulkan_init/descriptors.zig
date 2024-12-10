@@ -6,7 +6,10 @@ const c = common.c;
 
 const Allocator = std.mem.Allocator;
 
-pub const DescriptorSetError = error{descriptor_pool_creation_failed};
+pub const DescriptorSetError = error{
+    descriptor_pool_creation_failed,
+    descriptor_sets_allocation_failed,
+} || Allocator.Error;
 
 /// input types must be one of:
 /// UniformBuffer
@@ -14,30 +17,44 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
     if (DescriptorTypes.len != DescriptorInternalTypes.len) @compileError("DescriptorSet must recieve equal length Types and InternalTypes");
     const type_num = DescriptorTypes.len;
 
+    var set_creation_fields: [type_num]std.builtin.Type.StructField = undefined;
+    for (DescriptorTypes, &set_creation_fields, 'a'..) |t, *field, n| {
+        field.* = .{
+            .name = &.{@intCast(n)},
+            .is_comptime = false,
+            .default_value = null,
+            .type = t,
+            .alignment = @alignOf(t),
+        };
+    }
+    const set_creation_type_info: std.builtin.Type = .{ .Struct = .{
+        .fields = &set_creation_fields,
+        .layout = .auto,
+        .is_tuple = false,
+        .decls = &.{},
+    } };
+    const SetCreationType = @Type(set_creation_type_info);
+
     return struct {
         vk_descriptor_sets: []c.VkDescriptorSet,
         descriptor_pool: c.VkDescriptorPool,
 
-        pub fn allocateDescriptorPool(inst: instance.Instance, sets: u32) DescriptorSetError!@This() {
+        pub fn allocatePool(inst: instance.Instance, max_sets: u32) DescriptorSetError!@This() {
             var out: @This() = undefined;
 
             var pool_sizes: [type_num]c.VkDescriptorPoolSize = undefined;
             inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes) |*size, DType, DInternType| {
-                if (DInternType) |InternType| {
-                    size.* = switch (DType) {
-                        UniformBuffer(InternType) => .{ .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = sets },
-                        else => @compileError("Invalid Descriptor"),
-                    };
-                } else {
-                    @compileError("Invalid Descriptor");
-                }
+                size.* = switch (DType) {
+                    UniformBuffer(DInternType.?) => .{ .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_sets },
+                    else => @compileError("Invalid Descriptor"),
+                };
             }
 
             const pool_info: c.VkDescriptorPoolCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                 .poolSizeCount = @intCast(type_num),
                 .pPoolSizes = &pool_sizes,
-                .maxSets = sets,
+                .maxSets = max_sets,
             };
 
             if (c.vkCreateDescriptorPool(inst.logical_device, &pool_info, null, &out.descriptor_pool) != c.VK_SUCCESS) {
@@ -45,6 +62,65 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             }
 
             return out;
+        }
+
+        pub fn createSets(this: *@This(), inst: instance.Instance, descriptors: SetCreationType, alloc: Allocator, sets: u32) DescriptorSetError!void {
+            const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, sets * type_num);
+            defer alloc.free(layouts);
+            inline for (DescriptorTypes, DescriptorInternalTypes, 'a'.., 0..) |DType, DInternType, field_name, i| {
+                const layout: c.VkDescriptorSetLayout = switch (DType) {
+                    UniformBuffer(DInternType.?) => @as(DType, @field(descriptors, &.{field_name})).descriptor_set_layout,
+                    else => unreachable,
+                };
+                for (layouts[(i * sets)..((i + 1) * sets)]) |*l| {
+                    l.* = layout;
+                }
+            }
+
+            const alloc_info: c.VkDescriptorSetAllocateInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = this.descriptor_pool,
+                .descriptorSetCount = sets,
+                .pSetLayouts = layouts.ptr,
+            };
+
+            this.vk_descriptor_sets = try alloc.alloc(c.VkDescriptorSet, sets);
+            if (c.vkAllocateDescriptorSets(inst.logical_device, &alloc_info, this.vk_descriptor_sets.ptr) != c.VK_SUCCESS) {
+                return DescriptorSetError.descriptor_sets_allocation_failed;
+            }
+
+            for (0..sets) |i| {
+                var descriptor_writes: [type_num]c.VkWriteDescriptorSet = undefined;
+
+                inline for (DescriptorTypes, DescriptorInternalTypes, 'a'.., &descriptor_writes) |DType, DInternType, field_name, *d_write| {
+                    switch (DType) {
+                        UniformBuffer(DInternType.?) => {
+                            const uniform_buffer: DType = @field(descriptors, &.{field_name});
+
+                            const buffer_info: c.VkDescriptorBufferInfo = .{
+                                .buffer = uniform_buffer.gpu_buffers[i],
+                                .offset = 0,
+                                .range = @sizeOf(DInternType.?),
+                            };
+
+                            d_write.* = .{
+                                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                .dstSet = this.vk_descriptor_sets[i],
+                                .dstBinding = 0,
+                                .dstArrayElement = 0,
+                                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                .descriptorCount = 1,
+                                .pBufferInfo = &buffer_info,
+                                .pImageInfo = null,
+                                .pTexelBufferView = null,
+                            };
+                        },
+                        else => unreachable,
+                    }
+                }
+
+                c.vkUpdateDescriptorSets(inst.logical_device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+            }
         }
     };
 }

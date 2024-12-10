@@ -52,10 +52,12 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     data.uniform_buffers_memory = ubo1.gpu_memory;
     data.uniform_buffers_mapped = ubo1.gpu_memory_mapped;
 
-    const descriptor_set = try descriptors.DescriptorSet(
+    var descriptor_set = try descriptors.DescriptorSet(
         &.{descriptors.UniformBuffer(common.UniformBufferObject)},
         &.{common.UniformBufferObject},
-    ).allocateDescriptorPool(inst, common.max_frames_in_flight);
+    ).allocatePool(inst, common.max_frames_in_flight);
+
+    try descriptor_set.createSets(inst, .{ .a = ubo1 }, alloc, common.max_frames_in_flight);
 
     //const descript_pool = try descriptor_pool.DescriptorPool.init(
     //    inst,
@@ -67,7 +69,8 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     //);
 
     data.descriptor_pool = descriptor_set.descriptor_pool;
-    try createDescriptorSets(data, alloc);
+    //try createDescriptorSets(data, alloc);
+    data.descriptor_sets = descriptor_set.vk_descriptor_sets;
 
     try createSyncObjects(data, alloc);
 }
