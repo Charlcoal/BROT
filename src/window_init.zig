@@ -2,14 +2,14 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const c = common.c;
 
-const InitWindowError = common.InitWindowError;
+pub const Error = error{create_window_failed};
 
-pub fn initWindow(data: *common.AppData) InitWindowError!void {
+pub fn initWindow(data: *common.AppData) Error!void {
     _ = c.glfwInit();
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    data.window = c.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return InitWindowError.create_window_failed;
+    data.window = c.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return Error.create_window_failed;
     c.glfwSetWindowUserPointer(data.window, @ptrCast(data));
     _ = c.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
     _ = c.glfwSetScrollCallback(data.window, scrollCallback);

@@ -1,12 +1,17 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
-const vulkan_init = @import("vulkan_init/all.zig");
 const c = common.c;
+const screen_renderer = @import("vulkan_init/screen_renderer.zig");
 
-const MainLoopError = common.MainLoopError;
+pub const Error = error{
+    command_buffer_recording_begin_failed,
+    command_buffer_record_failed,
+    draw_command_buffer_submit_failed,
+    swap_chain_image_acquisition_failed,
+} || std.time.Timer.Error || screen_renderer.Error;
 const Allocator = std.mem.Allocator;
 
-pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
+pub fn mainLoop(data: *common.AppData, alloc: Allocator) Error!void {
     while (c.glfwWindowShouldClose(data.window) == 0) {
         c.glfwPollEvents();
         try drawFrame(data, alloc);
@@ -15,7 +20,7 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     _ = c.vkDeviceWaitIdle(data.inst.logical_device);
 }
 
-fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
+fn drawFrame(data: *common.AppData, alloc: Allocator) Error!void {
     _ = c.vkWaitForFences(data.inst.logical_device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
 
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
@@ -42,7 +47,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         try data.screen_rend.recreateSwapchain(data.inst, alloc, data.window);
         return;
     } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
+        return Error.swap_chain_image_acquisition_failed;
     }
 
     _ = c.vkResetFences(data.inst.logical_device, 1, &data.in_flight_fences[data.current_frame]);
@@ -67,7 +72,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     };
 
     if (c.vkQueueSubmit(data.inst.graphics_compute_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != c.VK_SUCCESS) {
-        return MainLoopError.draw_command_buffer_submit_failed;
+        return Error.draw_command_buffer_submit_failed;
     }
 
     const swap_chains = [_]c.VkSwapchainKHR{data.screen_rend.swapchain.vk_swapchain};
@@ -89,11 +94,11 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         try data.screen_rend.recreateSwapchain(data.inst, alloc, data.window);
         return;
     } else if (result != c.VK_SUCCESS) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
+        return Error.swap_chain_image_acquisition_failed;
     }
 }
 
-fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, image_index: u32) MainLoopError!void {
+fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, image_index: u32) Error!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -101,7 +106,7 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     };
 
     if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_recording_begin_failed;
+        return Error.command_buffer_recording_begin_failed;
     }
 
     const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
@@ -157,7 +162,7 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     c.vkCmdEndRenderPass(command_buffer);
 
     if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_record_failed;
+        return Error.command_buffer_record_failed;
     }
 }
 

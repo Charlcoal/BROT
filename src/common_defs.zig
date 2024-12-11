@@ -4,6 +4,9 @@ const builtin = @import("builtin");
 const instance = @import("vulkan_init/instance.zig");
 const screen_renderer = @import("vulkan_init/screen_renderer.zig");
 const descriptors = @import("vulkan_init/descriptors.zig");
+pub const InitVulkanError = @import("vulkan_init/all.zig").Error;
+pub const MainLoopError = @import("main_loop.zig").Error;
+pub const InitWindowError = @import("window_init.zig").Error;
 
 // ------------------- settings -------------------------
 
@@ -31,40 +34,6 @@ pub const target_frame_rate: f64 = 60;
 // ------------------- program defs ---------------------
 
 pub const dbg = builtin.mode == std.builtin.Mode.Debug;
-
-pub const InitWindowError = error{create_window_failed};
-pub const InitVulkanError = error{
-    instance_creation_failed,
-    validation_layer_unavailible,
-    debug_messenger_setup_failed,
-    window_surface_creation_failed,
-    gpu_with_vulkan_support_not_found,
-    suitable_gpu_not_found,
-    logical_device_creation_failed,
-    swap_chain_creation_failed,
-    image_views_creation_failed,
-    shader_module_creation_failed,
-    render_pass_creation_failed,
-    pipeline_layout_creation_failed,
-    graphics_pipeline_creation_failed,
-    framebuffer_creation_failed,
-    command_pool_creation_failed,
-    command_buffer_allocation_failed,
-    semaphore_creation_failed,
-    fence_creation_failed,
-    descriptor_set_layout_creation_failed,
-    descriptor_pool_creation_failed,
-    descriptor_sets_allocation_failed,
-    buffer_creation_failed,
-    buffer_memory_allocation_failed,
-    suitable_memory_type_not_found,
-} || ReadFileError;
-pub const MainLoopError = error{
-    command_buffer_recording_begin_failed,
-    command_buffer_record_failed,
-    draw_command_buffer_submit_failed,
-    swap_chain_image_acquisition_failed,
-} || InitVulkanError || std.time.Timer.Error;
 
 const Allocator = std.mem.Allocator;
 

@@ -5,6 +5,8 @@ const c = common.c;
 
 const Allocator = std.mem.Allocator;
 
+pub const Error = DescriptorSetError || UniformBufferError || BufferCreationError;
+
 pub const DescriptorSetError = error{
     descriptor_pool_creation_failed,
     descriptor_sets_allocation_failed,

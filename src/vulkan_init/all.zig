@@ -3,15 +3,14 @@ const common = @import("../common_defs.zig");
 const c = common.c;
 const Allocator = std.mem.Allocator;
 
-const InitVulkanError = common.InitVulkanError;
-
 const instance = @import("instance.zig");
 const sync_objects = @import("sync_objects.zig");
 const descriptors = @import("descriptors.zig");
-const cleanup = @import("../cleanup.zig");
 const screen_rend = @import("screen_renderer.zig");
 
-pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+pub const Error = instance.Error || sync_objects.Error || descriptors.Error || screen_rend.Error;
+
+pub fn initVulkan(data: *common.AppData, alloc: Allocator) Error!void {
     data.inst = try instance.Instance.init(alloc, .{}, data.window);
 
     try data.ubo.blueprint(data.inst);
