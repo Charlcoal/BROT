@@ -1,7 +1,6 @@
 const instance = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const v_init_common = @import("v_init_common_defs.zig");
 const c = common.c;
 
 const Allocator = std.mem.Allocator;
@@ -102,6 +101,11 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
                 sets,
             );
         }
+
+        pub fn deinit(self: @This(), inst: instance.Instance, alloc: Allocator) void {
+            c.vkDestroyDescriptorPool(inst.logical_device, self.descriptor_pool, null);
+            alloc.free(self.vk_descriptor_sets);
+        }
     };
 }
 
@@ -183,7 +187,7 @@ fn descriptorWrite(
     }
 }
 
-pub const UniformBufferError = error{descriptor_set_layout_creation_failed} || Allocator.Error || v_init_common.BufferCreationError;
+pub const UniformBufferError = error{descriptor_set_layout_creation_failed} || Allocator.Error || BufferCreationError;
 
 pub fn UniformBuffer(UniformBufferObjectType: type) type {
     return struct {
@@ -193,9 +197,7 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
         gpu_memory_mapped: []?*align(@alignOf(UniformBufferObjectType)) anyopaque,
         descriptor_set_layout: c.VkDescriptorSetLayout,
 
-        pub fn blueprint(inst: instance.Instance) UniformBufferError!UniformBuffer(UniformBufferObjectType) {
-            var out: UniformBuffer(UniformBufferObjectType) = undefined;
-
+        pub fn blueprint(self: *@This(), inst: instance.Instance) UniformBufferError!void {
             const ubo_layout_binding: c.VkDescriptorSetLayoutBinding = .{
                 .binding = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -210,11 +212,9 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
                 .pBindings = &ubo_layout_binding,
             };
 
-            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &layout_info, null, &out.descriptor_set_layout) != c.VK_SUCCESS) {
+            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &layout_info, null, &self.descriptor_set_layout) != c.VK_SUCCESS) {
                 return UniformBufferError.descriptor_set_layout_creation_failed;
             }
-
-            return out;
         }
 
         pub fn create(self: *UniformBuffer(UniformBufferObjectType), inst: instance.Instance, alloc: Allocator) UniformBufferError!void {
@@ -225,7 +225,7 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
             self.gpu_memory_mapped = try alloc.alloc(?*align(@alignOf(UniformBufferObjectType)) anyopaque, common.max_frames_in_flight);
 
             for (0..common.max_frames_in_flight) |i| {
-                try v_init_common.createBuffer(
+                try createBuffer(
                     inst,
                     buffer_size,
                     c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -244,5 +244,71 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
                 );
             }
         }
+
+        pub fn deinit(self: *UniformBuffer(UniformBufferObjectType), inst: instance.Instance, alloc: Allocator) void {
+            for (self.gpu_memory, self.gpu_buffers) |mem, buf| {
+                c.vkDestroyBuffer(inst.logical_device, buf, null);
+                c.vkFreeMemory(inst.logical_device, mem, null);
+            }
+            alloc.free(self.gpu_memory);
+            alloc.free(self.gpu_buffers);
+            alloc.free(self.gpu_memory_mapped);
+
+            c.vkDestroyDescriptorSetLayout(inst.logical_device, self.descriptor_set_layout, null);
+        }
     };
+}
+
+pub const BufferCreationError = error{
+    suitable_memory_type_not_found,
+    buffer_creation_failed,
+    buffer_memory_allocation_failed,
+};
+
+pub fn createBuffer(
+    inst: instance.Instance,
+    size: c.VkDeviceSize,
+    usage: c.VkBufferUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+    buffer: *c.VkBuffer,
+    buffer_memory: *c.VkDeviceMemory,
+) BufferCreationError!void {
+    const buffer_info: c.VkBufferCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    if (c.vkCreateBuffer(inst.logical_device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+        return BufferCreationError.buffer_creation_failed;
+    }
+
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(inst.logical_device, buffer.*, &mem_requirements);
+
+    const alloc_info: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_requirements.size,
+        .memoryTypeIndex = try findMemoryType(inst.physical_device, mem_requirements.memoryTypeBits, properties),
+    };
+
+    if (c.vkAllocateMemory(inst.logical_device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
+        return BufferCreationError.buffer_memory_allocation_failed;
+    }
+
+    _ = c.vkBindBufferMemory(inst.logical_device, buffer.*, buffer_memory.*, 0);
+}
+
+pub fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) BufferCreationError!u32 {
+    var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+
+    for (0..mem_properties.memoryTypeCount) |i| {
+        if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
+            return @intCast(i);
+        }
+    }
+
+    return BufferCreationError.suitable_memory_type_not_found;
 }

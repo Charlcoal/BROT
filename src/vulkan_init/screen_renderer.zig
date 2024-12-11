@@ -1,7 +1,6 @@
 const instance = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
-const v_init_common = @import("v_init_common_defs.zig");
 const c = common.c;
 
 const Allocator = std.mem.Allocator;
@@ -43,7 +42,7 @@ pub const ScreenRenderer = struct {
         return render_pipeline;
     }
 
-    pub fn recreateSwapchain(screen_renderer: ScreenRenderer, inst: instance.Instance, alloc: Allocator, window: *c.GLFWwindow) Error!void {
+    pub fn recreateSwapchain(screen_renderer: *ScreenRenderer, inst: instance.Instance, alloc: Allocator, window: *c.GLFWwindow) Error!void {
         var width: c_int = 0;
         var height: c_int = 0;
         c.glfwGetFramebufferSize(window, &width, &height);
@@ -55,8 +54,19 @@ pub const ScreenRenderer = struct {
         _ = c.vkDeviceWaitIdle(inst.logical_device);
 
         screen_renderer.swapchain.deinit(inst, alloc);
-        screen_renderer.swapchain.initSansFramebuffers(alloc, inst, window);
-        screen_renderer.swapchain.initFramebuffers(alloc, inst, screen_renderer.render_pass);
+        screen_renderer.swapchain = try Swapchain.initSansFramebuffers(alloc, inst, window);
+        try screen_renderer.swapchain.initFramebuffers(alloc, inst, screen_renderer.render_pass);
+    }
+
+    pub fn deinit(self: *ScreenRenderer, inst: instance.Instance, alloc: Allocator) void {
+        self.swapchain.deinit(inst, alloc);
+
+        c.vkDestroyPipeline(inst.logical_device, self.graphics_pipeline, null);
+        c.vkDestroyPipelineLayout(inst.logical_device, self.pipeline_layout, null);
+
+        c.vkDestroyRenderPass(inst.logical_device, self.render_pass, null);
+        c.vkDestroyCommandPool(inst.logical_device, self.command_pool, null);
+        alloc.free(self.command_buffers);
     }
 };
 
@@ -78,7 +88,7 @@ fn createCommandBuffers(inst: instance.Instance, alloc: Allocator, command_pool:
 }
 
 fn createCommandPool(inst: instance.Instance, alloc: Allocator) Error!c.VkCommandPool {
-    const queue_family_indices = try v_init_common.findQueueFamilies(inst.physical_device, alloc, inst.surface);
+    const queue_family_indices = try findQueueFamilies(inst.physical_device, alloc, inst.surface);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -378,7 +388,7 @@ fn createVkSwapchain(inst: instance.Instance, alloc: Allocator, window: *c.GLFWw
         .clipped = c.VK_TRUE,
     };
 
-    const indices = try v_init_common.findQueueFamilies(inst.physical_device, alloc, inst.surface);
+    const indices = try findQueueFamilies(inst.physical_device, alloc, inst.surface);
     const queue_family_indices = [_]u32{ indices.graphics_compute_family.?, indices.present_family.? };
 
     if (indices.graphics_compute_family != indices.present_family) {
@@ -504,4 +514,43 @@ fn chooseSwapExtent(window: *c.GLFWwindow, capabilities: *const c.VkSurfaceCapab
 
         return actualExtent;
     }
+}
+
+pub const QueueFamilyIndices = struct {
+    graphics_compute_family: ?u32,
+    present_family: ?u32,
+
+    pub fn isComplete(self: QueueFamilyIndices) bool {
+        return self.graphics_compute_family != null and self.present_family != null;
+    }
+};
+
+pub fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.VkSurfaceKHR) Allocator.Error!QueueFamilyIndices {
+    var indices = QueueFamilyIndices{
+        .graphics_compute_family = null,
+        .present_family = null,
+    };
+
+    var queue_family_count: u32 = 0;
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+
+    const queue_families = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_count);
+    defer alloc.free(queue_families);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
+
+    for (queue_families, 0..) |queueFamily, i| {
+        if (queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0 and queueFamily.queueFlags & c.VK_QUEUE_COMPUTE_BIT != 0) {
+            indices.graphics_compute_family = @intCast(i);
+        }
+
+        var present_support: c.VkBool32 = c.VK_FALSE;
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), surface, &present_support);
+
+        if (present_support != c.VK_FALSE) {
+            indices.present_family = @intCast(i);
+        }
+
+        if (indices.isComplete()) break;
+    }
+    return indices;
 }

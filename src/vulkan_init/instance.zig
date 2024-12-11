@@ -96,6 +96,26 @@ pub const Instance = struct {
         return instance;
     }
 
+    pub fn deinit(self: *Instance) void {
+        self.swap_chain_support.deinit();
+        c.vkDestroyDevice(self.logical_device, null);
+
+        // destroy debug messenger
+        if (common.enable_validation_layers) {
+            const func: c.PFN_vkDestroyDebugUtilsMessengerEXT = @ptrCast(c.vkGetInstanceProcAddr(self.vk_instance, "vkDestroyDebugUtilsMessengerEXT"));
+            if (func) |fptr| {
+                fptr(
+                    self.vk_instance,
+                    self.debug_messenger,
+                    null,
+                );
+            }
+        }
+
+        c.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
+        c.vkDestroyInstance(self.vk_instance, null);
+    }
+
     fn initVulkanInstance(instance: *Instance, alloc: Allocator, settings: InitSettings) Error!void {
         var vk_instance_create_info = c.VkInstanceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,

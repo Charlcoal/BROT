@@ -12,11 +12,11 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         try drawFrame(data, alloc);
     }
 
-    _ = c.vkDeviceWaitIdle(data.device);
+    _ = c.vkDeviceWaitIdle(data.inst.logical_device);
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
+    _ = c.vkWaitForFences(data.inst.logical_device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
 
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
@@ -30,8 +30,8 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 
     var image_index: u32 = undefined;
     const result = c.vkAcquireNextImageKHR(
-        data.device,
-        data.swap_chain,
+        data.inst.logical_device,
+        data.screen_rend.swapchain.vk_swapchain,
         std.math.maxInt(u64),
         data.image_availible_semaphores[data.current_frame],
         @ptrCast(c.VK_NULL_HANDLE),
@@ -39,16 +39,16 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     );
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
-        try vulkan_init.recreateSwapChain(data, alloc);
+        try data.screen_rend.recreateSwapchain(data.inst, alloc, data.window);
         return;
     } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
 
-    _ = c.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
+    _ = c.vkResetFences(data.inst.logical_device, 1, &data.in_flight_fences[data.current_frame]);
 
-    _ = c.vkResetCommandBuffer(data.command_buffers[data.current_frame], 0);
-    try recordCommandBuffer(data.*, data.command_buffers[data.current_frame], image_index);
+    _ = c.vkResetCommandBuffer(data.screen_rend.command_buffers[data.current_frame], 0);
+    try recordCommandBuffer(data.*, data.screen_rend.command_buffers[data.current_frame], image_index);
 
     updateUniformBuffer(data, data.current_frame);
 
@@ -61,16 +61,16 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pWaitSemaphores = &wait_semaphors,
         .pWaitDstStageMask = &wait_stages,
         .commandBufferCount = 1,
-        .pCommandBuffers = &data.command_buffers[data.current_frame],
+        .pCommandBuffers = &data.screen_rend.command_buffers[data.current_frame],
         .signalSemaphoreCount = @intCast(signal_semaphors.len),
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (c.vkQueueSubmit(data.graphics_compute_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != c.VK_SUCCESS) {
+    if (c.vkQueueSubmit(data.inst.graphics_compute_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != c.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 
-    const swap_chains = [_]c.VkSwapchainKHR{data.swap_chain};
+    const swap_chains = [_]c.VkSwapchainKHR{data.screen_rend.swapchain.vk_swapchain};
     const present_info: c.VkPresentInfoKHR = .{
         .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = @intCast(signal_semaphors.len),
@@ -81,12 +81,12 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pResults = null,
     };
 
-    _ = c.vkQueuePresentKHR(data.present_queue, &present_info);
+    _ = c.vkQueuePresentKHR(data.inst.present_queue, &present_info);
     data.current_frame = (data.current_frame + 1) % common.max_frames_in_flight;
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
         data.frame_buffer_resized = false;
-        try vulkan_init.recreateSwapChain(data, alloc);
+        try data.screen_rend.recreateSwapchain(data.inst, alloc, data.window);
         return;
     } else if (result != c.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
@@ -107,24 +107,24 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
     const render_pass_info: c.VkRenderPassBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = data.render_pass,
-        .framebuffer = data.swap_chain_framebuffers[image_index],
+        .renderPass = data.screen_rend.render_pass,
+        .framebuffer = data.screen_rend.swapchain.framebuffers[image_index],
         .renderArea = .{
             .offset = .{ .x = 0, .y = 0 },
-            .extent = data.swap_chain_extent,
+            .extent = data.screen_rend.swapchain.extent,
         },
         .clearValueCount = 1,
         .pClearValues = &clear_color,
     };
 
     c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
-    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphics_pipeline);
+    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, data.screen_rend.graphics_pipeline);
 
     const viewport: c.VkViewport = .{
         .x = 0,
         .y = 0,
-        .width = @floatFromInt(data.swap_chain_extent.width),
-        .height = @floatFromInt(data.swap_chain_extent.height),
+        .width = @floatFromInt(data.screen_rend.swapchain.extent.width),
+        .height = @floatFromInt(data.screen_rend.swapchain.extent.height),
         .minDepth = 0,
         .maxDepth = 1,
     };
@@ -132,17 +132,17 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
 
     const scissor: c.VkRect2D = .{
         .offset = .{ .x = 0, .y = 0 },
-        .extent = data.swap_chain_extent,
+        .extent = data.screen_rend.swapchain.extent,
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
     c.vkCmdBindDescriptorSets(
         command_buffer,
         c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        data.pipeline_layout,
+        data.screen_rend.pipeline_layout,
         0,
         1,
-        &data.descriptor_sets[data.current_frame],
+        &data.descriptor_set.vk_descriptor_sets[data.current_frame],
         0,
         null,
     );
@@ -165,11 +165,11 @@ fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
     @memcpy(
         @as(
             [*]common.UniformBufferObject,
-            @ptrCast(data.uniform_buffers_mapped[@intCast(current_image)]),
+            @ptrCast(data.ubo.gpu_memory_mapped[@intCast(current_image)]),
         ),
         @as(
             *const [1]common.UniformBufferObject,
-            @ptrCast(&data.current_uniform_state),
+            @ptrCast(&data.ubo.cpu_state),
         ),
     );
 }

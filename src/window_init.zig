@@ -20,7 +20,7 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     data.frame_buffer_resized = true;
     data.width = width;
     data.height = height;
-    data.current_uniform_state.width_to_height_ratio = @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
+    data.ubo.cpu_state.width_to_height_ratio = @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
 }
 
 fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
@@ -37,11 +37,11 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     mouse_pos_y = 2.0 * mouse_pos_y / @as(f64, @floatFromInt(data.height)) - 1.0;
 
     // change mouse_pos to mandelbrot coords
-    mouse_pos_x = mouse_pos_x * data.current_uniform_state.height_scale * data.current_uniform_state.width_to_height_ratio;
-    mouse_pos_y = mouse_pos_y * data.current_uniform_state.height_scale;
+    mouse_pos_x = mouse_pos_x * data.ubo.cpu_state.height_scale * data.ubo.cpu_state.width_to_height_ratio;
+    mouse_pos_y = mouse_pos_y * data.ubo.cpu_state.height_scale;
 
-    data.current_uniform_state.center_x += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_x));
-    data.current_uniform_state.center_y += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
+    data.ubo.cpu_state.center_x += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_x));
+    data.ubo.cpu_state.center_y += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
 
-    data.current_uniform_state.height_scale *= scroll_factor;
+    data.ubo.cpu_state.height_scale *= scroll_factor;
 }

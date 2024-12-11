@@ -1,6 +1,9 @@
 const std = @import("std");
 pub const c = @import("imports.zig").c;
 const builtin = @import("builtin");
+const instance = @import("vulkan_init/instance.zig");
+const screen_renderer = @import("vulkan_init/screen_renderer.zig");
+const descriptors = @import("vulkan_init/descriptors.zig");
 
 // ------------------- settings -------------------------
 
@@ -70,38 +73,18 @@ pub const AppData = struct {
     window: *c.GLFWwindow = undefined,
     height: i32,
     width: i32,
-    instance: c.VkInstance = null,
-    debug_messenger: c.VkDebugUtilsMessengerEXT = null,
-    surface: c.VkSurfaceKHR = null,
-    physical_device: c.VkPhysicalDevice = null,
-    device: c.VkDevice = null,
-    graphics_compute_queue: c.VkQueue = null,
-    present_queue: c.VkQueue = null,
-    swap_chain: c.VkSwapchainKHR = null,
-    swap_chain_images: []c.VkImage = undefined,
-    swap_chain_image_format: c.VkFormat = undefined,
-    swap_chain_extent: c.VkExtent2D = undefined,
-    swap_chain_image_views: []c.VkImageView = undefined,
-    render_pass: c.VkRenderPass = undefined,
-    pipeline_layout: c.VkPipelineLayout = undefined,
-    graphics_pipeline: c.VkPipeline = undefined,
-    swap_chain_framebuffers: []c.VkFramebuffer = undefined,
-    command_pool: c.VkCommandPool = undefined,
-    command_buffers: []c.VkCommandBuffer = undefined,
+    inst: instance.Instance = undefined,
+    screen_rend: screen_renderer.ScreenRenderer = undefined,
+    ubo: descriptors.UniformBuffer(UniformBufferObject) = undefined,
+    descriptor_set: descriptors.DescriptorSet(
+        &.{descriptors.UniformBuffer(UniformBufferObject)},
+        &.{UniformBufferObject},
+    ) = undefined,
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
     current_frame: u32 = 0,
     frame_buffer_resized: bool = false,
-
-    current_uniform_state: UniformBufferObject,
-    uniform_buffers: []c.VkBuffer = undefined,
-    uniform_buffers_memory: []c.VkDeviceMemory = undefined,
-    uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
-
-    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
-    descriptor_pool: c.VkDescriptorPool = undefined,
-    descriptor_sets: []c.VkDescriptorSet = undefined,
 
     time: std.time.Timer,
     prev_time: u64,
