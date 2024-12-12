@@ -1,3 +1,4 @@
+const screen_renderer = @import("screen_renderer.zig");
 const instance = @import("instance.zig");
 const std = @import("std");
 const common = @import("../common_defs.zig");
@@ -5,7 +6,7 @@ const c = common.c;
 
 const Allocator = std.mem.Allocator;
 
-pub const Error = DescriptorSetError || UniformBufferError || BufferCreationError;
+pub const Error = DescriptorSetError || UniformBufferError || BufferCreationError || StorageImageError;
 
 pub const DescriptorSetError = error{
     descriptor_pool_creation_failed,
@@ -313,4 +314,159 @@ pub fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, pro
     }
 
     return BufferCreationError.suitable_memory_type_not_found;
+}
+
+pub const StorageImageError = error{
+    storage_image_creation_failed,
+    storage_image_allocation_failed,
+};
+
+pub const StorageImage = struct {
+    vk_image: c.VkImage,
+    memory: c.VkDeviceMemory,
+    view: c.VkImageView,
+    sampler: c.VkSampler,
+
+    pub fn create(self: *StorageImage, inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer, width: u32, height: u32, format: c.VkFormat) StorageImageError!void {
+        const vk_image_info: c.VkImageCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{
+                .width = width,
+                .height = height,
+                .depth = 1,
+            },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = format,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_IMAGE_USAGE_STORAGE_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+            .samples = c.VK_SAMPLE_COUNT_1,
+            .flags = 0,
+        };
+
+        if (c.vkCreateImage(inst.logical_device, &vk_image_info, null, &self.vk_image) != c.VK_SUCCESS) {
+            return StorageImageError.storage_image_creation_failed;
+        }
+
+        var mem_requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetImageMemoryRequirements(inst.logical_device, self.vk_image, &mem_requirements);
+
+        const alloc_info: c.VkMemoryAllocateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = mem_requirements.size,
+            .memoryTypeIndex = findMemoryType(
+                inst.physical_device,
+                mem_requirements.memoryTypeBits,
+                c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            ),
+        };
+
+        if (c.vkAllocateMemory(inst.logical_device, &alloc_info, null, &self.memory) != c.VK_SUCCESS) {
+            return StorageImageError.storage_image_allocation_failed;
+        }
+        c.vkBindImageMemory(inst.logical_device, self.vk_image, self.memory, 0);
+
+        transitionImageLayout(inst, screen_rend, self.vk_image, c.VK_IMAGE_LAYOUT_UNDEFINED, c.VK_IMAGE_LAYOUT_GENERAL);
+    }
+};
+
+fn transitionImageLayout(
+    inst: instance.Instance,
+    screen_rend: screen_renderer.ScreenRenderer,
+    image: c.VkImage,
+    old_layout: c.VkImageLayout,
+    new_layout: c.VkImageLayout,
+) void {
+    const command_buffer = beginSingleTimeCommands(inst, screen_rend);
+
+    var barrier: c.VkImageMemoryBarrier = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcAccessMask = undefined,
+        .dstAccessMask = undefined,
+    };
+
+    var source_stage: c.VkPipelineStageFlags = undefined;
+    var destination_stage: c.VkPipelineStageFlags = undefined;
+
+    if (old_layout == c.VK_IMAGE_LAYOUT_UNDEFINED and new_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        source_stage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and new_layout == c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
+
+        source_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        std.debug.panic("unsupported layout transition:\n\told: {}\n\tnew: {}\n", .{ old_layout, new_layout });
+    }
+
+    c.vkCmdPipelineBarrier(
+        command_buffer,
+        source_stage,
+        destination_stage,
+        0,
+        0,
+        null,
+        0,
+        null,
+        1,
+        &barrier,
+    );
+
+    endSingleTimeCommands(inst, screen_rend, command_buffer);
+}
+
+fn beginSingleTimeCommands(inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer) c.VkCommandBuffer {
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = screen_rend.command_pool,
+        .commandBufferCount = 1,
+    };
+
+    var command_buffer: c.VkCommandBuffer = undefined;
+    _ = c.vkAllocateCommandBuffers(inst.logical_device, &alloc_info, &command_buffer);
+
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    _ = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    return command_buffer;
+}
+
+fn endSingleTimeCommands(inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer, command_buffer: c.VkCommandBuffer) void {
+    _ = c.vkEndCommandBuffer(command_buffer);
+
+    const submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    _ = c.vkQueueSubmit(inst.graphics_compute_queue, 1, &submit_info, null);
+    _ = c.vkQueueWaitIdle(inst.graphics_compute_queue);
+
+    c.vkFreeCommandBuffers(inst.logicaL_device, screen_rend.command_pool, 1, &command_buffer);
 }
