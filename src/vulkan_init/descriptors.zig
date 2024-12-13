@@ -11,6 +11,7 @@ pub const Error = DescriptorSetError || UniformBufferError || BufferCreationErro
 pub const DescriptorSetError = error{
     descriptor_pool_creation_failed,
     descriptor_sets_allocation_failed,
+    descriptor_set_layout_creation_failed,
 } || Allocator.Error;
 
 /// input types must be one of:
@@ -40,10 +41,25 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
     return struct {
         vk_descriptor_sets: []c.VkDescriptorSet,
         descriptor_pool: c.VkDescriptorPool,
+        layout: c.VkDescriptorSetLayout,
 
-        pub fn allocatePool(inst: instance.Instance, max_sets: u32) DescriptorSetError!@This() {
+        pub fn blueprint(inst: instance.Instance, bindings: *const [type_num]c.VkDescriptorSetLayoutBinding) DescriptorSetError!@This() {
             var out: @This() = undefined;
 
+            const create_info: c.VkDescriptorSetLayoutCreateInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = type_num,
+                .pBindings = bindings,
+            };
+
+            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &create_info, null, &out.layout) != c.VK_SUCCESS) {
+                return DescriptorSetError.descriptor_set_layout_creation_failed;
+            }
+
+            return out;
+        }
+
+        pub fn allocatePool(self: *@This(), inst: instance.Instance, max_sets: u32) DescriptorSetError!void {
             var pool_sizes: [type_num]c.VkDescriptorPoolSize = undefined;
             inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes) |*size, DType, DInternType| {
                 size.* = switch (DType) {
@@ -59,35 +75,27 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
                 .maxSets = max_sets,
             };
 
-            if (c.vkCreateDescriptorPool(inst.logical_device, &pool_info, null, &out.descriptor_pool) != c.VK_SUCCESS) {
+            if (c.vkCreateDescriptorPool(inst.logical_device, &pool_info, null, &self.descriptor_pool) != c.VK_SUCCESS) {
                 return DescriptorSetError.descriptor_pool_creation_failed;
             }
-
-            return out;
         }
 
-        pub fn createSets(this: *@This(), inst: instance.Instance, descriptors: SetCreationType, alloc: Allocator, sets: u32) DescriptorSetError!void {
+        pub fn createSets(self: *@This(), inst: instance.Instance, descriptors: SetCreationType, alloc: Allocator, sets: u32) DescriptorSetError!void {
             const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, sets * type_num);
             defer alloc.free(layouts);
-            inline for (DescriptorTypes, DescriptorInternalTypes, 'a'.., 0..) |DType, DInternType, field_name, i| {
-                const layout: c.VkDescriptorSetLayout = switch (DType) {
-                    UniformBuffer(DInternType.?) => @as(DType, @field(descriptors, &.{field_name})).descriptor_set_layout,
-                    else => unreachable,
-                };
-                for (layouts[(i * sets)..((i + 1) * sets)]) |*l| {
-                    l.* = layout;
-                }
+            for (layouts[0..sets]) |*l| {
+                l.* = self.layout;
             }
 
             const alloc_info: c.VkDescriptorSetAllocateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = this.descriptor_pool,
+                .descriptorPool = self.descriptor_pool,
                 .descriptorSetCount = sets,
                 .pSetLayouts = layouts.ptr,
             };
 
-            this.vk_descriptor_sets = try alloc.alloc(c.VkDescriptorSet, sets);
-            if (c.vkAllocateDescriptorSets(inst.logical_device, &alloc_info, this.vk_descriptor_sets.ptr) != c.VK_SUCCESS) {
+            self.vk_descriptor_sets = try alloc.alloc(c.VkDescriptorSet, sets);
+            if (c.vkAllocateDescriptorSets(inst.logical_device, &alloc_info, self.vk_descriptor_sets.ptr) != c.VK_SUCCESS) {
                 return DescriptorSetError.descriptor_sets_allocation_failed;
             }
 
@@ -100,7 +108,7 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
                 },
                 inst,
                 descriptors,
-                this.vk_descriptor_sets,
+                self.vk_descriptor_sets,
                 sets,
             );
         }
@@ -108,6 +116,8 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
         pub fn deinit(self: @This(), inst: instance.Instance, alloc: Allocator) void {
             c.vkDestroyDescriptorPool(inst.logical_device, self.descriptor_pool, null);
             alloc.free(self.vk_descriptor_sets);
+
+            c.vkDestroyDescriptorSetLayout(inst.logical_device, self.layout, null);
         }
     };
 }
@@ -198,26 +208,16 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
         gpu_buffers: []c.VkBuffer,
         gpu_memory: []c.VkDeviceMemory,
         gpu_memory_mapped: []?*align(@alignOf(UniformBufferObjectType)) anyopaque,
-        descriptor_set_layout: c.VkDescriptorSetLayout,
+        descriptor_set_binding: c.VkDescriptorSetLayoutBinding,
 
-        pub fn blueprint(self: *@This(), inst: instance.Instance) UniformBufferError!void {
-            const ubo_layout_binding: c.VkDescriptorSetLayoutBinding = .{
-                .binding = 0,
+        pub fn blueprint(self: *@This(), binding: u32) UniformBufferError!void {
+            self.descriptor_set_binding = .{
+                .binding = binding,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
                 .pImmutableSamplers = null,
             };
-
-            var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
-                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindings = &ubo_layout_binding,
-            };
-
-            if (c.vkCreateDescriptorSetLayout(inst.logical_device, &layout_info, null, &self.descriptor_set_layout) != c.VK_SUCCESS) {
-                return UniformBufferError.descriptor_set_layout_creation_failed;
-            }
         }
 
         pub fn create(self: *UniformBuffer(UniformBufferObjectType), inst: instance.Instance, alloc: Allocator) UniformBufferError!void {
@@ -256,8 +256,6 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
             alloc.free(self.gpu_memory);
             alloc.free(self.gpu_buffers);
             alloc.free(self.gpu_memory_mapped);
-
-            c.vkDestroyDescriptorSetLayout(inst.logical_device, self.descriptor_set_layout, null);
         }
     };
 }

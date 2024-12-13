@@ -25,13 +25,13 @@ pub const ScreenRenderer = struct {
     command_pool: c.VkCommandPool,
     command_buffers: []c.VkCommandBuffer,
 
-    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow, descriptor_set_layouts: []const c.VkDescriptorSetLayout) Error!ScreenRenderer {
+    pub fn init(alloc: Allocator, inst: instance.Instance, window: *c.GLFWwindow, descriptor_set_layout: c.VkDescriptorSetLayout) Error!ScreenRenderer {
         var render_pipeline: ScreenRenderer = undefined;
 
         render_pipeline.swapchain = try Swapchain.initSansFramebuffers(alloc, inst, window);
         render_pipeline.render_pass = try createRenderPass(inst, render_pipeline.swapchain);
 
-        const graphics_pipeline_and_layout = try createGraphicsPipeline(inst, alloc, descriptor_set_layouts, render_pipeline.render_pass);
+        const graphics_pipeline_and_layout = try createGraphicsPipeline(inst, alloc, descriptor_set_layout, render_pipeline.render_pass);
         render_pipeline.graphics_pipeline = graphics_pipeline_and_layout.pipeline;
         render_pipeline.pipeline_layout = graphics_pipeline_and_layout.layout;
 
@@ -108,7 +108,7 @@ fn createCommandPool(inst: instance.Instance, alloc: Allocator) Error!c.VkComman
 fn createGraphicsPipeline(
     inst: instance.Instance,
     alloc: Allocator,
-    descriptor_set_layouts: []const c.VkDescriptorSetLayout,
+    descriptor_set_layout: c.VkDescriptorSetLayout,
     render_pass: c.VkRenderPass,
 ) Error!struct { pipeline: c.VkPipeline, layout: c.VkPipelineLayout } {
     const vert_code = try common.readFile("src/shaders/triangle_vert.spv", alloc, 4);
@@ -215,8 +215,8 @@ fn createGraphicsPipeline(
 
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = @intCast(descriptor_set_layouts.len),
-        .pSetLayouts = descriptor_set_layouts.ptr,
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptor_set_layout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };

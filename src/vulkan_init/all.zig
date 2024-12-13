@@ -13,16 +13,14 @@ pub const Error = instance.Error || sync_objects.Error || descriptors.Error || s
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) Error!void {
     data.inst = try instance.Instance.init(alloc, .{}, data.window);
 
-    try data.ubo.blueprint(data.inst);
+    try data.ubo.blueprint(0);
+    data.descriptor_set = try @TypeOf(data.descriptor_set).blueprint(data.inst, &.{data.ubo.descriptor_set_binding});
 
-    data.screen_rend = try screen_rend.ScreenRenderer.init(alloc, data.inst, data.window, &.{data.ubo.descriptor_set_layout});
+    data.screen_rend = try screen_rend.ScreenRenderer.init(alloc, data.inst, data.window, data.descriptor_set.layout);
 
     try data.ubo.create(data.inst, alloc);
 
-    data.descriptor_set = try descriptors.DescriptorSet(
-        &.{descriptors.UniformBuffer(common.UniformBufferObject)},
-        &.{common.UniformBufferObject},
-    ).allocatePool(data.inst, common.max_frames_in_flight);
+    try data.descriptor_set.allocatePool(data.inst, common.max_frames_in_flight);
 
     try data.descriptor_set.createSets(data.inst, .{ .a = data.ubo }, alloc, common.max_frames_in_flight);
 
