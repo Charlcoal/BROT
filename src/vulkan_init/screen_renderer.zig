@@ -364,13 +364,16 @@ pub const Swapchain = struct {
 };
 
 fn createVkSwapchain(inst: instance.Instance, alloc: Allocator, window: *c.GLFWwindow, swapchain: *Swapchain) Error!void {
-    const surface_format = chooseSwapSurfaceFormat(inst.swap_chain_support.formats);
-    const present_mode = chooseSwapPresentMode(inst.swap_chain_support.presentModes);
-    swapchain.extent = chooseSwapExtent(window, &inst.swap_chain_support.capabilities);
+    var swapchain_support = try instance.SwapChainSupportDetails.query(inst.surface, inst.physical_device, alloc);
+    defer swapchain_support.deinit();
 
-    var image_count: u32 = inst.swap_chain_support.capabilities.minImageCount + 1;
-    if (inst.swap_chain_support.capabilities.maxImageCount > 0 and image_count > inst.swap_chain_support.capabilities.maxImageCount) {
-        image_count = inst.swap_chain_support.capabilities.maxImageCount;
+    const surface_format = chooseSwapSurfaceFormat(swapchain_support.formats);
+    const present_mode = chooseSwapPresentMode(swapchain_support.presentModes);
+    swapchain.extent = chooseSwapExtent(window, &swapchain_support.capabilities);
+
+    var image_count: u32 = swapchain_support.capabilities.minImageCount + 1;
+    if (swapchain_support.capabilities.maxImageCount > 0 and image_count > swapchain_support.capabilities.maxImageCount) {
+        image_count = swapchain_support.capabilities.maxImageCount;
     }
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
@@ -382,7 +385,7 @@ fn createVkSwapchain(inst: instance.Instance, alloc: Allocator, window: *c.GLFWw
         .imageExtent = swapchain.extent,
         .imageArrayLayers = 1,
         .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .preTransform = inst.swap_chain_support.capabilities.currentTransform,
+        .preTransform = swapchain_support.capabilities.currentTransform,
         .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = present_mode,
         .clipped = c.VK_TRUE,

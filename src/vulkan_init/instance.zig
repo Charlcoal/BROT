@@ -24,7 +24,6 @@ pub const Instance = struct {
     logical_device: c.VkDevice,
     graphics_compute_queue: c.VkQueue,
     present_queue: c.VkQueue,
-    swap_chain_support: SwapChainSupportDetails,
     queue_family_indices: QueueFamilyIndices,
 
     const default_validation_layers: [1][*:0]const u8 = .{"VK_LAYER_KHRONOS_validation"};
@@ -69,7 +68,6 @@ pub const Instance = struct {
             .logical_device = null,
             .graphics_compute_queue = null,
             .present_queue = null,
-            .swap_chain_support = undefined,
             .queue_family_indices = undefined,
         };
 
@@ -92,12 +90,10 @@ pub const Instance = struct {
         try choosePhysicalDevice(&instance, alloc, settings);
         try initLogicalDevice(&instance, alloc, settings);
 
-        instance.swap_chain_support = try SwapChainSupportDetails.query(instance.surface, instance.physical_device, alloc);
         return instance;
     }
 
     pub fn deinit(self: *Instance) void {
-        self.swap_chain_support.deinit();
         c.vkDestroyDevice(self.logical_device, null);
 
         // destroy debug messenger
@@ -279,15 +275,15 @@ fn deviceIsSuitable(physical_device: c.VkPhysicalDevice, alloc: Allocator, surfa
 
     const extensions_supported: bool = try checkDeviceExtensionSupport(physical_device, alloc, device_extensions);
 
-    var swap_chain_adequate: bool = false;
+    var swapchain_adequate: bool = false;
     if (extensions_supported) {
-        const swap_chain_support = try SwapChainSupportDetails.query(surface, physical_device, alloc);
-        defer alloc.free(swap_chain_support.presentModes);
-        defer alloc.free(swap_chain_support.formats);
-        swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
+        const swapchain_support = try SwapChainSupportDetails.query(surface, physical_device, alloc);
+        defer alloc.free(swapchain_support.presentModes);
+        defer alloc.free(swapchain_support.formats);
+        swapchain_adequate = (swapchain_support.formats.len != 0) and (swapchain_support.presentModes.len != 0);
     }
 
-    return indices.isComplete() and extensions_supported and swap_chain_adequate;
+    return indices.isComplete() and extensions_supported and swapchain_adequate;
 }
 
 fn checkDeviceExtensionSupport(physical_device: c.VkPhysicalDevice, alloc: Allocator, device_extensions: []const [*:0]const u8) Allocator.Error!bool {
@@ -366,7 +362,7 @@ fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator, surface: c.Vk
     return indices;
 }
 
-const SwapChainSupportDetails = struct {
+pub const SwapChainSupportDetails = struct {
     capabilities: c.VkSurfaceCapabilitiesKHR,
     formats: []c.VkSurfaceFormatKHR,
     presentModes: []c.VkPresentModeKHR,
