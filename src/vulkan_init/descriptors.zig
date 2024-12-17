@@ -59,11 +59,16 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             return out;
         }
 
-        pub fn allocatePool(self: *@This(), inst: instance.Instance, max_sets: u32) DescriptorSetError!void {
+        pub fn allocatePool(self: *@This(), inst: instance.Instance, descriptors: SetCreationType) DescriptorSetError!void {
             var pool_sizes: [type_num]c.VkDescriptorPoolSize = undefined;
-            inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes) |*size, DType, DInternType| {
-                size.* = switch (DType) {
-                    UniformBuffer(DInternType.?) => .{ .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_sets },
+            var max_sets: u32 = 0;
+            inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes, 'a'..) |*size, DType, DInternType, name| {
+                size.descriptorCount = @field(descriptors, &.{name}).num;
+                if (max_sets < size.descriptorCount) max_sets = size.descriptorCount;
+
+                size.type = switch (DType) {
+                    UniformBuffer(DInternType.?) => c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    StorageImage => c.VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                     else => @compileError("Invalid Descriptor"),
                 };
             }
@@ -204,13 +209,14 @@ pub const UniformBufferError = error{descriptor_set_layout_creation_failed} || A
 
 pub fn UniformBuffer(UniformBufferObjectType: type) type {
     return struct {
+        num: u32,
         cpu_state: UniformBufferObjectType,
         gpu_buffers: []c.VkBuffer,
         gpu_memory: []c.VkDeviceMemory,
         gpu_memory_mapped: []?*align(@alignOf(UniformBufferObjectType)) anyopaque,
         descriptor_set_binding: c.VkDescriptorSetLayoutBinding,
 
-        pub fn blueprint(self: *@This(), binding: u32) UniformBufferError!void {
+        pub fn blueprint(self: *@This(), binding: u32, num: u32) UniformBufferError!void {
             self.descriptor_set_binding = .{
                 .binding = binding,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -218,16 +224,17 @@ pub fn UniformBuffer(UniformBufferObjectType: type) type {
                 .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
                 .pImmutableSamplers = null,
             };
+            self.num = num;
         }
 
         pub fn create(self: *UniformBuffer(UniformBufferObjectType), inst: instance.Instance, alloc: Allocator) UniformBufferError!void {
             const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
 
-            self.gpu_buffers = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
-            self.gpu_memory = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
-            self.gpu_memory_mapped = try alloc.alloc(?*align(@alignOf(UniformBufferObjectType)) anyopaque, common.max_frames_in_flight);
+            self.gpu_buffers = try alloc.alloc(c.VkBuffer, self.num);
+            self.gpu_memory = try alloc.alloc(c.VkDeviceMemory, self.num);
+            self.gpu_memory_mapped = try alloc.alloc(?*align(@alignOf(UniformBufferObjectType)) anyopaque, self.num);
 
-            for (0..common.max_frames_in_flight) |i| {
+            for (0..self.num) |i| {
                 try createBuffer(
                     inst,
                     buffer_size,
@@ -266,7 +273,7 @@ pub const BufferCreationError = error{
     buffer_memory_allocation_failed,
 };
 
-pub fn createBuffer(
+fn createBuffer(
     inst: instance.Instance,
     size: c.VkDeviceSize,
     usage: c.VkBufferUsageFlags,
@@ -301,7 +308,7 @@ pub fn createBuffer(
     _ = c.vkBindBufferMemory(inst.logical_device, buffer.*, buffer_memory.*, 0);
 }
 
-pub fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) BufferCreationError!u32 {
+fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, properties: c.VkMemoryPropertyFlags) BufferCreationError!u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
 
@@ -320,10 +327,25 @@ pub const StorageImageError = error{
 };
 
 pub const StorageImage = struct {
+    num: u32,
     vk_image: c.VkImage,
     memory: c.VkDeviceMemory,
     view: c.VkImageView,
     sampler: c.VkSampler,
+    descriptor_set_binding: c.VkDescriptorSetLayout,
+
+    pub fn blueprint(binding: u32, num: u32) StorageImage {
+        var out: StorageImage = undefined;
+        out.num = num;
+        out.descriptor_set_binding = .{
+            .binding = binding,
+            .descriptorCount = 1,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImmutableSamplers = null,
+            .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
+        };
+        return out;
+    }
 
     pub fn create(self: *StorageImage, inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer, width: u32, height: u32, format: c.VkFormat) StorageImageError!void {
         const vk_image_info: c.VkImageCreateInfo = .{
