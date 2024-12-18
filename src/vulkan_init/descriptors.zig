@@ -85,36 +85,37 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             }
         }
 
-        pub fn createSets(self: *@This(), inst: instance.Instance, descriptors: SetCreationType, alloc: Allocator, sets: u32) DescriptorSetError!void {
-            const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, sets * type_num);
+        pub fn createSets(self: *@This(), inst: instance.Instance, descriptors: SetCreationType, alloc: Allocator, num_sets: u32) DescriptorSetError!void {
+            const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, num_sets * type_num);
             defer alloc.free(layouts);
-            for (layouts[0..sets]) |*l| {
+            for (layouts[0..num_sets]) |*l| {
                 l.* = self.layout;
             }
 
             const alloc_info: c.VkDescriptorSetAllocateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                 .descriptorPool = self.descriptor_pool,
-                .descriptorSetCount = sets,
+                .descriptorSetCount = num_sets,
                 .pSetLayouts = layouts.ptr,
             };
 
-            self.vk_descriptor_sets = try alloc.alloc(c.VkDescriptorSet, sets);
+            self.vk_descriptor_sets = try alloc.alloc(c.VkDescriptorSet, num_sets);
             if (c.vkAllocateDescriptorSets(inst.logical_device, &alloc_info, self.vk_descriptor_sets.ptr) != c.VK_SUCCESS) {
                 return DescriptorSetError.descriptor_sets_allocation_failed;
             }
 
-            updateDescriptorSets(
+            try updateDescriptorSets(
                 .{
                     .DescriptorTypes = DescriptorTypes,
                     .DescriptorInternalTypes = DescriptorInternalTypes,
                     .SetCreationType = SetCreationType,
                     .type_num = type_num,
                 },
+                alloc,
                 inst,
                 descriptors,
                 self.vk_descriptor_sets,
-                sets,
+                num_sets,
             );
         }
 
@@ -136,30 +137,31 @@ const DescriptorComptimeInfo = struct {
 
 fn updateDescriptorSets(
     comptime_info: DescriptorComptimeInfo,
+    alloc: Allocator,
     inst: instance.Instance,
     descriptors: comptime_info.SetCreationType,
     vk_descriptor_sets: []c.VkDescriptorSet,
-    sets: u32,
-) void {
-    for (0..sets) |i| {
-        var descriptor_buffs: [comptime_info.type_num]c.VkDescriptorBufferInfo = undefined;
+    num_sets: u32,
+) Allocator.Error!void {
+    var alloc_arena = std.heap.ArenaAllocator.init(alloc);
+    defer alloc_arena.deinit();
+    for (0..num_sets) |i| {
         var descriptor_writes: [comptime_info.type_num]c.VkWriteDescriptorSet = undefined;
 
         inline for (
             comptime_info.DescriptorTypes,
             comptime_info.DescriptorInternalTypes,
             'a'..,
-            &descriptor_buffs,
             &descriptor_writes,
-        ) |DType, DInternType, field_name, *d_buff, *d_write| {
-            const uniform_buffer: DType = @field(descriptors, &.{field_name});
-            descriptorWrite(
+        ) |DType, DInternType, field_name, *d_write| {
+            const descriptor: DType = @field(descriptors, &.{field_name});
+            d_write.* = try descriptorWrite(
                 DType,
                 DInternType,
-                uniform_buffer.gpu_buffers[i],
+                alloc_arena.allocator(),
+                descriptor,
                 vk_descriptor_sets[i],
-                d_buff,
-                d_write,
+                i,
             );
         }
 
@@ -176,28 +178,49 @@ fn updateDescriptorSets(
 fn descriptorWrite(
     DType: type,
     DInternType: ?type,
-    gpu_buffer: c.VkBuffer,
+    arena_alloc: Allocator,
+    descriptor: DType,
     vk_descriptor_set: c.VkDescriptorSet,
-    descriptorBuff: *c.VkDescriptorBufferInfo,
-    writeDescriptor: *c.VkWriteDescriptorSet,
-) void {
+    index: usize,
+) Allocator.Error!c.VkWriteDescriptorSet {
     switch (DType) {
         UniformBuffer(DInternType.?) => {
-            descriptorBuff.* = .{
-                .buffer = gpu_buffer,
+            const descriptor_buff_info = try arena_alloc.create(c.VkDescriptorBufferInfo);
+            descriptor_buff_info.* = .{
+                .buffer = descriptor.gpu_buffers[index],
                 .offset = 0,
                 .range = @sizeOf(DInternType.?),
             };
 
-            writeDescriptor.* = .{
+            return .{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = vk_descriptor_set,
-                .dstBinding = 0,
+                .dstBinding = descriptor.descriptor_set_binding.binding,
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
-                .pBufferInfo = descriptorBuff,
+                .pBufferInfo = descriptor_buff_info,
                 .pImageInfo = null,
+                .pTexelBufferView = null,
+            };
+        },
+        StorageImage => {
+            const image_info = try arena_alloc.create(c.VkDescriptorImageInfo);
+            image_info.* = .{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
+                .imageView = descriptor.view,
+                .sampler = descriptor.sampler,
+            };
+
+            return .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = vk_descriptor_set,
+                .dstBinding = descriptor.descriptor_set_binding.binding,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &image_info,
                 .pTexelBufferView = null,
             };
         },
