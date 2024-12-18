@@ -25,6 +25,7 @@ pub const Instance = struct {
     graphics_compute_queue: c.VkQueue,
     present_queue: c.VkQueue,
     queue_family_indices: QueueFamilyIndices,
+    physical_device_properties: c.VkPhysicalDeviceProperties,
 
     const default_validation_layers: [1][*:0]const u8 = .{"VK_LAYER_KHRONOS_validation"};
     const default_device_extensions: [1][*:0]const u8 = .{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -69,6 +70,7 @@ pub const Instance = struct {
             .graphics_compute_queue = null,
             .present_queue = null,
             .queue_family_indices = undefined,
+            .physical_device_properties = undefined,
         };
 
         if (settings.enable_validation_layers and !try checkValidationLayerSupport(alloc, settings.validation_layers)) {
@@ -89,6 +91,8 @@ pub const Instance = struct {
 
         try choosePhysicalDevice(&instance, alloc, settings);
         try initLogicalDevice(&instance, alloc, settings);
+
+        c.vkGetPhysicalDeviceProperties(instance.physical_device, &instance.physical_device_properties);
 
         return instance;
     }
@@ -259,12 +263,13 @@ fn getRequiredExtensions(alloc: Allocator, enable_validation_layers: bool) Alloc
     var glfw_extension_count: u32 = 0;
     const glfw_extensions: [*c]const [*c]const u8 = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
-    const out = try alloc.alloc([*c]const u8, glfw_extension_count + if (enable_validation_layers) @as(usize, 1) else @as(usize, 0));
+    const num: usize = glfw_extension_count + if (enable_validation_layers) @as(usize, 1) else @as(usize, 0);
+    const out = try alloc.alloc([*c]const u8, num);
     for (0..glfw_extension_count) |i| {
         out[i] = glfw_extensions[i];
     }
     if (enable_validation_layers) {
-        out[glfw_extension_count] = c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+        out[num - 1] = c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     }
 
     return out;

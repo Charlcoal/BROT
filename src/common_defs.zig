@@ -40,14 +40,15 @@ const Allocator = std.mem.Allocator;
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
     window: *c.GLFWwindow = undefined,
-    height: i32,
-    width: i32,
+    height: u32,
+    width: u32,
     inst: instance.Instance = undefined,
     screen_rend: screen_renderer.ScreenRenderer = undefined,
     ubo: descriptors.UniformBuffer(UniformBufferObject) = undefined,
+    storage_image: descriptors.StorageImage = undefined,
     descriptor_set: descriptors.DescriptorSet(
-        &.{descriptors.UniformBuffer(UniformBufferObject)},
-        &.{UniformBufferObject},
+        &.{ descriptors.UniformBuffer(UniformBufferObject), descriptors.StorageImage },
+        &.{ UniformBufferObject, null },
     ) = undefined,
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,

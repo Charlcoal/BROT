@@ -9,7 +9,7 @@ pub fn initWindow(data: *common.AppData) Error!void {
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    data.window = c.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return Error.create_window_failed;
+    data.window = c.glfwCreateWindow(@intCast(data.width), @intCast(data.height), "Vulkan", null, null) orelse return Error.create_window_failed;
     c.glfwSetWindowUserPointer(data.window, @ptrCast(data));
     _ = c.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
     _ = c.glfwSetScrollCallback(data.window, scrollCallback);
@@ -18,8 +18,8 @@ pub fn initWindow(data: *common.AppData) Error!void {
 fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
     const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
     data.frame_buffer_resized = true;
-    data.width = width;
-    data.height = height;
+    data.width = @intCast(width);
+    data.height = @intCast(height);
     data.ubo.cpu_state.width_to_height_ratio = @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
 }
 

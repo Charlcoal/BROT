@@ -66,9 +66,11 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
                 size.descriptorCount = @field(descriptors, &.{name}).num;
                 if (max_sets < size.descriptorCount) max_sets = size.descriptorCount;
 
-                size.type = switch (DType) {
-                    UniformBuffer(DInternType.?) => c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    StorageImage => c.VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                size.type = if (DInternType) |InternT| switch (DType) {
+                    UniformBuffer(InternT) => c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    else => unreachable,
+                } else switch (DType) {
+                    StorageImage => c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     else => @compileError("Invalid Descriptor"),
                 };
             }
@@ -183,48 +185,54 @@ fn descriptorWrite(
     vk_descriptor_set: c.VkDescriptorSet,
     index: usize,
 ) Allocator.Error!c.VkWriteDescriptorSet {
-    switch (DType) {
-        UniformBuffer(DInternType.?) => {
-            const descriptor_buff_info = try arena_alloc.create(c.VkDescriptorBufferInfo);
-            descriptor_buff_info.* = .{
-                .buffer = descriptor.gpu_buffers[index],
-                .offset = 0,
-                .range = @sizeOf(DInternType.?),
-            };
+    if (DInternType) |InternT| {
+        switch (DType) {
+            UniformBuffer(InternT) => {
+                const descriptor_buff_info = try arena_alloc.create(c.VkDescriptorBufferInfo);
+                descriptor_buff_info.* = .{
+                    .buffer = descriptor.gpu_buffers[index],
+                    .offset = 0,
+                    .range = @sizeOf(DInternType.?),
+                };
 
-            return .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = vk_descriptor_set,
-                .dstBinding = descriptor.descriptor_set_binding.binding,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = descriptor_buff_info,
-                .pImageInfo = null,
-                .pTexelBufferView = null,
-            };
-        },
-        StorageImage => {
-            const image_info = try arena_alloc.create(c.VkDescriptorImageInfo);
-            image_info.* = .{
-                .imageLayout = c.VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR,
-                .imageView = descriptor.view,
-                .sampler = descriptor.sampler,
-            };
+                return .{
+                    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = vk_descriptor_set,
+                    .dstBinding = descriptor.descriptor_set_binding.binding,
+                    .dstArrayElement = 0,
+                    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = descriptor_buff_info,
+                    .pImageInfo = null,
+                    .pTexelBufferView = null,
+                };
+            },
+            else => unreachable,
+        }
+    } else {
+        switch (DType) {
+            StorageImage => {
+                const image_info = try arena_alloc.create(c.VkDescriptorImageInfo);
+                image_info.* = .{
+                    .imageLayout = c.VK_IMAGE_LAYOUT_GENERAL,
+                    .imageView = descriptor.view,
+                    .sampler = descriptor.sampler,
+                };
 
-            return .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = vk_descriptor_set,
-                .dstBinding = descriptor.descriptor_set_binding.binding,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = null,
-                .pImageInfo = &image_info,
-                .pTexelBufferView = null,
-            };
-        },
-        else => unreachable,
+                return .{
+                    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = vk_descriptor_set,
+                    .dstBinding = descriptor.descriptor_set_binding.binding,
+                    .dstArrayElement = 0,
+                    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = null,
+                    .pImageInfo = image_info,
+                    .pTexelBufferView = null,
+                };
+            },
+            else => unreachable,
+        }
     }
 }
 
@@ -347,7 +355,9 @@ fn findMemoryType(physical_device: c.VkPhysicalDevice, type_filter: u32, propert
 pub const StorageImageError = error{
     storage_image_creation_failed,
     storage_image_allocation_failed,
-};
+    image_view_creation_failed,
+    texture_sampler_creation_failed,
+} || BufferCreationError;
 
 pub const StorageImage = struct {
     num: u32,
@@ -355,7 +365,18 @@ pub const StorageImage = struct {
     memory: c.VkDeviceMemory,
     view: c.VkImageView,
     sampler: c.VkSampler,
-    descriptor_set_binding: c.VkDescriptorSetLayout,
+    descriptor_set_binding: c.VkDescriptorSetLayoutBinding,
+
+    const Options = struct {
+        format: c.VkFormat = c.VK_FORMAT_R8G8B8A8_SRGB,
+        samlper_min_filter: c.VkFilter = c.VK_FILTER_NEAREST,
+        samplermag_filter: c.VkFilter = c.VK_FILTER_NEAREST,
+        sampler_address_mode_u: c.VkSamplerAddressMode = c.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        sampler_address_mode_v: c.VkSamplerAddressMode = c.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        sampler_address_mode_w: c.VkSamplerAddressMode = c.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        sampler_border_color: c.VkBorderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        sampler_unnormalized_coordinates: c.VkBool32 = c.VK_FALSE,
+    };
 
     pub fn blueprint(binding: u32, num: u32) StorageImage {
         var out: StorageImage = undefined;
@@ -365,12 +386,12 @@ pub const StorageImage = struct {
             .descriptorCount = 1,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .pImmutableSamplers = null,
-            .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
+            .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
         };
         return out;
     }
 
-    pub fn create(self: *StorageImage, inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer, width: u32, height: u32, format: c.VkFormat) StorageImageError!void {
+    pub fn create(self: *StorageImage, inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer, width: u32, height: u32, options: Options) StorageImageError!void {
         const vk_image_info: c.VkImageCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = c.VK_IMAGE_TYPE_2D,
@@ -381,12 +402,12 @@ pub const StorageImage = struct {
             },
             .mipLevels = 1,
             .arrayLayers = 1,
-            .format = format,
+            .format = options.format,
             .tiling = c.VK_IMAGE_TILING_OPTIMAL,
             .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_IMAGE_USAGE_STORAGE_BIT,
+            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT, // | c.VK_IMAGE_USAGE_STORAGE_BIT,
             .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-            .samples = c.VK_SAMPLE_COUNT_1,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
             .flags = 0,
         };
 
@@ -400,7 +421,7 @@ pub const StorageImage = struct {
         const alloc_info: c.VkMemoryAllocateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
             .allocationSize = mem_requirements.size,
-            .memoryTypeIndex = findMemoryType(
+            .memoryTypeIndex = try findMemoryType(
                 inst.physical_device,
                 mem_requirements.memoryTypeBits,
                 c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -410,9 +431,33 @@ pub const StorageImage = struct {
         if (c.vkAllocateMemory(inst.logical_device, &alloc_info, null, &self.memory) != c.VK_SUCCESS) {
             return StorageImageError.storage_image_allocation_failed;
         }
-        c.vkBindImageMemory(inst.logical_device, self.vk_image, self.memory, 0);
+        _ = c.vkBindImageMemory(inst.logical_device, self.vk_image, self.memory, 0);
 
         transitionImageLayout(inst, screen_rend, self.vk_image, c.VK_IMAGE_LAYOUT_UNDEFINED, c.VK_IMAGE_LAYOUT_GENERAL);
+        self.view = try createImageView(inst, self.vk_image, options.format);
+
+        const sampler_info: c.VkSamplerCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = options.samplermag_filter,
+            .minFilter = options.samlper_min_filter,
+            .addressModeU = options.sampler_address_mode_u,
+            .addressModeV = options.sampler_address_mode_v,
+            .addressModeW = options.sampler_address_mode_w,
+            .anisotropyEnable = c.VK_FALSE,
+            .maxAnisotropy = 1.0,
+            .borderColor = options.sampler_border_color,
+            .unnormalizedCoordinates = options.sampler_unnormalized_coordinates,
+            .compareEnable = c.VK_FALSE,
+            .compareOp = c.VK_COMPARE_OP_ALWAYS,
+            .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .mipLodBias = 0.0,
+            .minLod = 0.0,
+            .maxLod = 0.0,
+        };
+
+        if (c.vkCreateSampler(inst.logical_device, &sampler_info, null, &self.sampler) != c.VK_SUCCESS) {
+            return StorageImageError.texture_sampler_creation_failed;
+        }
     }
 };
 
@@ -452,6 +497,12 @@ fn transitionImageLayout(
 
         source_stage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destination_stage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == c.VK_IMAGE_LAYOUT_UNDEFINED and new_layout == c.VK_IMAGE_LAYOUT_GENERAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
+
+        source_stage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | c.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     } else if (old_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and new_layout == c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
@@ -476,6 +527,30 @@ fn transitionImageLayout(
     );
 
     endSingleTimeCommands(inst, screen_rend, command_buffer);
+}
+
+fn createImageView(inst: instance.Instance, image: c.VkImage, format: c.VkFormat) error{image_view_creation_failed}!c.VkImageView {
+    const view_info: c.VkImageViewCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image,
+        .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+        .format = format,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    var out: c.VkImageView = undefined;
+
+    if (c.vkCreateImageView(inst.logical_device, &view_info, null, &out) != c.VK_SUCCESS) {
+        return error{image_view_creation_failed}.image_view_creation_failed;
+    }
+
+    return out;
 }
 
 fn beginSingleTimeCommands(inst: instance.Instance, screen_rend: screen_renderer.ScreenRenderer) c.VkCommandBuffer {
@@ -511,5 +586,5 @@ fn endSingleTimeCommands(inst: instance.Instance, screen_rend: screen_renderer.S
     _ = c.vkQueueSubmit(inst.graphics_compute_queue, 1, &submit_info, null);
     _ = c.vkQueueWaitIdle(inst.graphics_compute_queue);
 
-    c.vkFreeCommandBuffers(inst.logicaL_device, screen_rend.command_pool, 1, &command_buffer);
+    c.vkFreeCommandBuffers(inst.logical_device, screen_rend.command_pool, 1, &command_buffer);
 }

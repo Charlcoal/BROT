@@ -14,15 +14,18 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) Error!void {
     data.inst = try instance.Instance.init(alloc, .{}, data.window);
 
     try data.ubo.blueprint(0, common.max_frames_in_flight);
-    data.descriptor_set = try @TypeOf(data.descriptor_set).blueprint(data.inst, &.{data.ubo.descriptor_set_binding});
+    data.storage_image = descriptors.StorageImage.blueprint(1, 1);
+
+    data.descriptor_set = try @TypeOf(data.descriptor_set).blueprint(data.inst, &.{ data.ubo.descriptor_set_binding, data.storage_image.descriptor_set_binding });
 
     data.screen_rend = try screen_rend.ScreenRenderer.init(alloc, data.inst, data.window, data.descriptor_set.layout);
 
     try data.ubo.create(data.inst, alloc);
+    try data.storage_image.create(data.inst, data.screen_rend, data.width, data.height, .{});
 
-    try data.descriptor_set.allocatePool(data.inst, .{ .a = data.ubo });
+    try data.descriptor_set.allocatePool(data.inst, .{ .a = data.ubo, .b = data.storage_image });
 
-    try data.descriptor_set.createSets(data.inst, .{ .a = data.ubo }, alloc, common.max_frames_in_flight);
+    try data.descriptor_set.createSets(data.inst, .{ .a = data.ubo, .b = data.storage_image }, alloc, common.max_frames_in_flight);
 
     data.image_availible_semaphores = try sync_objects.createSemaphores(data.inst, alloc, common.max_frames_in_flight);
     data.render_finished_semaphores = try sync_objects.createSemaphores(data.inst, alloc, common.max_frames_in_flight);
