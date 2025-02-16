@@ -46,10 +46,7 @@ pub const AppData = struct {
     screen_rend: screen_renderer.ScreenRenderer = undefined,
     ubo: descriptors.UniformBuffer(UniformBufferObject) = undefined,
     storage_image: descriptors.StorageImage = undefined,
-    descriptor_set: descriptors.DescriptorSet(
-        &.{ descriptors.UniformBuffer(UniformBufferObject), descriptors.StorageImage },
-        &.{ UniformBufferObject, null },
-    ) = undefined,
+    descriptor_set: descriptors.MultiDescriptorSet(&.{ descriptors.UniformBuffer(UniformBufferObject), descriptors.StorageImage }) = undefined,
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,

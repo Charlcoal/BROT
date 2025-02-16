@@ -14,16 +14,48 @@ pub const DescriptorSetError = error{
     descriptor_set_layout_creation_failed,
 } || Allocator.Error;
 
+const DescriptorType = enum(u32) {
+    UniformBuffer = 0,
+    StorageImage = 1,
+};
+
+fn nameCheck(str1: [:0]const u8, str2: [:0]const u8, len: usize) bool {
+    for (0..len) |i| {
+        if (str1[i] != str2[i]) return false;
+    }
+    return true;
+}
+
 /// input types must be one of:
 /// UniformBuffer
-pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []const ?type) type {
-    if (DescriptorTypes.len != DescriptorInternalTypes.len) @compileError("DescriptorSet must recieve equal length Types and InternalTypes");
+/// StorageImage
+pub fn MultiDescriptorSet(DescriptorTypes: []const type) type {
+    const DespecifiedDescriptorTypes = comptime blk: {
+        var DespecifiedDescriptorTypesTmp: [DescriptorTypes.len]DescriptorType = undefined;
+        const file_path_length: comptime_int = @typeName(DescriptorType).len - 14;
+        for (DescriptorTypes, 0..) |T, i| {
+            if (nameCheck(@typeName(T), @typeName(UniformBuffer(f32)), file_path_length + 13)) {
+                DespecifiedDescriptorTypesTmp[i] = DescriptorType.UniformBuffer;
+            } else if (T == StorageImage) {
+                DespecifiedDescriptorTypesTmp[i] = DescriptorType.StorageImage;
+            } else {
+                @compileError("invalid type \"" ++ @typeName(T) ++ "\", must be a descriptor.\n");
+            }
+        }
+        break :blk DespecifiedDescriptorTypesTmp;
+    };
+
+    //const DespecifiedDescriptorTypes = DespecifiedDescriptorTypesTmp;
     const type_num = DescriptorTypes.len;
 
     var set_creation_fields: [type_num]std.builtin.Type.StructField = undefined;
-    for (DescriptorTypes, &set_creation_fields, 'a'..) |t, *field, n| {
+    var duplicateCounts: [@typeInfo(DescriptorType).Enum.fields.len]usize = [1]usize{0} ** @typeInfo(DescriptorType).Enum.fields.len;
+    for (DescriptorTypes, DespecifiedDescriptorTypes, &set_creation_fields) |t, dt, *field| {
+        const num = duplicateCounts[@intFromEnum(dt)];
+        const specifier: [:0]const u8 = if (num == 0) "" else std.fmt.comptimePrint("_{}", .{num});
+        duplicateCounts[@intFromEnum(dt)] += 1;
         field.* = .{
-            .name = &.{@intCast(n)},
+            .name = @tagName(dt) ++ specifier,
             .is_comptime = false,
             .default_value = null,
             .type = t,
@@ -59,19 +91,17 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             return out;
         }
 
-        pub fn allocatePool(self: *@This(), inst: instance.Instance, descriptors: SetCreationType) DescriptorSetError!void {
+        pub fn allocatePool(self: *@This(), inst: instance.Instance) DescriptorSetError!void {
             var pool_sizes: [type_num]c.VkDescriptorPoolSize = undefined;
             var max_sets: u32 = 0;
-            inline for (&pool_sizes, DescriptorTypes, DescriptorInternalTypes, 'a'..) |*size, DType, DInternType, name| {
-                size.descriptorCount = @field(descriptors, &.{name}).num;
+            const fields = @typeInfo(SetCreationType).Struct.fields;
+            inline for (&pool_sizes, DespecifiedDescriptorTypes, fields) |*size, DType, field| {
+                size.descriptorCount = field.num;
                 if (max_sets < size.descriptorCount) max_sets = size.descriptorCount;
 
-                size.type = if (DInternType) |InternT| switch (DType) {
-                    UniformBuffer(InternT) => c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    else => unreachable,
-                } else switch (DType) {
-                    StorageImage => c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    else => @compileError("Invalid Descriptor"),
+                size.type = switch (DType) {
+                    .UniformBuffer => c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .StorageImage => c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 };
             }
 
@@ -109,7 +139,7 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
             try updateDescriptorSets(
                 .{
                     .DescriptorTypes = DescriptorTypes,
-                    .DescriptorInternalTypes = DescriptorInternalTypes,
+                    .DescriptorInternalTypes = DespecifiedDescriptorTypes,
                     .SetCreationType = SetCreationType,
                     .type_num = type_num,
                 },
@@ -132,7 +162,7 @@ pub fn DescriptorSet(DescriptorTypes: []const type, DescriptorInternalTypes: []c
 
 const DescriptorComptimeInfo = struct {
     DescriptorTypes: []const type,
-    DescriptorInternalTypes: []const ?type,
+    DespecifiedDescriptorTypes: []const DescriptorType,
     SetCreationType: type,
     type_num: comptime_int,
 };
@@ -152,14 +182,14 @@ fn updateDescriptorSets(
 
         inline for (
             comptime_info.DescriptorTypes,
-            comptime_info.DescriptorInternalTypes,
+            comptime_info.DespecifiedDescriptorTypes,
             'a'..,
             &descriptor_writes,
-        ) |DType, DInternType, field_name, *d_write| {
+        ) |DType, DDType, field_name, *d_write| {
             const descriptor: DType = @field(descriptors, &.{field_name});
             d_write.* = try descriptorWrite(
                 DType,
-                DInternType,
+                DDType,
                 alloc_arena.allocator(),
                 descriptor,
                 vk_descriptor_sets[i],
@@ -179,60 +209,53 @@ fn updateDescriptorSets(
 
 fn descriptorWrite(
     DType: type,
-    DInternType: ?type,
+    comptime DDType: DescriptorType,
     arena_alloc: Allocator,
     descriptor: DType,
     vk_descriptor_set: c.VkDescriptorSet,
     index: usize,
 ) Allocator.Error!c.VkWriteDescriptorSet {
-    if (DInternType) |InternT| {
-        switch (DType) {
-            UniformBuffer(InternT) => {
-                const descriptor_buff_info = try arena_alloc.create(c.VkDescriptorBufferInfo);
-                descriptor_buff_info.* = .{
-                    .buffer = descriptor.gpu_buffers[index],
-                    .offset = 0,
-                    .range = @sizeOf(DInternType.?),
-                };
+    switch (DDType) {
+        .UniformBuffer => {
+            const descriptor_buff_info = try arena_alloc.create(c.VkDescriptorBufferInfo);
+            descriptor_buff_info.* = .{
+                .buffer = descriptor.gpu_buffers[index],
+                .offset = 0,
+                .range = descriptor.intern_size,
+            };
 
-                return .{
-                    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = vk_descriptor_set,
-                    .dstBinding = descriptor.descriptor_set_binding.binding,
-                    .dstArrayElement = 0,
-                    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .pBufferInfo = descriptor_buff_info,
-                    .pImageInfo = null,
-                    .pTexelBufferView = null,
-                };
-            },
-            else => unreachable,
-        }
-    } else {
-        switch (DType) {
-            StorageImage => {
-                const image_info = try arena_alloc.create(c.VkDescriptorImageInfo);
-                image_info.* = .{
-                    .imageLayout = c.VK_IMAGE_LAYOUT_GENERAL,
-                    .imageView = descriptor.view,
-                    .sampler = descriptor.sampler,
-                };
+            return .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = vk_descriptor_set,
+                .dstBinding = descriptor.descriptor_set_binding.binding,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = descriptor_buff_info,
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            };
+        },
+        .StorageImage => {
+            const image_info = try arena_alloc.create(c.VkDescriptorImageInfo);
+            image_info.* = .{
+                .imageLayout = c.VK_IMAGE_LAYOUT_GENERAL,
+                .imageView = descriptor.view,
+                .sampler = descriptor.sampler,
+            };
 
-                return .{
-                    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = vk_descriptor_set,
-                    .dstBinding = descriptor.descriptor_set_binding.binding,
-                    .dstArrayElement = 0,
-                    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .pBufferInfo = null,
-                    .pImageInfo = image_info,
-                    .pTexelBufferView = null,
-                };
-            },
-            else => unreachable,
-        }
+            return .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = vk_descriptor_set,
+                .dstBinding = descriptor.descriptor_set_binding.binding,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = image_info,
+                .pTexelBufferView = null,
+            };
+        },
     }
 }
 
@@ -240,6 +263,7 @@ pub const UniformBufferError = error{descriptor_set_layout_creation_failed} || A
 
 pub fn UniformBuffer(UniformBufferObjectType: type) type {
     return struct {
+        intern_size: comptime_int = @sizeOf(type),
         num: u32,
         cpu_state: UniformBufferObjectType,
         gpu_buffers: []c.VkBuffer,
