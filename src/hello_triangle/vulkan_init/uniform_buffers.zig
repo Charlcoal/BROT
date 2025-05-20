@@ -29,7 +29,7 @@ pub fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanE
             0,
             buffer_size,
             0,
-            &data.uniform_buffers_mapped[i],
+            @ptrCast(&data.uniform_buffers_mapped[i]),
         );
     }
 }
