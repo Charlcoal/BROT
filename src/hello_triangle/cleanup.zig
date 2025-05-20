@@ -20,6 +20,20 @@ pub fn cleanupSwapChain(data: common.AppData, alloc: Allocator) void {
 
 pub fn cleanup(data: common.AppData, alloc: Allocator) void {
     //vulkan
+    for (0..common.max_frames_in_flight) |i| {
+        glfw.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
+        glfw.vkDestroyFence(data.device, data.in_flight_fences[i], null);
+    }
+    for (data.render_finished_semaphores) |sem| {
+        glfw.vkDestroySemaphore(data.device, sem, null);
+    }
+    alloc.free(data.image_availible_semaphores);
+    alloc.free(data.render_finished_semaphores);
+    alloc.free(data.in_flight_fences);
+
+    glfw.vkDestroyCommandPool(data.device, data.command_pool, null);
+    alloc.free(data.command_buffers);
+
     cleanupSwapChain(data, alloc);
 
     for (0..common.max_frames_in_flight) |i| {
@@ -38,18 +52,6 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
     glfw.vkDestroyPipelineLayout(data.device, data.pipeline_layout, null);
 
     glfw.vkDestroyRenderPass(data.device, data.render_pass, null);
-
-    for (0..common.max_frames_in_flight) |i| {
-        glfw.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
-        glfw.vkDestroySemaphore(data.device, data.render_finished_semaphores[i], null);
-        glfw.vkDestroyFence(data.device, data.in_flight_fences[i], null);
-    }
-    alloc.free(data.image_availible_semaphores);
-    alloc.free(data.render_finished_semaphores);
-    alloc.free(data.in_flight_fences);
-
-    glfw.vkDestroyCommandPool(data.device, data.command_pool, null);
-    alloc.free(data.command_buffers);
 
     glfw.vkDestroyDevice(data.device, null);
 

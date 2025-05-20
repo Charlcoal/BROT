@@ -91,6 +91,7 @@ pub const AppData = struct {
     render_finished_semaphores: []glfw.VkSemaphore = undefined,
     in_flight_fences: []glfw.VkFence = undefined,
     current_frame: u32 = 0,
+    current_swap_image: u32 = 0,
     frame_buffer_resized: bool = false,
 
     current_uniform_state: UniformBufferObject,

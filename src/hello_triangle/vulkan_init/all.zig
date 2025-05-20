@@ -31,6 +31,7 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try pickPhysicalDevice(data, alloc);
     try createLogicalDevice(data, alloc);
     try createSwapChain(data, alloc);
+    std.debug.print("# of swap_chain images: {d}\n", .{data.swap_chain_images.len});
     try createImageViews(data, alloc);
     try createRenderPass(data);
     try createDescriptorSetLayout(data);
@@ -49,6 +50,7 @@ pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanErro
     var height: c_int = 0;
     glfw.glfwGetFramebufferSize(data.window, &width, &height);
     while (width == 0 or height == 0) {
+        if (glfw.glfwWindowShouldClose(data.window) != 0) return; // for closing while minimized
         glfw.glfwGetFramebufferSize(data.window, &width, &height);
         glfw.glfwWaitEvents();
     }

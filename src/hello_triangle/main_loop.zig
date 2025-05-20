@@ -18,6 +18,8 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], glfw.VK_TRUE, std.math.maxInt(u64));
 
+    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
+
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
         std.time.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
@@ -45,8 +47,6 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
 
-    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
-
     _ = glfw.vkResetCommandBuffer(data.command_buffers[data.current_frame], 0);
     try recordCommandBuffer(data.*, data.command_buffers[data.current_frame], image_index);
 
@@ -54,7 +54,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 
     const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
     const wait_stages = [_]glfw.VkPipelineStageFlags{glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    const signal_semaphors = [_]glfw.VkSemaphore{data.render_finished_semaphores[data.current_frame]};
+    const signal_semaphors = [_]glfw.VkSemaphore{data.render_finished_semaphores[data.current_swap_image]};
     const submit_info: glfw.VkSubmitInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = @intCast(wait_semaphors.len),
@@ -83,6 +83,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 
     _ = glfw.vkQueuePresentKHR(data.present_queue, &present_info);
     data.current_frame = (data.current_frame + 1) % common.max_frames_in_flight;
+    data.current_swap_image = (data.current_swap_image + 1) % @as(u32, @intCast(data.swap_chain_images.len));
 
     if (result == glfw.VK_ERROR_OUT_OF_DATE_KHR or result == glfw.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
         data.frame_buffer_resized = false;

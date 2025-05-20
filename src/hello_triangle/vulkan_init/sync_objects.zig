@@ -7,7 +7,7 @@ const InitVulkanError = common.InitVulkanError;
 
 pub fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     data.image_availible_semaphores = try alloc.alloc(glfw.VkSemaphore, common.max_frames_in_flight);
-    data.render_finished_semaphores = try alloc.alloc(glfw.VkSemaphore, common.max_frames_in_flight);
+    data.render_finished_semaphores = try alloc.alloc(glfw.VkSemaphore, data.swap_chain_images.len);
     data.in_flight_fences = try alloc.alloc(glfw.VkFence, common.max_frames_in_flight);
 
     const semaphore_info: glfw.VkSemaphoreCreateInfo = .{
@@ -21,9 +21,14 @@ pub fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanErro
 
     for (0..common.max_frames_in_flight) |i| {
         if (glfw.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != glfw.VK_SUCCESS or
-            glfw.vkCreateSemaphore(data.device, &semaphore_info, null, &data.render_finished_semaphores[i]) != glfw.VK_SUCCESS or
             glfw.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fences[i]) != glfw.VK_SUCCESS)
         {
+            return InitVulkanError.semaphore_creation_failed;
+        }
+    }
+
+    for (data.render_finished_semaphores) |*sem| {
+        if (glfw.vkCreateSemaphore(data.device, &semaphore_info, null, sem) != glfw.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
