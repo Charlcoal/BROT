@@ -33,10 +33,11 @@ void main() {
     }
 
     if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
-    	outColor = vec4(0.0, 1.0, 1.0, 1.0);
+    	outColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
-		float neg_log_potential = count - log2(log2(x_sqr + y_sqr) / 2.0f);
-    	outColor = vec4(neg_log_potential / float(max_count), 0.0, 0.0, 1.0);
+		float neg_log_potential = max(0, count - log2(log2(x_sqr + y_sqr) / 2.0f));
+		float portion = neg_log_potential / float(max_count);
+    	outColor = vec4(sin(portion * 60.0f - 0.8f) / 2.0f + 0.5f, sin(portion * 60.0f - 1.6f) / 2.0f + 0.5f, 0.0, 1.0);
 	}
 
 }
