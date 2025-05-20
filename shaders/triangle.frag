@@ -10,25 +10,30 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 void main() {
-    const int max_count = 1000;
+    const int max_count = 5000;
 	const float escape_radius = 1e8;
-    vec2 a = fragLoc * ubo.height_scale + ubo.center;
-    a.x *= ubo.width_to_height_ratio;
-    vec2 pos = vec2(0.0, 0.0);
+	const float interior_test_e_sqr = 1e-6;
+    vec2 c = fragLoc * ubo.height_scale + ubo.center;
+    c.x *= ubo.width_to_height_ratio;
+    vec2 pos = c;
 
-    int count = 0;
+    int count = 1;
     float x_sqr = pos.x * pos.x;
     float y_sqr = pos.y * pos.y;
-    while (x_sqr + y_sqr < escape_radius * escape_radius && count < max_count) {
-        pos.y = 2.0 * pos.x * pos.y + a.y;
-        pos.x = x_sqr - y_sqr + a.x;
+	float rad_sqr = x_sqr + y_sqr;
+	float interior_test_sqr = rad_sqr;
+    while (rad_sqr < escape_radius * escape_radius && count < max_count && interior_test_sqr > interior_test_e_sqr) {
+        pos.y = 2.0 * pos.x * pos.y + c.y;
+        pos.x = x_sqr - y_sqr + c.x;
         x_sqr = pos.x * pos.x;
         y_sqr = pos.y * pos.y;
+		rad_sqr = x_sqr + y_sqr;
+		interior_test_sqr *= 4.0 * rad_sqr;
         count++;
     }
 
-    if (x_sqr + y_sqr <= 4.0) {
-    	outColor = vec4(0.0, 0.0, 0.0, 1.0);
+    if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
+    	outColor = vec4(0.0, 1.0, 1.0, 1.0);
     } else {
 		float neg_log_potential = count - log2(log2(x_sqr + y_sqr) / 2.0f);
     	outColor = vec4(neg_log_potential / float(max_count), 0.0, 0.0, 1.0);
