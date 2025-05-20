@@ -25,7 +25,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         std.time.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
         delta_time = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     } else {
-        std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
+        //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
     }
     //std.debug.print("time: {d:.3}\n", .{delta_time});
     data.prev_time = data.time.read();

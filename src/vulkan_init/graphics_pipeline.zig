@@ -5,14 +5,12 @@ const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
 
-pub fn createGraphicsPipeline(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const vert_code = try common.readFile("src/hello_triangle/shaders/triangle_vert.spv", alloc, 4);
-    const frag_code = try common.readFile("src/hello_triangle/shaders/triangle_frag.spv", alloc, 4);
-    defer alloc.free(vert_code);
-    defer alloc.free(frag_code);
+const vert_code align(4) = @embedFile("triangle_vert_shader").*;
+const frag_code align(4) = @embedFile("triangle_frag_shader").*;
 
-    const vert_shader_module = try createShaderModule(data.*, vert_code);
-    const frag_shader_module = try createShaderModule(data.*, frag_code);
+pub fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
+    const vert_shader_module = try createShaderModule(data.*, &vert_code);
+    const frag_shader_module = try createShaderModule(data.*, &frag_code);
     defer _ = glfw.vkDestroyShaderModule(data.device, vert_shader_module, null);
     defer _ = glfw.vkDestroyShaderModule(data.device, frag_shader_module, null);
 

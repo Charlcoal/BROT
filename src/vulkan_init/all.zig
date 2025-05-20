@@ -31,11 +31,10 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try pickPhysicalDevice(data, alloc);
     try createLogicalDevice(data, alloc);
     try createSwapChain(data, alloc);
-    std.debug.print("# of swap_chain images: {d}\n", .{data.swap_chain_images.len});
     try createImageViews(data, alloc);
     try createRenderPass(data);
     try createDescriptorSetLayout(data);
-    try createGraphicsPipeline(data, alloc);
+    try createGraphicsPipeline(data);
     try createFrameBuffers(data, alloc);
     try createCommandPool(data, alloc);
     try createUniformBuffers(data, alloc);
