@@ -13,8 +13,9 @@ void main() {
     const int max_count = 5000;
 	const float escape_radius = 1e8;
 	const float interior_test_e_sqr = 1e-6;
-    vec2 c = fragLoc * ubo.height_scale + ubo.center;
+    vec2 c = fragLoc * ubo.height_scale;
     c.x *= ubo.width_to_height_ratio;
+	c += ubo.center;
     vec2 pos = c;
 
     int count = 1;
