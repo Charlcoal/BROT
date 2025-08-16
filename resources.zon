@@ -1,6 +1,0 @@
-.{
-    .shaders = .{
-        "triangle.frag",
-        "triangle.vert",
-    },
-}
