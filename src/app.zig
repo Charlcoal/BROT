@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const common = @import("common_defs.zig");
 
 const window_init = @import("window_init.zig");
-const vulkan_init = @import("vulkan_init/all.zig");
+const vulkan_init = @import("vulkan_init.zig");
 const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
 

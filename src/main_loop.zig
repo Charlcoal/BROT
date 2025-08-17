@@ -1,6 +1,6 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
-const vulkan_init = @import("vulkan_init/all.zig");
+const vulkan_init = @import("vulkan_init.zig");
 const glfw = common.glfw;
 
 const MainLoopError = common.MainLoopError;
