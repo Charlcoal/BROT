@@ -73,18 +73,26 @@ fn populateDebugMessengerCreateInfo(create_info: *glfw.VkDebugUtilsMessengerCrea
 }
 
 const QueueFamilyIndices = struct {
-    graphics_and_compute_family: ?u32,
+    graphics_family: ?u32,
+    graphics_max_queues: u32,
+    compute_family: ?u32,
+    compute_max_queues: u32,
     present_family: ?u32,
+    present_max_queues: u32,
 
     pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_and_compute_family != null and self.present_family != null;
+        return self.graphics_family != null and self.present_family != null and self.compute_family != null;
     }
 };
 
 fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
-        .graphics_and_compute_family = null,
+        .graphics_family = null,
+        .compute_family = null,
         .present_family = null,
+        .graphics_max_queues = 0,
+        .present_max_queues = 0,
+        .compute_max_queues = 0,
     };
 
     var queue_family_count: u32 = 0;
@@ -95,18 +103,25 @@ fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc:
     _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
     for (queue_families, 0..) |queueFamily, i| {
-        if ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) and (queueFamily.queueFlags & glfw.VK_QUEUE_COMPUTE_BIT != 0)) {
-            indices.graphics_and_compute_family = @intCast(i);
+        if ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) and indices.graphics_family == null) {
+            indices.graphics_family = @intCast(i);
+            indices.graphics_max_queues = queueFamily.queueCount;
+        }
+
+        if ((queueFamily.queueFlags & glfw.VK_QUEUE_COMPUTE_BIT != 0) and (indices.compute_family == null or
+            ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT == 0) and (queue_families[indices.compute_family.?].queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0))))
+        {
+            indices.compute_family = @intCast(i);
+            indices.compute_max_queues = queueFamily.queueCount;
         }
 
         var present_support: glfw.VkBool32 = glfw.VK_FALSE;
         _ = glfw.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), data.surface, &present_support);
 
-        if (present_support != glfw.VK_FALSE) {
+        if ((present_support != glfw.VK_FALSE) and indices.present_family == null) {
             indices.present_family = @intCast(i);
+            indices.present_max_queues = queueFamily.queueCount;
         }
-
-        if (indices.isComplete()) break;
     }
     return indices;
 }
@@ -245,7 +260,7 @@ fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
     const pool_info: glfw.VkCommandPoolCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = glfw.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family_indices.graphics_and_compute_family.?,
+        .queueFamilyIndex = queue_family_indices.graphics_family.?,
     };
 
     if (glfw.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != glfw.VK_SUCCESS) {
@@ -725,13 +740,28 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
 fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const indicies = try findQueueFamilies(data.*, data.physical_device, alloc);
 
-    var unique_queue_families = [_]u32{ indicies.graphics_and_compute_family.?, indicies.present_family.? };
+    var unique_queue_families = [_]u32{ indicies.graphics_family.?, indicies.compute_family.?, indicies.present_family.? };
+    const max_queues = [unique_queue_families.len]u32{ indicies.graphics_max_queues, indicies.compute_max_queues, indicies.present_max_queues };
+    var num_required_queues = [unique_queue_families.len]u32{ 1, 1, 1 };
     var unique_queue_num: u32 = 0;
 
-    outer: for (unique_queue_families) |queue_family| {
-        for (unique_queue_families[0..unique_queue_num]) |existing_unique_queue_family| {
-            if (existing_unique_queue_family == queue_family) continue :outer;
+    var queue_family_property_count: u32 = 0;
+    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, null);
+
+    const queue_family_properties = try alloc.alloc(glfw.VkQueueFamilyProperties, queue_family_property_count);
+    defer alloc.free(queue_family_properties);
+    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, queue_family_properties.ptr);
+
+    outer: for (unique_queue_families, &num_required_queues, max_queues) |queue_family, *num_req_queues, max_queue| {
+        for (unique_queue_families[0..unique_queue_num], num_required_queues[0..unique_queue_num]) |existing_unique_queue_family, *existing_num_req_queues| {
+            if (existing_unique_queue_family == queue_family) {
+                existing_num_req_queues.* += num_req_queues.*;
+                existing_num_req_queues.* = @min(existing_num_req_queues.*, max_queue);
+                num_req_queues.* = 0;
+                continue :outer;
+            }
         }
+        num_required_queues[unique_queue_num] = @min(num_req_queues.*, max_queue);
         unique_queue_families[unique_queue_num] = queue_family;
         unique_queue_num += 1;
     }
@@ -739,21 +769,13 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
     const queue_create_infos = try alloc.alloc(glfw.VkDeviceQueueCreateInfo, unique_queue_num);
     defer alloc.free(queue_create_infos);
 
-    const queue_priority: f32 = 1;
-    for (unique_queue_families[0..unique_queue_num], queue_create_infos) |queue_family, *queue_create_info| {
-        queue_create_info.* = if (queue_family == indicies.graphics_and_compute_family.?) gcqci: {
-            const queue_priorities = [_]f32{ 0, 1 };
-            break :gcqci .{
-                .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                .queueFamilyIndex = queue_family,
-                .queueCount = queue_priorities.len,
-                .pQueuePriorities = &queue_priorities,
-            };
-        } else .{
+    const queue_priority: [2]f32 = .{ 1, 0 };
+    for (unique_queue_families[0..unique_queue_num], queue_create_infos, num_required_queues[0..unique_queue_num]) |queue_family, *queue_create_info, num_queues| {
+        queue_create_info.* = .{
             .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
-            .queueCount = 1,
-            .pQueuePriorities = &queue_priority,
+            .queueCount = num_queues,
+            .pQueuePriorities = if (queue_family == indicies.compute_family and queue_family != indicies.graphics_family) &queue_priority[1] else &queue_priority,
         };
     }
 
@@ -779,9 +801,13 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_and_compute_family.?, 0, &data.graphics_queue);
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_and_compute_family.?, 1, &data.compute_queue);
+    glfw.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
     glfw.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
+    if (indicies.graphics_family.? == indicies.compute_family.? and indicies.graphics_max_queues >= 2) {
+        glfw.vkGetDeviceQueue(data.device, indicies.compute_family.?, 1, &data.compute_queue);
+    } else {
+        glfw.vkGetDeviceQueue(data.device, indicies.compute_family.?, 0, &data.compute_queue);
+    }
 }
 
 fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
@@ -917,9 +943,9 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
     };
 
     const indices = try findQueueFamilies(data.*, data.physical_device, alloc);
-    const queue_family_indices = [_]u32{ indices.graphics_and_compute_family.?, indices.present_family.? };
+    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
 
-    if (indices.graphics_and_compute_family != indices.present_family) {
+    if (indices.graphics_family != indices.present_family) {
         create_info.imageSharingMode = glfw.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;
