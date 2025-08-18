@@ -1,6 +1,6 @@
 const std = @import("std");
 const Resources = struct {
-    shaders: [2][]const u8,
+    shaders: [3][]const u8,
 };
 const resources: Resources = @import("resources.zon");
 

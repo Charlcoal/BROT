@@ -1,0 +1,47 @@
+#version 450
+
+layout(binding = 0) uniform UniformBufferObject {
+    vec2 center;
+    uvec2 resolution;
+    float height_scale;
+} ubo;
+layout(std430, binding = 1) buffer storage {
+    float neg_log_potentials[];
+};
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+void main() {
+    const int max_count = 5000;
+	const float escape_radius = 1e8;
+	const float interior_test_e_sqr = 1e-6;
+
+    uvec2 screen_loc = gl_GlobalInvocationID.xy;
+    vec2 c = 2.0 * screen_loc / vec2(float(ubo.resolution.y));
+    c -= vec2(1.0);
+    c *= ubo.height_scale;
+	c += ubo.center;
+    vec2 pos = c;
+
+    //neg_log_potentials[screen_loc.x + screen_loc.y * ubo.resolution.x] = abs(pos.x) + abs(pos.y);
+    
+    int count = 1;
+    float x_sqr = pos.x * pos.x;
+    float y_sqr = pos.y * pos.y;
+	float rad_sqr = x_sqr + y_sqr;
+	float interior_test_sqr = rad_sqr;
+    while (rad_sqr < escape_radius * escape_radius && count < max_count && interior_test_sqr > interior_test_e_sqr) {
+        pos.y = 2.0 * pos.x * pos.y + c.y;
+        pos.x = x_sqr - y_sqr + c.x;
+        x_sqr = pos.x * pos.x;
+        y_sqr = pos.y * pos.y;
+		rad_sqr = x_sqr + y_sqr;
+		interior_test_sqr *= 4.0 * rad_sqr;
+        count++;
+    }
+
+    if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
+        neg_log_potentials[screen_loc.x + screen_loc.y * ubo.resolution.x] = -1;
+    } else {
+		neg_log_potentials[screen_loc.x + screen_loc.y * ubo.resolution.x] = max(0, count - log2(log2(x_sqr + y_sqr) / 2.0f));
+	}
+}

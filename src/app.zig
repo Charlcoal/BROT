@@ -19,10 +19,9 @@ pub fn run(alloc: Allocator) Error!void {
         .width = 800,
         .height = 600,
         .current_uniform_state = .{
-            .center_x = 0.0,
-            .center_y = 0.0,
+            .center = .{ 0.0, 0.0 },
+            .resolution = .{ 800, 600 },
             .height_scale = 2.0,
-            .width_to_height_ratio = 8.0 / 6.0,
         },
         .time = try std.time.Timer.start(),
         .prev_time = 0,

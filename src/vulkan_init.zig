@@ -8,6 +8,7 @@ const InitVulkanError = common.InitVulkanError;
 
 const vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const frag_code align(4) = @embedFile("triangle_frag_shader").*;
+const comp_code align(4) = @embedFile("mandelbrot_comp_shader").*;
 
 pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     try createInstance(data, alloc);
@@ -24,11 +25,14 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createRenderPass(data);
     try createDescriptorSetLayout(data);
     try createGraphicsPipeline(data);
+    try createComputePipeline(data);
     try createFrameBuffers(data, alloc);
     try createCommandPool(data, alloc);
+    try createStorageBuffer(data);
     try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
+    try createComputeCommandBuffer(data);
     try createCommandBuffers(data, alloc);
     try createSyncObjects(data, alloc);
 }
@@ -69,17 +73,17 @@ fn populateDebugMessengerCreateInfo(create_info: *glfw.VkDebugUtilsMessengerCrea
 }
 
 const QueueFamilyIndices = struct {
-    graphics_family: ?u32,
+    graphics_and_compute_family: ?u32,
     present_family: ?u32,
 
     pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_family != null and self.present_family != null;
+        return self.graphics_and_compute_family != null and self.present_family != null;
     }
 };
 
 fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
-        .graphics_family = null,
+        .graphics_and_compute_family = null,
         .present_family = null,
     };
 
@@ -91,8 +95,8 @@ fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc:
     _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
     for (queue_families, 0..) |queueFamily, i| {
-        if (queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) {
-            indices.graphics_family = @intCast(i);
+        if ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) and (queueFamily.queueFlags & glfw.VK_QUEUE_COMPUTE_BIT != 0)) {
+            indices.graphics_and_compute_family = @intCast(i);
         }
 
         var present_support: glfw.VkBool32 = glfw.VK_FALSE;
@@ -222,13 +226,26 @@ fn createCommandBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError
     }
 }
 
+fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
+    const alloc_info: glfw.VkCommandBufferAllocateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = data.command_pool,
+        .level = glfw.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    if (glfw.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffer) != glfw.VK_SUCCESS) {
+        return InitVulkanError.command_buffer_allocation_failed;
+    }
+}
+
 fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
 
     const pool_info: glfw.VkCommandPoolCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = glfw.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family_indices.graphics_family.?,
+        .queueFamilyIndex = queue_family_indices.graphics_and_compute_family.?,
     };
 
     if (glfw.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != glfw.VK_SUCCESS) {
@@ -262,9 +279,13 @@ fn createDebugUtilsMessengerEXT(
 }
 
 fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
-    const pool_sizes: [1]glfw.VkDescriptorPoolSize = .{
+    const pool_sizes = [_]glfw.VkDescriptorPoolSize{
         .{
             .type = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = @intCast(common.max_frames_in_flight),
+        },
+        .{
+            .type = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = @intCast(common.max_frames_in_flight),
         },
         //.{
@@ -286,18 +307,24 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
 }
 
 fn createDescriptorSetLayout(data: *common.AppData) InitVulkanError!void {
-    const ubo_layout_binding: glfw.VkDescriptorSetLayoutBinding = .{
+    const bindings = [_]glfw.VkDescriptorSetLayoutBinding{ .{
         .binding = 0,
         .descriptorType = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
-        .stageFlags = glfw.VK_SHADER_STAGE_FRAGMENT_BIT,
+        .stageFlags = glfw.VK_SHADER_STAGE_FRAGMENT_BIT | glfw.VK_SHADER_STAGE_COMPUTE_BIT,
         .pImmutableSamplers = null,
-    };
+    }, .{
+        .binding = 1,
+        .descriptorType = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = glfw.VK_SHADER_STAGE_FRAGMENT_BIT | glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = null,
+    } };
 
     var layout_info: glfw.VkDescriptorSetLayoutCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &ubo_layout_binding,
+        .bindingCount = bindings.len,
+        .pBindings = &bindings,
     };
 
     if (glfw.vkCreateDescriptorSetLayout(data.device, &layout_info, null, &data.descriptor_set_layout) != glfw.VK_SUCCESS) {
@@ -325,10 +352,16 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
     }
 
     for (0..common.max_frames_in_flight) |i| {
-        const buffer_info: glfw.VkDescriptorBufferInfo = .{
+        const uniform_buffer_info: glfw.VkDescriptorBufferInfo = .{
             .buffer = data.uniform_buffers[i],
             .offset = 0,
             .range = @sizeOf(common.UniformBufferObject),
+        };
+
+        const storage_buffer_info: glfw.VkDescriptorBufferInfo = .{
+            .buffer = data.storage_buffer,
+            .offset = 0,
+            .range = data.storage_buffer_size,
         };
 
         //const image_info: glfw.VkDescriptorImageInfo = .{
@@ -337,7 +370,7 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
         //    .sampler = data.texture_sampler,
         //};
 
-        const descriptor_writes: [1]glfw.VkWriteDescriptorSet = .{
+        const descriptor_writes = [_]glfw.VkWriteDescriptorSet{
             .{
                 .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = data.descriptor_sets[i],
@@ -345,9 +378,18 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
                 .dstArrayElement = 0,
                 .descriptorType = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
-                .pBufferInfo = &buffer_info,
+                .pBufferInfo = &uniform_buffer_info,
                 .pImageInfo = null,
                 .pTexelBufferView = null,
+            },
+            .{
+                .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = data.descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &storage_buffer_info,
             },
             //.{
             //    .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -385,6 +427,39 @@ fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!v
         if (glfw.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != glfw.VK_SUCCESS) {
             return InitVulkanError.framebuffer_creation_failed;
         }
+    }
+}
+
+fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
+    const comp_shader_module = try createShaderModule(data.*, &comp_code);
+    defer _ = glfw.vkDestroyShaderModule(data.device, comp_shader_module, null);
+
+    const comp_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = comp_shader_module,
+        .pName = "main",
+    };
+
+    const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &data.descriptor_set_layout,
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = null,
+    };
+    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.compute_pipeline_layout) != glfw.VK_SUCCESS) {
+        return InitVulkanError.pipeline_layout_creation_failed;
+    }
+
+    const pipeline_info: glfw.VkComputePipelineCreateInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .layout = data.compute_pipeline_layout,
+        .stage = comp_shader_stage_info,
+    };
+
+    if (glfw.vkCreateComputePipelines(data.device, @ptrCast(glfw.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.compute_pipeline) != glfw.VK_SUCCESS) {
+        return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
@@ -499,7 +574,7 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
 
     const pipeline_info: glfw.VkGraphicsPipelineCreateInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount = 2,
+        .stageCount = shader_stages.len,
         .pStages = &shader_stages,
         .pVertexInputState = &vertex_input_info,
         .pInputAssemblyState = &input_assembly,
@@ -650,7 +725,7 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
 fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const indicies = try findQueueFamilies(data.*, data.physical_device, alloc);
 
-    var unique_queue_families: [2]u32 = .{ indicies.graphics_family.?, indicies.present_family.? };
+    var unique_queue_families = [_]u32{ indicies.graphics_and_compute_family.?, indicies.present_family.? };
     var unique_queue_num: u32 = 0;
 
     outer: for (unique_queue_families) |queue_family| {
@@ -666,7 +741,15 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
 
     const queue_priority: f32 = 1;
     for (unique_queue_families[0..unique_queue_num], queue_create_infos) |queue_family, *queue_create_info| {
-        queue_create_info.* = .{
+        queue_create_info.* = if (queue_family == indicies.graphics_and_compute_family.?) gcqci: {
+            const queue_priorities = [_]f32{ 0, 1 };
+            break :gcqci .{
+                .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                .queueFamilyIndex = queue_family,
+                .queueCount = queue_priorities.len,
+                .pQueuePriorities = &queue_priorities,
+            };
+        } else .{
             .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
             .queueCount = 1,
@@ -696,7 +779,8 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
+    glfw.vkGetDeviceQueue(data.device, indicies.graphics_and_compute_family.?, 0, &data.graphics_queue);
+    glfw.vkGetDeviceQueue(data.device, indicies.graphics_and_compute_family.?, 1, &data.compute_queue);
     glfw.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
 }
 
@@ -833,9 +917,9 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
     };
 
     const indices = try findQueueFamilies(data.*, data.physical_device, alloc);
-    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+    const queue_family_indices = [_]u32{ indices.graphics_and_compute_family.?, indices.present_family.? };
 
-    if (indices.graphics_family != indices.present_family) {
+    if (indices.graphics_and_compute_family != indices.present_family) {
         create_info.imageSharingMode = glfw.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;
@@ -921,6 +1005,10 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         .flags = glfw.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
+    if (glfw.vkCreateFence(data.device, &fence_info, null, &data.compute_fence) != glfw.VK_SUCCESS) {
+        return InitVulkanError.semaphore_creation_failed;
+    }
+
     for (0..common.max_frames_in_flight) |i| {
         if (glfw.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != glfw.VK_SUCCESS or
             glfw.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fences[i]) != glfw.VK_SUCCESS)
@@ -962,4 +1050,18 @@ fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError
             @ptrCast(&data.uniform_buffers_mapped[i]),
         );
     }
+}
+
+fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
+    const video_mode = glfw.glfwGetVideoMode(glfw.glfwGetPrimaryMonitor());
+    data.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
+
+    try createBuffer(
+        data,
+        data.storage_buffer_size,
+        glfw.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        glfw.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &data.storage_buffer,
+        &data.storage_buffer_memory,
+    );
 }

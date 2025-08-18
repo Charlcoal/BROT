@@ -24,6 +24,7 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
         glfw.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
         glfw.vkDestroyFence(data.device, data.in_flight_fences[i], null);
     }
+    glfw.vkDestroyFence(data.device, data.compute_fence, null);
     for (data.render_finished_semaphores) |sem| {
         glfw.vkDestroySemaphore(data.device, sem, null);
     }
@@ -44,12 +45,17 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
     alloc.free(data.uniform_buffers_memory);
     alloc.free(data.uniform_buffers_mapped);
 
+    glfw.vkDestroyBuffer(data.device, data.storage_buffer, null);
+    glfw.vkFreeMemory(data.device, data.storage_buffer_memory, null);
+
     glfw.vkDestroyDescriptorPool(data.device, data.descriptor_pool, null);
     glfw.vkDestroyDescriptorSetLayout(data.device, data.descriptor_set_layout, null);
     alloc.free(data.descriptor_sets);
 
     glfw.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
+    glfw.vkDestroyPipeline(data.device, data.compute_pipeline, null);
     glfw.vkDestroyPipelineLayout(data.device, data.pipeline_layout, null);
+    glfw.vkDestroyPipelineLayout(data.device, data.compute_pipeline_layout, null);
 
     glfw.vkDestroyRenderPass(data.device, data.render_pass, null);
 

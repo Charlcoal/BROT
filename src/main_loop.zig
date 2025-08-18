@@ -47,13 +47,37 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
 
+    updateUniformBuffer(data, data.current_frame);
+
+    if (glfw.vkGetFenceStatus(data.device, data.compute_fence) == glfw.VK_SUCCESS) {
+        //std.debug.print("starting compute\n", .{});
+        _ = glfw.vkResetFences(data.device, 1, &data.compute_fence);
+
+        _ = glfw.vkResetCommandBuffer(data.compute_command_buffer, 0);
+        try recordComputeCommandBuffer(data.*, data.compute_command_buffer, data.current_frame);
+
+        const wait_stages: u32 = 0;
+        const submit_info: glfw.VkSubmitInfo = .{
+            .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = null,
+            .pWaitDstStageMask = &wait_stages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &data.compute_command_buffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = null,
+        };
+
+        if (glfw.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != glfw.VK_SUCCESS) {
+            return MainLoopError.draw_command_buffer_submit_failed;
+        }
+    }
+
     _ = glfw.vkResetCommandBuffer(data.command_buffers[data.current_frame], 0);
     try recordCommandBuffer(data.*, data.command_buffers[data.current_frame], image_index);
 
-    updateUniformBuffer(data, data.current_frame);
-
     const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
-    const wait_stages = [_]glfw.VkPipelineStageFlags{glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    const wait_stages: u32 = glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     const signal_semaphors = [_]glfw.VkSemaphore{data.render_finished_semaphores[data.current_swap_image]};
     const submit_info: glfw.VkSubmitInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -91,6 +115,40 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return;
     } else if (result != glfw.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
+    }
+}
+
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw.VkCommandBuffer, image_index: u32) MainLoopError!void {
+    const begin_info: glfw.VkCommandBufferBeginInfo = .{
+        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = 0,
+        .pInheritanceInfo = null,
+    };
+
+    if (glfw.vkBeginCommandBuffer(compute_command_buffer, &begin_info) != glfw.VK_SUCCESS) {
+        return MainLoopError.command_buffer_recording_begin_failed;
+    }
+
+    glfw.vkCmdBindPipeline(
+        compute_command_buffer,
+        glfw.VK_PIPELINE_BIND_POINT_COMPUTE,
+        data.compute_pipeline,
+    );
+    glfw.vkCmdBindDescriptorSets(
+        compute_command_buffer,
+        glfw.VK_PIPELINE_BIND_POINT_COMPUTE,
+        data.compute_pipeline_layout,
+        0,
+        1,
+        &data.descriptor_sets[image_index],
+        0,
+        0,
+    );
+
+    glfw.vkCmdDispatch(compute_command_buffer, @intCast((data.width + 7) >> 3), @intCast((data.height + 7) >> 3), 1);
+
+    if (glfw.vkEndCommandBuffer(compute_command_buffer) != glfw.VK_SUCCESS) {
+        return MainLoopError.command_buffer_record_failed;
     }
 }
 

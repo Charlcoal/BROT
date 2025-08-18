@@ -17,10 +17,9 @@ pub const device_extensions = [_][*:0]const u8{
 };
 
 pub const UniformBufferObject = extern struct {
-    center_x: f32 align(2 * @alignOf(f32)), // x component of vec2 on glsl side
-    center_y: f32,
+    center: @Vector(2, f32),
+    resolution: @Vector(2, u32),
     height_scale: f32,
-    width_to_height_ratio: f32,
 };
 
 pub const target_frame_rate: f64 = 60;
@@ -75,6 +74,7 @@ pub const AppData = struct {
     physical_device: glfw.VkPhysicalDevice = null,
     device: glfw.VkDevice = null,
     graphics_queue: glfw.VkQueue = null,
+    compute_queue: glfw.VkQueue = null,
     present_queue: glfw.VkQueue = null,
     swap_chain: glfw.VkSwapchainKHR = null,
     swap_chain_images: []glfw.VkImage = undefined,
@@ -83,13 +83,17 @@ pub const AppData = struct {
     swap_chain_image_views: []glfw.VkImageView = undefined,
     render_pass: glfw.VkRenderPass = undefined,
     pipeline_layout: glfw.VkPipelineLayout = undefined,
+    compute_pipeline_layout: glfw.VkPipelineLayout = undefined,
     graphics_pipeline: glfw.VkPipeline = undefined,
+    compute_pipeline: glfw.VkPipeline = undefined,
     swap_chain_framebuffers: []glfw.VkFramebuffer = undefined,
     command_pool: glfw.VkCommandPool = undefined,
     command_buffers: []glfw.VkCommandBuffer = undefined,
+    compute_command_buffer: glfw.VkCommandBuffer = undefined,
     image_availible_semaphores: []glfw.VkSemaphore = undefined,
     render_finished_semaphores: []glfw.VkSemaphore = undefined,
     in_flight_fences: []glfw.VkFence = undefined,
+    compute_fence: glfw.VkFence = undefined,
     current_frame: u32 = 0,
     current_swap_image: u32 = 0,
     frame_buffer_resized: bool = false,
@@ -98,6 +102,10 @@ pub const AppData = struct {
     uniform_buffers: []glfw.VkBuffer = undefined,
     uniform_buffers_memory: []glfw.VkDeviceMemory = undefined,
     uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
+
+    storage_buffer_size: u32 = undefined,
+    storage_buffer: glfw.VkBuffer = undefined,
+    storage_buffer_memory: glfw.VkDeviceMemory = undefined,
 
     descriptor_set_layout: glfw.VkDescriptorSetLayout = undefined,
     descriptor_pool: glfw.VkDescriptorPool = undefined,

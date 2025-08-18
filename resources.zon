@@ -2,5 +2,6 @@
     .shaders = .{
         "triangle.frag",
         "triangle.vert",
+        "mandelbrot.comp",
     },
 }
