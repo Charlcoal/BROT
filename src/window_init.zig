@@ -1,36 +1,37 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
-const glfw = common.glfw;
+const c = common.c;
 
 const InitWindowError = common.InitWindowError;
 
 pub fn initWindow(data: *common.AppData) InitWindowError!void {
-    _ = glfw.glfwInit();
+    _ = c.glfwInit();
 
-    glfw.glfwWindowHint(glfw.GLFW_CLIENT_API, glfw.GLFW_NO_API);
+    c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    data.window = glfw.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return InitWindowError.create_window_failed;
-    glfw.glfwSetWindowUserPointer(data.window, @ptrCast(data));
-    _ = glfw.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
-    _ = glfw.glfwSetScrollCallback(data.window, scrollCallback);
+    data.window = c.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return InitWindowError.create_window_failed;
+    c.glfwSetWindowUserPointer(data.window, @ptrCast(data));
+    _ = c.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
+    _ = c.glfwSetScrollCallback(data.window, scrollCallback);
+    _ = c.glfwSetKeyCallback(data.window, keyCallback);
 }
 
-fn framebufferResizeCallback(window: ?*glfw.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
-    const data: *common.AppData = @alignCast(@ptrCast(glfw.glfwGetWindowUserPointer(window)));
+fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
+    const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
     data.frame_buffer_resized = true;
     data.width = width;
     data.height = height;
     data.current_uniform_state.resolution = .{ @intCast(width), @intCast(height) };
 }
 
-fn scrollCallback(window: ?*glfw.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
+fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
     _ = xoffset;
-    const data: *common.AppData = @alignCast(@ptrCast(glfw.glfwGetWindowUserPointer(window)));
+    const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
     const scroll_factor: f32 = @floatCast(@exp(0.3 * yoffset));
 
     var mouse_pos_x: f64 = undefined;
     var mouse_pos_y: f64 = undefined;
-    glfw.glfwGetCursorPos(window, &mouse_pos_x, &mouse_pos_y);
+    c.glfwGetCursorPos(window, &mouse_pos_x, &mouse_pos_y);
 
     // change mouse_pos to Vulkan coords
     mouse_pos_x = 2.0 * mouse_pos_x / @as(f64, @floatFromInt(data.current_uniform_state.resolution[1])) - 1.0;
@@ -44,4 +45,18 @@ fn scrollCallback(window: ?*glfw.GLFWwindow, xoffset: f64, yoffset: f64) callcon
     data.current_uniform_state.center[1] += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
 
     data.current_uniform_state.height_scale *= scroll_factor;
+}
+
+fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+    _ = mods;
+    _ = scancode;
+    if (key == c.GLFW_KEY_F and action == c.GLFW_PRESS) {
+        if (c.glfwGetWindowMonitor(window) == null) { // windowed -> fullscreen
+            const monitor = c.glfwGetPrimaryMonitor();
+            const mode = c.glfwGetVideoMode(monitor);
+            c.glfwSetWindowMonitor(window, c.glfwGetPrimaryMonitor(), 0, 0, mode.*.width, mode.*.height, mode.*.refreshRate);
+        } else { // fullscreen -> windowed
+            c.glfwSetWindowMonitor(window, null, 100, 100, 800, 600, 0);
+        }
+    }
 }

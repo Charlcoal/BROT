@@ -1,24 +1,24 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
 const vulkan_init = @import("vulkan_init.zig");
-const glfw = common.glfw;
+const c = common.c;
 
 const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
 
 pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    while (glfw.glfwWindowShouldClose(data.window) == 0) {
-        glfw.glfwPollEvents();
+    while (c.glfwWindowShouldClose(data.window) == 0) {
+        c.glfwPollEvents();
         try drawFrame(data, alloc);
     }
 
-    _ = glfw.vkDeviceWaitIdle(data.device);
+    _ = c.vkDeviceWaitIdle(data.device);
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fence, glfw.VK_TRUE, std.math.maxInt(u64));
+    _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
 
-    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fence);
+    _ = c.vkResetFences(data.device, 1, &data.in_flight_fence);
 
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
@@ -31,34 +31,34 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     data.prev_time = data.time.read();
 
     var image_index: u32 = undefined;
-    const result = glfw.vkAcquireNextImageKHR(
+    const result = c.vkAcquireNextImageKHR(
         data.device,
         data.swap_chain,
         std.math.maxInt(u64),
-        data.image_availible_semaphores[data.current_frame],
-        @ptrCast(glfw.VK_NULL_HANDLE),
+        data.image_availible_semaphores[data.current_swap_image],
+        @ptrCast(c.VK_NULL_HANDLE),
         &image_index,
     );
 
-    if (result == glfw.VK_ERROR_OUT_OF_DATE_KHR) {
+    if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
         try vulkan_init.recreateSwapChain(data, alloc);
         return;
-    } else if (result != glfw.VK_SUCCESS and result != glfw.VK_SUBOPTIMAL_KHR) {
+    } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
         return MainLoopError.swap_chain_image_acquisition_failed;
-    }
+    } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
     updateUniformBuffer(data);
 
-    if (glfw.vkGetFenceStatus(data.device, data.compute_fence) == glfw.VK_SUCCESS) {
+    if (c.vkGetFenceStatus(data.device, data.compute_fence) == c.VK_SUCCESS) {
         //std.debug.print("starting compute\n", .{});
-        _ = glfw.vkResetFences(data.device, 1, &data.compute_fence);
+        _ = c.vkResetFences(data.device, 1, &data.compute_fence);
 
-        _ = glfw.vkResetCommandBuffer(data.compute_command_buffer, 0);
+        _ = c.vkResetCommandBuffer(data.compute_command_buffer, 0);
         try recordComputeCommandBuffer(data.*, data.compute_command_buffer);
 
         const wait_stages: u32 = 0;
-        const submit_info: glfw.VkSubmitInfo = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        const submit_info: c.VkSubmitInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount = 0,
             .pWaitSemaphores = null,
             .pWaitDstStageMask = &wait_stages,
@@ -68,19 +68,19 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
             .pSignalSemaphores = null,
         };
 
-        if (glfw.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != glfw.VK_SUCCESS) {
+        if (c.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != c.VK_SUCCESS) {
             return MainLoopError.draw_command_buffer_submit_failed;
         }
     }
 
-    _ = glfw.vkResetCommandBuffer(data.graphics_command_buffer, 0);
+    _ = c.vkResetCommandBuffer(data.graphics_command_buffer, 0);
     try recordCommandBuffer(data.*, data.graphics_command_buffer, image_index);
 
-    const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
-    const wait_stages: u32 = glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    const signal_semaphors = [_]glfw.VkSemaphore{data.render_finished_semaphores[data.current_swap_image]};
-    const submit_info: glfw.VkSubmitInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+    const wait_semaphors = [_]c.VkSemaphore{data.image_availible_semaphores[data.current_swap_image]};
+    const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    const signal_semaphors = [_]c.VkSemaphore{data.render_finished_semaphores[image_index]};
+    const submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = @intCast(wait_semaphors.len),
         .pWaitSemaphores = &wait_semaphors,
         .pWaitDstStageMask = &wait_stages,
@@ -90,13 +90,13 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (glfw.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fence) != glfw.VK_SUCCESS) {
+    if (c.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fence) != c.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 
-    const swap_chains = [_]glfw.VkSwapchainKHR{data.swap_chain};
-    const present_info: glfw.VkPresentInfoKHR = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+    const swap_chains = [_]c.VkSwapchainKHR{data.swap_chain};
+    const present_info: c.VkPresentInfoKHR = .{
+        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = @intCast(signal_semaphors.len),
         .pWaitSemaphores = &signal_semaphors,
         .swapchainCount = @intCast(swap_chains.len),
@@ -105,38 +105,37 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pResults = null,
     };
 
-    _ = glfw.vkQueuePresentKHR(data.present_queue, &present_info);
-    data.current_frame = (data.current_frame + 1) % common.max_frames_in_flight;
+    _ = c.vkQueuePresentKHR(data.present_queue, &present_info);
     data.current_swap_image = (data.current_swap_image + 1) % @as(u32, @intCast(data.swap_chain_images.len));
 
-    if (result == glfw.VK_ERROR_OUT_OF_DATE_KHR or result == glfw.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
+    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
         data.frame_buffer_resized = false;
         try vulkan_init.recreateSwapChain(data, alloc);
         return;
-    } else if (result != glfw.VK_SUCCESS) {
+    } else if (result != c.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
 }
 
-fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw.VkCommandBuffer) MainLoopError!void {
-    const begin_info: glfw.VkCommandBufferBeginInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer) MainLoopError!void {
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
         .pInheritanceInfo = null,
     };
 
-    if (glfw.vkBeginCommandBuffer(compute_command_buffer, &begin_info) != glfw.VK_SUCCESS) {
+    if (c.vkBeginCommandBuffer(compute_command_buffer, &begin_info) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_recording_begin_failed;
     }
 
-    glfw.vkCmdBindPipeline(
+    c.vkCmdBindPipeline(
         compute_command_buffer,
-        glfw.VK_PIPELINE_BIND_POINT_COMPUTE,
+        c.VK_PIPELINE_BIND_POINT_COMPUTE,
         data.compute_pipeline,
     );
-    glfw.vkCmdBindDescriptorSets(
+    c.vkCmdBindDescriptorSets(
         compute_command_buffer,
-        glfw.VK_PIPELINE_BIND_POINT_COMPUTE,
+        c.VK_PIPELINE_BIND_POINT_COMPUTE,
         data.compute_pipeline_layout,
         0,
         1,
@@ -145,27 +144,27 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw
         0,
     );
 
-    glfw.vkCmdDispatch(compute_command_buffer, @intCast((data.width + 7) >> 3), @intCast((data.height + 7) >> 3), 1);
+    c.vkCmdDispatch(compute_command_buffer, @intCast((data.width + 7) >> 3), @intCast((data.height + 7) >> 3), 1);
 
-    if (glfw.vkEndCommandBuffer(compute_command_buffer) != glfw.VK_SUCCESS) {
+    if (c.vkEndCommandBuffer(compute_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
 }
 
-fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffer, image_index: u32) MainLoopError!void {
-    const begin_info: glfw.VkCommandBufferBeginInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, image_index: u32) MainLoopError!void {
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
         .pInheritanceInfo = null,
     };
 
-    if (glfw.vkBeginCommandBuffer(command_buffer, &begin_info) != glfw.VK_SUCCESS) {
+    if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_recording_begin_failed;
     }
 
-    const clear_color: glfw.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
-    const render_pass_info: glfw.VkRenderPassBeginInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+    const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
+    const render_pass_info: c.VkRenderPassBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = data.render_pass,
         .framebuffer = data.swap_chain_framebuffers[image_index],
         .renderArea = .{
@@ -176,10 +175,10 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
         .pClearValues = &clear_color,
     };
 
-    glfw.vkCmdBeginRenderPass(command_buffer, &render_pass_info, glfw.VK_SUBPASS_CONTENTS_INLINE);
-    glfw.vkCmdBindPipeline(command_buffer, glfw.VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphics_pipeline);
+    c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphics_pipeline);
 
-    const viewport: glfw.VkViewport = .{
+    const viewport: c.VkViewport = .{
         .x = 0,
         .y = 0,
         .width = @floatFromInt(data.swap_chain_extent.width),
@@ -187,17 +186,17 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
         .minDepth = 0,
         .maxDepth = 1,
     };
-    glfw.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+    c.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
-    const scissor: glfw.VkRect2D = .{
+    const scissor: c.VkRect2D = .{
         .offset = .{ .x = 0, .y = 0 },
         .extent = data.swap_chain_extent,
     };
-    glfw.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-    glfw.vkCmdBindDescriptorSets(
+    c.vkCmdBindDescriptorSets(
         command_buffer,
-        glfw.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         data.pipeline_layout,
         0,
         1,
@@ -206,16 +205,16 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
         null,
     );
 
-    glfw.vkCmdDraw(
+    c.vkCmdDraw(
         command_buffer,
         6,
         1,
         0,
         0,
     );
-    glfw.vkCmdEndRenderPass(command_buffer);
+    c.vkCmdEndRenderPass(command_buffer);
 
-    if (glfw.vkEndCommandBuffer(command_buffer) != glfw.VK_SUCCESS) {
+    if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
 }

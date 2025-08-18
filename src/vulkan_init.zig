@@ -1,7 +1,7 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
 const cleanup = @import("cleanup.zig");
-const glfw = common.glfw;
+const c = common.c;
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
@@ -14,7 +14,7 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createInstance(data, alloc);
     try setupDebugMessenger(data);
 
-    if (glfw.glfwCreateWindowSurface(data.instance, data.window, null, &data.surface) != glfw.VK_SUCCESS) {
+    if (c.glfwCreateWindowSurface(data.instance, data.window, null, &data.surface) != c.VK_SUCCESS) {
         return InitVulkanError.window_surface_creation_failed;
     }
 
@@ -40,14 +40,14 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     var width: c_int = 0;
     var height: c_int = 0;
-    glfw.glfwGetFramebufferSize(data.window, &width, &height);
+    c.glfwGetFramebufferSize(data.window, &width, &height);
     while (width == 0 or height == 0) {
-        if (glfw.glfwWindowShouldClose(data.window) != 0) return; // for closing while minimized
-        glfw.glfwGetFramebufferSize(data.window, &width, &height);
-        glfw.glfwWaitEvents();
+        if (c.glfwWindowShouldClose(data.window) != 0) return; // for closing while minimized
+        c.glfwGetFramebufferSize(data.window, &width, &height);
+        c.glfwWaitEvents();
     }
 
-    _ = glfw.vkDeviceWaitIdle(data.device);
+    _ = c.vkDeviceWaitIdle(data.device);
 
     cleanup.cleanupSwapChain(data.*, alloc);
 
@@ -57,16 +57,16 @@ pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanErro
 }
 
 const SwapChainSupportDetails = struct {
-    capabilities: glfw.VkSurfaceCapabilitiesKHR,
-    formats: []glfw.VkSurfaceFormatKHR,
-    presentModes: []glfw.VkPresentModeKHR,
+    capabilities: c.VkSurfaceCapabilitiesKHR,
+    formats: []c.VkSurfaceFormatKHR,
+    presentModes: []c.VkPresentModeKHR,
 };
 
-fn populateDebugMessengerCreateInfo(create_info: *glfw.VkDebugUtilsMessengerCreateInfoEXT) void {
-    create_info.* = glfw.VkDebugUtilsMessengerCreateInfoEXT{
-        .sType = glfw.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = glfw.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | glfw.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
-        .messageType = glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+fn populateDebugMessengerCreateInfo(create_info: *c.VkDebugUtilsMessengerCreateInfoEXT) void {
+    create_info.* = c.VkDebugUtilsMessengerCreateInfoEXT{
+        .sType = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+        .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
         .pfnUserCallback = debugCallback,
         .pUserData = null,
     };
@@ -85,7 +85,7 @@ const QueueFamilyIndices = struct {
     }
 };
 
-fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
+fn findQueueFamilies(data: common.AppData, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
         .graphics_family = null,
         .compute_family = null,
@@ -96,29 +96,29 @@ fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc:
     };
 
     var queue_family_count: u32 = 0;
-    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
 
-    const queue_families = try alloc.alloc(glfw.VkQueueFamilyProperties, queue_family_count);
+    const queue_families = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_count);
     defer alloc.free(queue_families);
-    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
 
     for (queue_families, 0..) |queueFamily, i| {
-        if ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0) and indices.graphics_family == null) {
+        if ((queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) and indices.graphics_family == null) {
             indices.graphics_family = @intCast(i);
             indices.graphics_max_queues = queueFamily.queueCount;
         }
 
-        if ((queueFamily.queueFlags & glfw.VK_QUEUE_COMPUTE_BIT != 0) and (indices.compute_family == null or
-            ((queueFamily.queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT == 0) and (queue_families[indices.compute_family.?].queueFlags & glfw.VK_QUEUE_GRAPHICS_BIT != 0))))
+        if ((queueFamily.queueFlags & c.VK_QUEUE_COMPUTE_BIT != 0) and (indices.compute_family == null or
+            ((queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT == 0) and (queue_families[indices.compute_family.?].queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0))))
         {
             indices.compute_family = @intCast(i);
             indices.compute_max_queues = queueFamily.queueCount;
         }
 
-        var present_support: glfw.VkBool32 = glfw.VK_FALSE;
-        _ = glfw.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), data.surface, &present_support);
+        var present_support: c.VkBool32 = c.VK_FALSE;
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), data.surface, &present_support);
 
-        if ((present_support != glfw.VK_FALSE) and indices.present_family == null) {
+        if ((present_support != c.VK_FALSE) and indices.present_family == null) {
             indices.present_family = @intCast(i);
             indices.present_max_queues = queueFamily.queueCount;
         }
@@ -126,68 +126,68 @@ fn findQueueFamilies(data: common.AppData, device: glfw.VkPhysicalDevice, alloc:
     return indices;
 }
 
-fn querySwapChainSupport(surface: glfw.VkSurfaceKHR, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
+fn querySwapChainSupport(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
     var details: SwapChainSupportDetails = .{
         .formats = undefined,
         .capabilities = undefined,
         .presentModes = undefined,
     };
 
-    _ = glfw.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
     var format_count: u32 = undefined;
-    _ = glfw.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, null);
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, null);
 
-    details.formats = try alloc.alloc(glfw.VkSurfaceFormatKHR, format_count);
-    _ = glfw.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.ptr);
+    details.formats = try alloc.alloc(c.VkSurfaceFormatKHR, format_count);
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.ptr);
 
     var present_mode_count: u32 = undefined;
-    _ = glfw.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
 
-    details.presentModes = try alloc.alloc(glfw.VkPresentModeKHR, present_mode_count);
-    _ = glfw.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.presentModes.ptr);
+    details.presentModes = try alloc.alloc(c.VkPresentModeKHR, present_mode_count);
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.presentModes.ptr);
 
     return details;
 }
 
 fn createBuffer(
     data: *common.AppData,
-    size: glfw.VkDeviceSize,
-    usage: glfw.VkBufferUsageFlags,
-    properties: glfw.VkMemoryPropertyFlags,
-    buffer: *glfw.VkBuffer,
-    buffer_memory: *glfw.VkDeviceMemory,
+    size: c.VkDeviceSize,
+    usage: c.VkBufferUsageFlags,
+    properties: c.VkMemoryPropertyFlags,
+    buffer: *c.VkBuffer,
+    buffer_memory: *c.VkDeviceMemory,
 ) common.InitVulkanError!void {
-    const buffer_info: glfw.VkBufferCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    const buffer_info: c.VkBufferCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
         .usage = usage,
-        .sharingMode = glfw.VK_SHARING_MODE_EXCLUSIVE,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    if (glfw.vkCreateBuffer(data.device, &buffer_info, null, buffer) != glfw.VK_SUCCESS) {
+    if (c.vkCreateBuffer(data.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
         return common.InitVulkanError.buffer_creation_failed;
     }
 
-    var mem_requirements: glfw.VkMemoryRequirements = undefined;
-    glfw.vkGetBufferMemoryRequirements(data.device, buffer.*, &mem_requirements);
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetBufferMemoryRequirements(data.device, buffer.*, &mem_requirements);
 
-    const alloc_info: glfw.VkMemoryAllocateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    const alloc_info: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = mem_requirements.size,
         .memoryTypeIndex = try findMemoryType(data, mem_requirements.memoryTypeBits, properties),
     };
 
-    if (glfw.vkAllocateMemory(data.device, &alloc_info, null, buffer_memory) != glfw.VK_SUCCESS) {
+    if (c.vkAllocateMemory(data.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
         return common.InitVulkanError.buffer_memory_allocation_failed;
     }
 
-    _ = glfw.vkBindBufferMemory(data.device, buffer.*, buffer_memory.*, 0);
+    _ = c.vkBindBufferMemory(data.device, buffer.*, buffer_memory.*, 0);
 }
 
-pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: glfw.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
-    var mem_properties: glfw.VkPhysicalDeviceMemoryProperties = undefined;
-    glfw.vkGetPhysicalDeviceMemoryProperties(data.physical_device, &mem_properties);
+pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
+    var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
+    c.vkGetPhysicalDeviceMemoryProperties(data.physical_device, &mem_properties);
 
     for (0..mem_properties.memoryTypeCount) |i| {
         if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
@@ -199,55 +199,55 @@ pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: glfw.
 }
 
 fn debugCallback(
-    message_severity: glfw.VkDebugUtilsMessageSeverityFlagBitsEXT,
-    message_type: glfw.VkDebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: [*c]const glfw.VkDebugUtilsMessengerCallbackDataEXT,
+    message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
+    message_type: c.VkDebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
     p_user_data: ?*anyopaque,
-) callconv(.C) glfw.VkBool32 {
-    if (message_severity >= glfw.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+) callconv(.C) c.VkBool32 {
+    if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
         std.debug.print("ERROR ", .{});
-    } else if (message_severity >= glfw.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    } else if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
         std.debug.print("WARNING ", .{});
     }
 
-    if (message_type & glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) {
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) {
         std.debug.print("[performance] ", .{});
     }
-    if (message_type & glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) {
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) {
         std.debug.print("[validation] ", .{});
     }
-    if (message_type & glfw.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) {
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) {
         std.debug.print("[general] ", .{});
     }
 
     std.debug.print("{s}\n", .{p_callback_data.*.pMessage});
     _ = p_user_data;
 
-    return glfw.VK_FALSE;
+    return c.VK_FALSE;
 }
 
 fn createCommandBuffers(data: *common.AppData) InitVulkanError!void {
-    const alloc_info: glfw.VkCommandBufferAllocateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = data.command_pool,
-        .level = glfw.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
 
-    if (glfw.vkAllocateCommandBuffers(data.device, &alloc_info, &data.graphics_command_buffer) != glfw.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.graphics_command_buffer) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
 
 fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
-    const alloc_info: glfw.VkCommandBufferAllocateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = data.command_pool,
-        .level = glfw.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
 
-    if (glfw.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffer) != glfw.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffer) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
@@ -255,13 +255,13 @@ fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
 fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
 
-    const pool_info: glfw.VkCommandPoolCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags = glfw.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+    const pool_info: c.VkCommandPoolCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
         .queueFamilyIndex = queue_family_indices.graphics_family.?,
     };
 
-    if (glfw.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != glfw.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != c.VK_SUCCESS) {
         return InitVulkanError.command_pool_creation_failed;
     }
 }
@@ -269,37 +269,37 @@ fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
 fn setupDebugMessenger(data: *common.AppData) InitVulkanError!void {
     if (!common.enable_validation_layers) return;
 
-    var create_info: glfw.VkDebugUtilsMessengerCreateInfoEXT = undefined;
+    var create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     populateDebugMessengerCreateInfo(&create_info);
 
-    if (createDebugUtilsMessengerEXT(data.instance, &create_info, null, &data.debug_messenger) != glfw.VK_SUCCESS) {
+    if (createDebugUtilsMessengerEXT(data.instance, &create_info, null, &data.debug_messenger) != c.VK_SUCCESS) {
         return InitVulkanError.debug_messenger_setup_failed;
     }
 }
 
 fn createDebugUtilsMessengerEXT(
-    instance: glfw.VkInstance,
-    p_create_info: [*c]const glfw.VkDebugUtilsMessengerCreateInfoEXT,
-    p_vulkan_alloc: [*c]const glfw.VkAllocationCallbacks,
-    p_debug_messenger: *glfw.VkDebugUtilsMessengerEXT,
-) glfw.VkResult {
-    const func: glfw.PFN_vkCreateDebugUtilsMessengerEXT = @ptrCast(glfw.vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+    instance: c.VkInstance,
+    p_create_info: [*c]const c.VkDebugUtilsMessengerCreateInfoEXT,
+    p_vulkan_alloc: [*c]const c.VkAllocationCallbacks,
+    p_debug_messenger: *c.VkDebugUtilsMessengerEXT,
+) c.VkResult {
+    const func: c.PFN_vkCreateDebugUtilsMessengerEXT = @ptrCast(c.vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
     if (func) |ptr| {
         return ptr(instance, p_create_info, p_vulkan_alloc, p_debug_messenger);
     } else {
-        return glfw.VK_ERROR_EXTENSION_NOT_PRESENT;
+        return c.VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
 
 fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
-    const pool_sizes = [_]glfw.VkDescriptorPoolSize{
+    const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
-            .type = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = @intCast(common.max_frames_in_flight),
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = @intCast(data.num_swap_images),
         },
         .{
-            .type = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = @intCast(common.max_frames_in_flight),
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = @intCast(data.num_swap_images),
         },
         //.{
         //    .type = glfw.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -307,69 +307,69 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
         //}
     };
 
-    const pool_info: glfw.VkDescriptorPoolCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+    const pool_info: c.VkDescriptorPoolCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
-        .maxSets = common.max_frames_in_flight,
+        .maxSets = data.num_swap_images,
     };
 
-    if (glfw.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != glfw.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
     }
 }
 
 fn createDescriptorSetLayout(data: *common.AppData) InitVulkanError!void {
-    const bindings = [_]glfw.VkDescriptorSetLayoutBinding{ .{
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{ .{
         .binding = 0,
-        .descriptorType = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
-        .stageFlags = glfw.VK_SHADER_STAGE_FRAGMENT_BIT | glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
         .pImmutableSamplers = null,
     }, .{
         .binding = 1,
-        .descriptorType = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
-        .stageFlags = glfw.VK_SHADER_STAGE_FRAGMENT_BIT | glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
         .pImmutableSamplers = null,
     } };
 
-    var layout_info: glfw.VkDescriptorSetLayoutCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = bindings.len,
         .pBindings = &bindings,
     };
 
-    if (glfw.vkCreateDescriptorSetLayout(data.device, &layout_info, null, &data.descriptor_set_layout) != glfw.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(data.device, &layout_info, null, &data.descriptor_set_layout) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_set_layout_creation_failed;
     }
 }
 
 fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const layouts: []glfw.VkDescriptorSetLayout = try alloc.alloc(glfw.VkDescriptorSetLayout, common.max_frames_in_flight);
+    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, data.num_swap_images);
     defer alloc.free(layouts);
-    for (0..common.max_frames_in_flight) |i| {
+    for (0..data.num_swap_images) |i| {
         layouts[i] = data.descriptor_set_layout;
     }
 
-    const alloc_info: glfw.VkDescriptorSetAllocateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+    const alloc_info: c.VkDescriptorSetAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = data.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts = layouts.ptr,
     };
 
-    if (glfw.vkAllocateDescriptorSets(data.device, &alloc_info, &data.descriptor_set) != glfw.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(data.device, &alloc_info, &data.descriptor_set) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_sets_allocation_failed;
     }
 
-    const uniform_buffer_info: glfw.VkDescriptorBufferInfo = .{
+    const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
         .buffer = data.uniform_buffer,
         .offset = 0,
         .range = @sizeOf(common.UniformBufferObject),
     };
 
-    const storage_buffer_info: glfw.VkDescriptorBufferInfo = .{
+    const storage_buffer_info: c.VkDescriptorBufferInfo = .{
         .buffer = data.storage_buffer,
         .offset = 0,
         .range = data.storage_buffer_size,
@@ -381,24 +381,24 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
     //    .sampler = data.texture_sampler,
     //};
 
-    const descriptor_writes = [_]glfw.VkWriteDescriptorSet{
+    const descriptor_writes = [_]c.VkWriteDescriptorSet{
         .{
-            .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = data.descriptor_set,
             .dstBinding = 0,
             .dstArrayElement = 0,
-            .descriptorType = glfw.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 1,
             .pBufferInfo = &uniform_buffer_info,
             .pImageInfo = null,
             .pTexelBufferView = null,
         },
         .{
-            .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = data.descriptor_set,
             .dstBinding = 1,
             .dstArrayElement = 0,
-            .descriptorType = glfw.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .pBufferInfo = &storage_buffer_info,
         },
@@ -413,19 +413,19 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
         //}
     };
 
-    glfw.vkUpdateDescriptorSets(data.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+    c.vkUpdateDescriptorSets(data.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
 }
 
 fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.swap_chain_framebuffers = try alloc.alloc(glfw.VkFramebuffer, data.swap_chain_image_views.len);
+    data.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, data.swap_chain_image_views.len);
 
     for (0..data.swap_chain_image_views.len) |i| {
-        const attachments = [_]glfw.VkImageView{
+        const attachments = [_]c.VkImageView{
             data.swap_chain_image_views[i],
         };
 
-        const frame_buffer_info: glfw.VkFramebufferCreateInfo = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        const frame_buffer_info: c.VkFramebufferCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = data.render_pass,
             .attachmentCount = @intCast(attachments.len),
             .pAttachments = &attachments,
@@ -434,7 +434,7 @@ fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!v
             .layers = 1,
         };
 
-        if (glfw.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != glfw.VK_SUCCESS) {
+        if (c.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
             return InitVulkanError.framebuffer_creation_failed;
         }
     }
@@ -442,33 +442,33 @@ fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!v
 
 fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
     const comp_shader_module = try createShaderModule(data.*, &comp_code);
-    defer _ = glfw.vkDestroyShaderModule(data.device, comp_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(data.device, comp_shader_module, null);
 
-    const comp_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = glfw.VK_SHADER_STAGE_COMPUTE_BIT,
+    const comp_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_COMPUTE_BIT,
         .module = comp_shader_module,
         .pName = "main",
     };
 
-    const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &data.descriptor_set_layout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
-    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.compute_pipeline_layout) != glfw.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.compute_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
-    const pipeline_info: glfw.VkComputePipelineCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+    const pipeline_info: c.VkComputePipelineCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .layout = data.compute_pipeline_layout,
         .stage = comp_shader_stage_info,
     };
 
-    if (glfw.vkCreateComputePipelines(data.device, @ptrCast(glfw.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.compute_pipeline) != glfw.VK_SUCCESS) {
+    if (c.vkCreateComputePipelines(data.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.compute_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
@@ -476,114 +476,114 @@ fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
 fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
     const vert_shader_module = try createShaderModule(data.*, &vert_code);
     const frag_shader_module = try createShaderModule(data.*, &frag_code);
-    defer _ = glfw.vkDestroyShaderModule(data.device, vert_shader_module, null);
-    defer _ = glfw.vkDestroyShaderModule(data.device, frag_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(data.device, vert_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(data.device, frag_shader_module, null);
 
-    const vert_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = glfw.VK_SHADER_STAGE_VERTEX_BIT,
+    const vert_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
         .module = vert_shader_module,
         .pName = "main",
     };
-    const frag_shader_stage_info: glfw.VkPipelineShaderStageCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = glfw.VK_SHADER_STAGE_FRAGMENT_BIT,
+    const frag_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
         .module = frag_shader_module,
         .pName = "main",
     };
 
-    const shader_stages = [_]glfw.VkPipelineShaderStageCreateInfo{
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{
         vert_shader_stage_info,
         frag_shader_stage_info,
     };
 
-    const dynamic_states = [_]glfw.VkDynamicState{
-        glfw.VK_DYNAMIC_STATE_VIEWPORT,
-        glfw.VK_DYNAMIC_STATE_SCISSOR,
+    const dynamic_states = [_]c.VkDynamicState{
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
     };
-    const dynamic_state: glfw.VkPipelineDynamicStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+    const dynamic_state: c.VkPipelineDynamicStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = @intCast(dynamic_states.len),
         .pDynamicStates = &dynamic_states,
     };
 
-    const vertex_input_info: glfw.VkPipelineVertexInputStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+    const vertex_input_info: c.VkPipelineVertexInputStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 0,
         .pVertexBindingDescriptions = null,
         .vertexAttributeDescriptionCount = 0,
         .pVertexAttributeDescriptions = null,
     };
 
-    const input_assembly: glfw.VkPipelineInputAssemblyStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = glfw.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .primitiveRestartEnable = glfw.VK_FALSE,
+    const input_assembly: c.VkPipelineInputAssemblyStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = c.VK_FALSE,
     };
 
-    const viewport_state: glfw.VkPipelineViewportStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+    const viewport_state: c.VkPipelineViewportStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount = 1,
     };
 
-    const rasterizer: glfw.VkPipelineRasterizationStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable = glfw.VK_FALSE,
-        .rasterizerDiscardEnable = glfw.VK_FALSE,
-        .polygonMode = glfw.VK_POLYGON_MODE_FILL,
+    const rasterizer: c.VkPipelineRasterizationStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
+        .polygonMode = c.VK_POLYGON_MODE_FILL,
         .lineWidth = 1,
-        .cullMode = glfw.VK_CULL_MODE_BACK_BIT,
-        .frontFace = glfw.VK_FRONT_FACE_CLOCKWISE,
-        .depthBiasEnable = glfw.VK_FALSE,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = c.VK_FALSE,
         .depthBiasConstantFactor = 0,
         .depthBiasClamp = 0,
         .depthBiasSlopeFactor = 0,
     };
 
-    const multisampling: glfw.VkPipelineMultisampleStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .sampleShadingEnable = glfw.VK_FALSE,
-        .rasterizationSamples = glfw.VK_SAMPLE_COUNT_1_BIT,
+    const multisampling: c.VkPipelineMultisampleStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = c.VK_FALSE,
+        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
         .minSampleShading = 1,
         .pSampleMask = null,
-        .alphaToCoverageEnable = glfw.VK_FALSE,
-        .alphaToOneEnable = glfw.VK_FALSE,
+        .alphaToCoverageEnable = c.VK_FALSE,
+        .alphaToOneEnable = c.VK_FALSE,
     };
 
-    const color_blend_attachment: glfw.VkPipelineColorBlendAttachmentState = .{
-        .colorWriteMask = glfw.VK_COLOR_COMPONENT_R_BIT | glfw.VK_COLOR_COMPONENT_G_BIT | glfw.VK_COLOR_COMPONENT_B_BIT | glfw.VK_COLOR_COMPONENT_A_BIT,
-        .blendEnable = glfw.VK_FALSE,
-        .srcColorBlendFactor = glfw.VK_BLEND_FACTOR_ONE,
-        .dstColorBlendFactor = glfw.VK_BLEND_FACTOR_ZERO,
-        .colorBlendOp = glfw.VK_BLEND_OP_ADD,
-        .srcAlphaBlendFactor = glfw.VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = glfw.VK_BLEND_FACTOR_ZERO,
-        .alphaBlendOp = glfw.VK_BLEND_OP_ADD,
+    const color_blend_attachment: c.VkPipelineColorBlendAttachmentState = .{
+        .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = c.VK_FALSE,
+        .srcColorBlendFactor = c.VK_BLEND_FACTOR_ONE,
+        .dstColorBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .colorBlendOp = c.VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = c.VK_BLEND_OP_ADD,
     };
 
-    const color_blending: glfw.VkPipelineColorBlendStateCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .logicOpEnable = glfw.VK_FALSE,
-        .logicOp = glfw.VK_LOGIC_OP_COPY,
+    const color_blending: c.VkPipelineColorBlendStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = c.VK_FALSE,
+        .logicOp = c.VK_LOGIC_OP_COPY,
         .attachmentCount = 1,
         .pAttachments = &color_blend_attachment,
         .blendConstants = .{ 0, 0, 0, 0 },
     };
 
-    const pipeline_layout_info: glfw.VkPipelineLayoutCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &data.descriptor_set_layout,
         .pushConstantRangeCount = 0,
         .pPushConstantRanges = null,
     };
-    if (glfw.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != glfw.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
-    const pipeline_info: glfw.VkGraphicsPipelineCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+    const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = shader_stages.len,
         .pStages = &shader_stages,
         .pVertexInputState = &vertex_input_info,
@@ -597,45 +597,45 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
         .layout = data.pipeline_layout,
         .renderPass = data.render_pass,
         .subpass = 0,
-        .basePipelineHandle = @ptrCast(glfw.VK_NULL_HANDLE),
+        .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
         .basePipelineIndex = -1,
     };
 
-    if (glfw.vkCreateGraphicsPipelines(data.device, @ptrCast(glfw.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != glfw.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(data.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!glfw.VkShaderModule {
-    const create_info: glfw.VkShaderModuleCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
+    const create_info: c.VkShaderModuleCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = code.len,
         .pCode = @ptrCast(code.ptr),
     };
-    var shader_module: glfw.VkShaderModule = undefined;
-    if (glfw.vkCreateShaderModule(data.device, &create_info, null, &shader_module) != glfw.VK_SUCCESS) {
+    var shader_module: c.VkShaderModule = undefined;
+    if (c.vkCreateShaderModule(data.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
         return InitVulkanError.shader_module_creation_failed;
     }
     return shader_module;
 }
 
 fn createImageViews(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.swap_chain_image_views = try alloc.alloc(glfw.VkImageView, data.swap_chain_images.len);
+    data.swap_chain_image_views = try alloc.alloc(c.VkImageView, data.swap_chain_images.len);
 
     for (data.swap_chain_images, 0..) |image, i| {
-        const create_info: glfw.VkImageViewCreateInfo = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        const create_info: c.VkImageViewCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = image,
-            .viewType = glfw.VK_IMAGE_VIEW_TYPE_2D,
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
             .format = data.swap_chain_image_format,
             .components = .{
-                .r = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .g = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .b = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .a = glfw.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
             },
             .subresourceRange = .{
-                .aspectMask = glfw.VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
@@ -643,7 +643,7 @@ fn createImageViews(data: *common.AppData, alloc: Allocator) InitVulkanError!voi
             },
         };
 
-        if (glfw.vkCreateImageView(data.device, &create_info, null, &data.swap_chain_image_views[i]) != glfw.VK_SUCCESS) {
+        if (c.vkCreateImageView(data.device, &create_info, null, &data.swap_chain_image_views[i]) != c.VK_SUCCESS) {
             return InitVulkanError.image_views_creation_failed;
         }
     }
@@ -654,17 +654,17 @@ fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
         return InitVulkanError.validation_layer_unavailible;
     }
 
-    const app_info = glfw.VkApplicationInfo{
-        .sType = glfw.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+    const app_info = c.VkApplicationInfo{
+        .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "Hello Triangle",
-        .applicationVersion = glfw.VK_MAKE_API_VERSION(0, 1, 3, 0),
+        .applicationVersion = c.VK_MAKE_API_VERSION(0, 1, 3, 0),
         .pEngineName = "No Engine",
-        .engineVersion = glfw.VK_MAKE_API_VERSION(0, 1, 0, 0),
-        .apiVersion = glfw.VK_API_VERSION_1_3,
+        .engineVersion = c.VK_MAKE_API_VERSION(0, 1, 0, 0),
+        .apiVersion = c.VK_API_VERSION_1_3,
     };
 
-    var create_info = glfw.VkInstanceCreateInfo{
-        .sType = glfw.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    var create_info = c.VkInstanceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &app_info,
         .enabledLayerCount = 0,
     };
@@ -674,7 +674,7 @@ fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     create_info.enabledExtensionCount = @intCast(extensions.len);
     create_info.ppEnabledExtensionNames = extensions.ptr;
 
-    var debug_create_info: glfw.VkDebugUtilsMessengerCreateInfoEXT = undefined;
+    var debug_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     if (common.enable_validation_layers) {
         create_info.enabledLayerCount = common.validation_layers.len;
         create_info.ppEnabledLayerNames = &common.validation_layers;
@@ -687,19 +687,19 @@ fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
         create_info.pNext = null;
     }
 
-    const result = glfw.vkCreateInstance(&create_info, null, &data.instance);
-    if (result != glfw.VK_SUCCESS) {
+    const result = c.vkCreateInstance(&create_info, null, &data.instance);
+    if (result != c.VK_SUCCESS) {
         return InitVulkanError.instance_creation_failed;
     }
 }
 
 fn checkValidationLayerSupport(alloc: Allocator) Allocator.Error!bool {
     var layer_count: u32 = undefined;
-    _ = glfw.vkEnumerateInstanceLayerProperties(&layer_count, null);
+    _ = c.vkEnumerateInstanceLayerProperties(&layer_count, null);
 
-    const availible_layers = try alloc.alloc(glfw.VkLayerProperties, layer_count);
+    const availible_layers = try alloc.alloc(c.VkLayerProperties, layer_count);
     defer alloc.free(availible_layers);
-    _ = glfw.vkEnumerateInstanceLayerProperties(&layer_count, availible_layers.ptr);
+    _ = c.vkEnumerateInstanceLayerProperties(&layer_count, availible_layers.ptr);
 
     for (common.validation_layers) |v_layer| {
         var layer_found: bool = false;
@@ -719,14 +719,14 @@ fn checkValidationLayerSupport(alloc: Allocator) Allocator.Error!bool {
 
 fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
     var glfw_extension_count: u32 = 0;
-    const glfw_extensions: [*c]const [*c]const u8 = glfw.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    const glfw_extensions: [*c]const [*c]const u8 = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
     const out = try alloc.alloc([*c]const u8, glfw_extension_count + if (common.enable_validation_layers) 1 else 0);
     for (0..glfw_extension_count) |i| {
         out[i] = glfw_extensions[i];
     }
     if (common.enable_validation_layers) {
-        out[glfw_extension_count] = glfw.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+        out[glfw_extension_count] = c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     }
 
     return out;
@@ -741,11 +741,11 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
     var unique_queue_num: u32 = 0;
 
     var queue_family_property_count: u32 = 0;
-    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, null);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, null);
 
-    const queue_family_properties = try alloc.alloc(glfw.VkQueueFamilyProperties, queue_family_property_count);
+    const queue_family_properties = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_property_count);
     defer alloc.free(queue_family_properties);
-    _ = glfw.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, queue_family_properties.ptr);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, queue_family_properties.ptr);
 
     outer: for (unique_queue_families, &num_required_queues, max_queues) |queue_family, *num_req_queues, max_queue| {
         for (unique_queue_families[0..unique_queue_num], num_required_queues[0..unique_queue_num]) |existing_unique_queue_family, *existing_num_req_queues| {
@@ -761,23 +761,23 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
         unique_queue_num += 1;
     }
 
-    const queue_create_infos = try alloc.alloc(glfw.VkDeviceQueueCreateInfo, unique_queue_num);
+    const queue_create_infos = try alloc.alloc(c.VkDeviceQueueCreateInfo, unique_queue_num);
     defer alloc.free(queue_create_infos);
 
     const queue_priority: [2]f32 = .{ 1, 0 };
     for (unique_queue_families[0..unique_queue_num], queue_create_infos, num_required_queues[0..unique_queue_num]) |queue_family, *queue_create_info, num_queues| {
         queue_create_info.* = .{
-            .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
             .queueCount = num_queues,
             .pQueuePriorities = if (queue_family == indicies.compute_family and queue_family != indicies.graphics_family) &queue_priority[1] else &queue_priority,
         };
     }
 
-    const device_features: glfw.VkPhysicalDeviceFeatures = .{};
+    const device_features: c.VkPhysicalDeviceFeatures = .{};
 
-    var createInfo: glfw.VkDeviceCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    var createInfo: c.VkDeviceCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pQueueCreateInfos = queue_create_infos.ptr,
         .queueCreateInfoCount = unique_queue_num,
         .pEnabledFeatures = &device_features,
@@ -792,30 +792,30 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
         createInfo.enabledLayerCount = 0;
     }
 
-    if (glfw.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != glfw.VK_SUCCESS) {
+    if (c.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != c.VK_SUCCESS) {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    glfw.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
-    glfw.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
+    c.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
+    c.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
     if (indicies.graphics_family.? == indicies.compute_family.? and indicies.graphics_max_queues >= 2) {
-        glfw.vkGetDeviceQueue(data.device, indicies.compute_family.?, 1, &data.compute_queue);
+        c.vkGetDeviceQueue(data.device, indicies.compute_family.?, 1, &data.compute_queue);
     } else {
-        glfw.vkGetDeviceQueue(data.device, indicies.compute_family.?, 0, &data.compute_queue);
+        c.vkGetDeviceQueue(data.device, indicies.compute_family.?, 0, &data.compute_queue);
     }
 }
 
 fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     var device_count: u32 = 0;
-    _ = glfw.vkEnumeratePhysicalDevices(data.instance, &device_count, null);
+    _ = c.vkEnumeratePhysicalDevices(data.instance, &device_count, null);
 
     if (device_count == 0) {
         return InitVulkanError.gpu_with_vulkan_support_not_found;
     }
 
-    const devices = try alloc.alloc(glfw.VkPhysicalDevice, device_count);
+    const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
     defer alloc.free(devices);
-    _ = glfw.vkEnumeratePhysicalDevices(data.instance, &device_count, devices.ptr);
+    _ = c.vkEnumeratePhysicalDevices(data.instance, &device_count, devices.ptr);
 
     for (devices) |device| {
         if (try deviceIsSuitable(data.*, device, alloc)) {
@@ -827,7 +827,7 @@ fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!v
     }
 }
 
-fn deviceIsSuitable(data: common.AppData, device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+fn deviceIsSuitable(data: common.AppData, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
     const indices = try findQueueFamilies(data, device, alloc);
 
     const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
@@ -843,13 +843,13 @@ fn deviceIsSuitable(data: common.AppData, device: glfw.VkPhysicalDevice, alloc: 
     return indices.isComplete() and extensions_supported and swap_chain_adequate;
 }
 
-fn checkDeviceExtensionSupport(device: glfw.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
     var extension_count: u32 = undefined;
-    _ = glfw.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
 
-    const availibleExtensions = try alloc.alloc(glfw.VkExtensionProperties, extension_count);
+    const availibleExtensions = try alloc.alloc(c.VkExtensionProperties, extension_count);
     defer alloc.free(availibleExtensions);
-    _ = glfw.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
+    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
 
     outer: for (common.device_extensions) |extension| {
         for (availibleExtensions) |availible| {
@@ -862,39 +862,39 @@ fn checkDeviceExtensionSupport(device: glfw.VkPhysicalDevice, alloc: Allocator) 
 }
 
 pub fn createRenderPass(data: *common.AppData) InitVulkanError!void {
-    const color_attachment: glfw.VkAttachmentDescription = .{
+    const color_attachment: c.VkAttachmentDescription = .{
         .format = data.swap_chain_image_format,
-        .samples = glfw.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = glfw.VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = glfw.VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = glfw.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = glfw.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = glfw.VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = glfw.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
     };
 
-    const color_attachment_ref: glfw.VkAttachmentReference = .{
+    const color_attachment_ref: c.VkAttachmentReference = .{
         .attachment = 0,
-        .layout = glfw.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
-    const subpass: glfw.VkSubpassDescription = .{
-        .pipelineBindPoint = glfw.VK_PIPELINE_BIND_POINT_GRAPHICS,
+    const subpass: c.VkSubpassDescription = .{
+        .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_attachment_ref,
     };
 
-    const dependency: glfw.VkSubpassDependency = .{
-        .srcSubpass = glfw.VK_SUBPASS_EXTERNAL,
+    const dependency: c.VkSubpassDependency = .{
+        .srcSubpass = c.VK_SUBPASS_EXTERNAL,
         .dstSubpass = 0,
-        .srcStageMask = glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         .srcAccessMask = 0,
-        .dstStageMask = glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .dstAccessMask = glfw.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     };
 
-    const render_pass_info: glfw.VkRenderPassCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+    const render_pass_info: c.VkRenderPassCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = 1,
         .pAttachments = &color_attachment,
         .subpassCount = 1,
@@ -903,7 +903,7 @@ pub fn createRenderPass(data: *common.AppData) InitVulkanError!void {
         .pDependencies = &dependency,
     };
 
-    if (glfw.vkCreateRenderPass(data.device, &render_pass_info, null, &data.render_pass) != glfw.VK_SUCCESS) {
+    if (c.vkCreateRenderPass(data.device, &render_pass_info, null, &data.render_pass) != c.VK_SUCCESS) {
         return InitVulkanError.render_pass_creation_failed;
     }
 }
@@ -917,55 +917,55 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
     const present_mode = chooseSwapPresentMode(swap_chain_support.presentModes);
     const extent = chooseSwapExtent(data.*, &swap_chain_support.capabilities);
 
-    var image_count: u32 = swap_chain_support.capabilities.minImageCount + 1;
-    if (swap_chain_support.capabilities.maxImageCount > 0 and image_count > swap_chain_support.capabilities.maxImageCount) {
-        image_count = swap_chain_support.capabilities.maxImageCount;
+    data.num_swap_images = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 and data.num_swap_images > swap_chain_support.capabilities.maxImageCount) {
+        data.num_swap_images = swap_chain_support.capabilities.maxImageCount;
     }
 
-    var create_info: glfw.VkSwapchainCreateInfoKHR = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+    var create_info: c.VkSwapchainCreateInfoKHR = .{
+        .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = data.surface,
-        .minImageCount = image_count,
+        .minImageCount = data.num_swap_images,
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
         .imageExtent = extent,
         .imageArrayLayers = 1,
-        .imageUsage = glfw.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .preTransform = swap_chain_support.capabilities.currentTransform,
-        .compositeAlpha = glfw.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = present_mode,
-        .clipped = glfw.VK_TRUE,
+        .clipped = c.VK_TRUE,
     };
 
     const indices = try findQueueFamilies(data.*, data.physical_device, alloc);
     const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
 
     if (indices.graphics_family != indices.present_family) {
-        create_info.imageSharingMode = glfw.VK_SHARING_MODE_CONCURRENT;
+        create_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;
     } else {
-        create_info.imageSharingMode = glfw.VK_SHARING_MODE_EXCLUSIVE;
+        create_info.imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
         create_info.queueFamilyIndexCount = 0;
         create_info.pQueueFamilyIndices = null;
-        create_info.oldSwapchain = @ptrCast(glfw.VK_NULL_HANDLE);
+        create_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     }
 
-    if (glfw.vkCreateSwapchainKHR(data.device, &create_info, null, &data.swap_chain) != glfw.VK_SUCCESS) {
+    if (c.vkCreateSwapchainKHR(data.device, &create_info, null, &data.swap_chain) != c.VK_SUCCESS) {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    _ = glfw.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &image_count, null);
-    data.swap_chain_images = try alloc.alloc(glfw.VkImage, image_count);
-    _ = glfw.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &image_count, data.swap_chain_images.ptr);
+    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &data.num_swap_images, null);
+    data.swap_chain_images = try alloc.alloc(c.VkImage, data.num_swap_images);
+    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &data.num_swap_images, data.swap_chain_images.ptr);
 
     data.swap_chain_image_format = surface_format.format;
     data.swap_chain_extent = extent;
 }
 
-fn chooseSwapSurfaceFormat(availible_formats: []const glfw.VkSurfaceFormatKHR) glfw.VkSurfaceFormatKHR {
+fn chooseSwapSurfaceFormat(availible_formats: []const c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
     for (availible_formats) |format| {
-        if (format.format == glfw.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == glfw.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        if (format.format == c.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return format;
         }
     }
@@ -973,26 +973,26 @@ fn chooseSwapSurfaceFormat(availible_formats: []const glfw.VkSurfaceFormatKHR) g
     return availible_formats[0];
 }
 
-fn chooseSwapPresentMode(availible_present_modes: []const glfw.VkPresentModeKHR) glfw.VkPresentModeKHR {
+fn chooseSwapPresentMode(availible_present_modes: []const c.VkPresentModeKHR) c.VkPresentModeKHR {
     for (availible_present_modes) |mode| {
-        if (mode == glfw.VK_PRESENT_MODE_MAILBOX_KHR) {
+        if (mode == c.VK_PRESENT_MODE_MAILBOX_KHR) {
             return mode;
         }
     }
 
     //always availible
-    return glfw.VK_PRESENT_MODE_FIFO_KHR;
+    return c.VK_PRESENT_MODE_FIFO_KHR;
 }
 
-fn chooseSwapExtent(data: common.AppData, capabilities: *const glfw.VkSurfaceCapabilitiesKHR) glfw.VkExtent2D {
+fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
         return capabilities.currentExtent;
     } else {
         var height: c_int = undefined;
         var width: c_int = undefined;
-        glfw.glfwGetFramebufferSize(data.window, &width, &height);
+        c.glfwGetFramebufferSize(data.window, &width, &height);
 
-        var actualExtent: glfw.VkExtent2D = .{
+        var actualExtent: c.VkExtent2D = .{
             .height = @intCast(height),
             .width = @intCast(width),
         };
@@ -1013,51 +1013,55 @@ fn chooseSwapExtent(data: common.AppData, capabilities: *const glfw.VkSurfaceCap
 }
 
 fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.image_availible_semaphores = try alloc.alloc(glfw.VkSemaphore, common.max_frames_in_flight);
-    data.render_finished_semaphores = try alloc.alloc(glfw.VkSemaphore, data.swap_chain_images.len);
+    std.debug.print("num_swap_images: {}\n", .{data.num_swap_images});
 
-    const semaphore_info: glfw.VkSemaphoreCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, data.num_swap_images);
+    data.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
+
+    std.debug.print("num swap_chain_images: {}\n", .{data.swap_chain_images.len});
+
+    const semaphore_info: c.VkSemaphoreCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
 
-    const fence_info: glfw.VkFenceCreateInfo = .{
-        .sType = glfw.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = glfw.VK_FENCE_CREATE_SIGNALED_BIT,
+    const fence_info: c.VkFenceCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    if (glfw.vkCreateFence(data.device, &fence_info, null, &data.compute_fence) != glfw.VK_SUCCESS) {
+    if (c.vkCreateFence(data.device, &fence_info, null, &data.compute_fence) != c.VK_SUCCESS) {
         return InitVulkanError.semaphore_creation_failed;
     }
 
-    for (0..common.max_frames_in_flight) |i| {
-        if (glfw.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != glfw.VK_SUCCESS) {
+    for (0..data.num_swap_images) |i| {
+        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != c.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
-    if (glfw.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fence) != glfw.VK_SUCCESS) {
+    if (c.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fence) != c.VK_SUCCESS) {
         return InitVulkanError.semaphore_creation_failed;
     }
 
     for (data.render_finished_semaphores) |*sem| {
-        if (glfw.vkCreateSemaphore(data.device, &semaphore_info, null, sem) != glfw.VK_SUCCESS) {
+        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
 }
 
 fn createUniformBuffers(data: *common.AppData) InitVulkanError!void {
-    const buffer_size: glfw.VkDeviceSize = @sizeOf(common.UniformBufferObject);
+    const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
 
     try createBuffer(
         data,
         buffer_size,
-        glfw.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        glfw.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | glfw.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &data.uniform_buffer,
         &data.uniform_buffer_memory,
     );
 
-    _ = glfw.vkMapMemory(
+    _ = c.vkMapMemory(
         data.device,
         data.uniform_buffer_memory,
         0,
@@ -1068,14 +1072,14 @@ fn createUniformBuffers(data: *common.AppData) InitVulkanError!void {
 }
 
 fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
-    const video_mode = glfw.glfwGetVideoMode(glfw.glfwGetPrimaryMonitor());
+    const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
     data.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
 
     try createBuffer(
         data,
         data.storage_buffer_size,
-        glfw.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        glfw.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         &data.storage_buffer,
         &data.storage_buffer_memory,
     );

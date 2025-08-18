@@ -39,9 +39,11 @@ void main() {
         count++;
     }
 
-    if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
-        potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = -1;
-    } else {
-		potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
-	}
+    if (screen_loc.x < ubo.resolution.x && screen_loc.y < ubo.resolution.y) {
+        if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
+            potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = -1;
+        } else {
+	    	potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
+	    }
+    }
 }

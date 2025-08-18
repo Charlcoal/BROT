@@ -1,10 +1,8 @@
 const std = @import("std");
-pub const glfw = @import("imports.zig").glfw;
+pub const c = @import("imports.zig").c;
 const builtin = @import("builtin");
 
 // ------------------- settings -------------------------
-
-pub const max_frames_in_flight: i32 = 2;
 
 pub const enable_validation_layers = dbg;
 
@@ -13,7 +11,7 @@ pub const validation_layers = [_][*:0]const u8{
 };
 
 pub const device_extensions = [_][*:0]const u8{
-    glfw.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 pub const UniformBufferObject = extern struct {
@@ -65,51 +63,51 @@ const Allocator = std.mem.Allocator;
 
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
-    window: *glfw.GLFWwindow = undefined,
+    window: *c.GLFWwindow = undefined,
     height: i32,
     width: i32,
-    instance: glfw.VkInstance = null,
-    debug_messenger: glfw.VkDebugUtilsMessengerEXT = null,
-    surface: glfw.VkSurfaceKHR = null,
-    physical_device: glfw.VkPhysicalDevice = null,
-    device: glfw.VkDevice = null,
-    graphics_queue: glfw.VkQueue = null,
-    compute_queue: glfw.VkQueue = null,
-    present_queue: glfw.VkQueue = null,
-    swap_chain: glfw.VkSwapchainKHR = null,
-    swap_chain_images: []glfw.VkImage = undefined,
-    swap_chain_image_format: glfw.VkFormat = undefined,
-    swap_chain_extent: glfw.VkExtent2D = undefined,
-    swap_chain_image_views: []glfw.VkImageView = undefined,
-    render_pass: glfw.VkRenderPass = undefined,
-    pipeline_layout: glfw.VkPipelineLayout = undefined,
-    compute_pipeline_layout: glfw.VkPipelineLayout = undefined,
-    graphics_pipeline: glfw.VkPipeline = undefined,
-    compute_pipeline: glfw.VkPipeline = undefined,
-    swap_chain_framebuffers: []glfw.VkFramebuffer = undefined,
-    command_pool: glfw.VkCommandPool = undefined,
-    graphics_command_buffer: glfw.VkCommandBuffer = undefined,
-    compute_command_buffer: glfw.VkCommandBuffer = undefined,
-    image_availible_semaphores: []glfw.VkSemaphore = undefined,
-    render_finished_semaphores: []glfw.VkSemaphore = undefined,
-    in_flight_fence: glfw.VkFence = undefined,
-    compute_fence: glfw.VkFence = undefined,
-    current_frame: u32 = 0,
+    instance: c.VkInstance = null,
+    debug_messenger: c.VkDebugUtilsMessengerEXT = null,
+    surface: c.VkSurfaceKHR = null,
+    physical_device: c.VkPhysicalDevice = null,
+    device: c.VkDevice = null,
+    graphics_queue: c.VkQueue = null,
+    compute_queue: c.VkQueue = null,
+    present_queue: c.VkQueue = null,
+    swap_chain: c.VkSwapchainKHR = null,
+    swap_chain_images: []c.VkImage = undefined,
+    swap_chain_image_format: c.VkFormat = undefined,
+    swap_chain_extent: c.VkExtent2D = undefined,
+    swap_chain_image_views: []c.VkImageView = undefined,
+    render_pass: c.VkRenderPass = undefined,
+    pipeline_layout: c.VkPipelineLayout = undefined,
+    compute_pipeline_layout: c.VkPipelineLayout = undefined,
+    graphics_pipeline: c.VkPipeline = undefined,
+    compute_pipeline: c.VkPipeline = undefined,
+    swap_chain_framebuffers: []c.VkFramebuffer = undefined,
+    command_pool: c.VkCommandPool = undefined,
+    graphics_command_buffer: c.VkCommandBuffer = undefined,
+    compute_command_buffer: c.VkCommandBuffer = undefined,
+    image_availible_semaphores: []c.VkSemaphore = undefined,
+    render_finished_semaphores: []c.VkSemaphore = undefined,
+    in_flight_fence: c.VkFence = undefined,
+    compute_fence: c.VkFence = undefined,
     current_swap_image: u32 = 0,
+    num_swap_images: u32 = 0,
     frame_buffer_resized: bool = false,
 
     current_uniform_state: UniformBufferObject,
-    uniform_buffer: glfw.VkBuffer = undefined,
-    uniform_buffer_memory: glfw.VkDeviceMemory = undefined,
+    uniform_buffer: c.VkBuffer = undefined,
+    uniform_buffer_memory: c.VkDeviceMemory = undefined,
     uniform_buffer_mapped: ?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
 
     storage_buffer_size: u32 = undefined,
-    storage_buffer: glfw.VkBuffer = undefined,
-    storage_buffer_memory: glfw.VkDeviceMemory = undefined,
+    storage_buffer: c.VkBuffer = undefined,
+    storage_buffer_memory: c.VkDeviceMemory = undefined,
 
-    descriptor_set_layout: glfw.VkDescriptorSetLayout = undefined,
-    descriptor_pool: glfw.VkDescriptorPool = undefined,
-    descriptor_set: glfw.VkDescriptorSet = undefined,
+    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
+    descriptor_pool: c.VkDescriptorPool = undefined,
+    descriptor_set: c.VkDescriptorSet = undefined,
 
     time: std.time.Timer,
     prev_time: u64,
