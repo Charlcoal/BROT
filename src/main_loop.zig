@@ -16,9 +16,9 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], glfw.VK_TRUE, std.math.maxInt(u64));
+    _ = glfw.vkWaitForFences(data.device, 1, &data.in_flight_fence, glfw.VK_TRUE, std.math.maxInt(u64));
 
-    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
+    _ = glfw.vkResetFences(data.device, 1, &data.in_flight_fence);
 
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
@@ -47,14 +47,14 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
 
-    updateUniformBuffer(data, data.current_frame);
+    updateUniformBuffer(data);
 
     if (glfw.vkGetFenceStatus(data.device, data.compute_fence) == glfw.VK_SUCCESS) {
         //std.debug.print("starting compute\n", .{});
         _ = glfw.vkResetFences(data.device, 1, &data.compute_fence);
 
         _ = glfw.vkResetCommandBuffer(data.compute_command_buffer, 0);
-        try recordComputeCommandBuffer(data.*, data.compute_command_buffer, data.current_frame);
+        try recordComputeCommandBuffer(data.*, data.compute_command_buffer);
 
         const wait_stages: u32 = 0;
         const submit_info: glfw.VkSubmitInfo = .{
@@ -73,8 +73,8 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         }
     }
 
-    _ = glfw.vkResetCommandBuffer(data.command_buffers[data.current_frame], 0);
-    try recordCommandBuffer(data.*, data.command_buffers[data.current_frame], image_index);
+    _ = glfw.vkResetCommandBuffer(data.graphics_command_buffer, 0);
+    try recordCommandBuffer(data.*, data.graphics_command_buffer, image_index);
 
     const wait_semaphors = [_]glfw.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
     const wait_stages: u32 = glfw.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -85,12 +85,12 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pWaitSemaphores = &wait_semaphors,
         .pWaitDstStageMask = &wait_stages,
         .commandBufferCount = 1,
-        .pCommandBuffers = &data.command_buffers[data.current_frame],
+        .pCommandBuffers = &data.graphics_command_buffer,
         .signalSemaphoreCount = @intCast(signal_semaphors.len),
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (glfw.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != glfw.VK_SUCCESS) {
+    if (glfw.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fence) != glfw.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 
@@ -118,7 +118,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw.VkCommandBuffer, image_index: u32) MainLoopError!void {
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw.VkCommandBuffer) MainLoopError!void {
     const begin_info: glfw.VkCommandBufferBeginInfo = .{
         .sType = glfw.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -140,7 +140,7 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: glfw
         data.compute_pipeline_layout,
         0,
         1,
-        &data.descriptor_sets[image_index],
+        &data.descriptor_set,
         0,
         0,
     );
@@ -201,7 +201,7 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
         data.pipeline_layout,
         0,
         1,
-        &data.descriptor_sets[data.current_frame],
+        &data.descriptor_set,
         0,
         null,
     );
@@ -220,11 +220,11 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: glfw.VkCommandBuffe
     }
 }
 
-fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
+fn updateUniformBuffer(data: *common.AppData) void {
     @memcpy(
         @as(
             [*]common.UniformBufferObject,
-            @ptrCast(data.uniform_buffers_mapped[@intCast(current_image)]),
+            @ptrCast(data.uniform_buffer_mapped),
         ),
         @as(
             *const [1]common.UniformBufferObject,
