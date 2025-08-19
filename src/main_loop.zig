@@ -23,20 +23,29 @@ pub fn startComputeManager(data: *common.AppData, alloc: Allocator) std.Thread.S
 }
 
 const Direction = enum { left, down, right, up };
+const Spiral = struct {
+    dir: Direction = .left,
+    x: i32 = 1,
+    y: i32 = 0,
+};
 
 fn computeManage(data: *common.AppData) void {
-    var spiral_dir: Direction = .left;
-    var spiral_x: i32 = 1;
-    var spiral_y: i32 = 0;
+    var spiral: Spiral = .{};
 
     outer: while (!data.compute_manager_should_close) {
+        if (c.vkWaitForFences(data.device, 1, &data.compute_fence, c.VK_TRUE, std.math.maxInt(u64)) != c.VK_SUCCESS) {
+            @panic("compute fence failed");
+        }
+
+        if (data.frame_updated) {
+            data.compute_idle = false;
+            data.frame_updated = false;
+            spiral = .{};
+        }
+
         if (data.compute_idle) {
             std.Thread.sleep(1_000_000); // 1ms
             continue :outer;
-        }
-
-        if (c.vkWaitForFences(data.device, 1, &data.compute_fence, c.VK_TRUE, std.math.maxInt(u64)) != c.VK_SUCCESS) {
-            @panic("compute fence failed");
         }
 
         //std.Thread.sleep(100_000_000); // 0.1s
@@ -54,47 +63,47 @@ fn computeManage(data: *common.AppData) void {
         var min_y: bool = false;
 
         while (true) {
-            switch (spiral_dir) {
+            switch (spiral.dir) {
                 .left => {
-                    spiral_x -= 1;
-                    if (spiral_x < spiral_y) {
-                        spiral_dir = .down;
+                    spiral.x -= 1;
+                    if (spiral.x < spiral.y) {
+                        spiral.dir = .down;
                     }
                 },
                 .down => {
-                    spiral_y += 1;
-                    if (spiral_y >= -spiral_x) {
-                        spiral_dir = .right;
+                    spiral.y += 1;
+                    if (spiral.y >= -spiral.x) {
+                        spiral.dir = .right;
                     }
                 },
                 .right => {
-                    spiral_x += 1;
-                    if (spiral_x >= spiral_y) {
-                        spiral_dir = .up;
+                    spiral.x += 1;
+                    if (spiral.x >= spiral.y) {
+                        spiral.dir = .up;
                     }
                 },
                 .up => {
-                    spiral_y -= 1;
-                    if (spiral_y <= -spiral_x) {
-                        spiral_dir = .left;
+                    spiral.y -= 1;
+                    if (spiral.y <= -spiral.x) {
+                        spiral.dir = .left;
                     }
                 },
             }
             var cont: bool = false;
             // repeat spiral traversal if location is out of bounds
-            if (-spiral_x > @divTrunc(num_render_patch_x, 2)) {
+            if (-spiral.x > @divTrunc(num_render_patch_x, 2)) {
                 cont = true;
                 min_x = true;
             }
-            if (spiral_x >= @divTrunc(num_render_patch_x + 1, 2)) {
+            if (spiral.x >= @divTrunc(num_render_patch_x + 1, 2)) {
                 cont = true;
                 max_x = true;
             }
-            if (-spiral_y > @divTrunc(num_render_patch_y, 2)) {
+            if (-spiral.y > @divTrunc(num_render_patch_y, 2)) {
                 cont = true;
                 min_y = true;
             }
-            if (spiral_y >= @divTrunc(num_render_patch_y + 1, 2)) {
+            if (spiral.y >= @divTrunc(num_render_patch_y + 1, 2)) {
                 cont = true;
                 max_y = true;
             }
@@ -106,8 +115,8 @@ fn computeManage(data: *common.AppData) void {
             if (!cont) break;
         }
 
-        const scr_x: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_x, 2))) + spiral_x;
-        const scr_y: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_y, 2))) + spiral_y;
+        const scr_x: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_x, 2))) + spiral.x;
+        const scr_y: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_y, 2))) + spiral.y;
         data.current_uniform_state.screen_offset[0] = @as(u32, @intCast(scr_x)) * render_patch_size;
         data.current_uniform_state.screen_offset[1] = @as(u32, @intCast(scr_y)) * render_patch_size;
 

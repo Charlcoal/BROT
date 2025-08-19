@@ -102,6 +102,7 @@ pub const AppData = struct {
     gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 },
     compute_manager_should_close: bool = false,
     compute_idle: bool = false,
+    frame_updated: bool = true,
 
     current_uniform_state: UniformBufferObject,
     uniform_buffer: c.VkBuffer = undefined,

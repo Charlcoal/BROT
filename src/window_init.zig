@@ -22,6 +22,7 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     data.width = width;
     data.height = height;
     data.current_uniform_state.resolution = .{ @intCast(width), @intCast(height) };
+    data.frame_updated = true;
 }
 
 fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
@@ -45,6 +46,8 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     data.current_uniform_state.center[1] += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
 
     data.current_uniform_state.height_scale *= scroll_factor;
+
+    data.frame_updated = true;
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
