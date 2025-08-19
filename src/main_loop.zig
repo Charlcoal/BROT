@@ -10,9 +10,7 @@ pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(data.window) == 0) {
         c.glfwPollEvents();
 
-        data.gpu_interface_semaphore.wait();
         try drawFrame(data, alloc);
-        data.gpu_interface_semaphore.post();
     }
 
     data.gpu_interface_semaphore.wait();
@@ -31,6 +29,8 @@ fn computeManage(data: *common.AppData) void {
         }
 
         data.gpu_interface_semaphore.wait();
+        defer data.gpu_interface_semaphore.post();
+
         //std.debug.print("starting compute\n", .{});
         _ = c.vkResetFences(data.device, 1, &data.compute_fence);
 
@@ -54,7 +54,6 @@ fn computeManage(data: *common.AppData) void {
         if (c.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != c.VK_SUCCESS) {
             @panic("compute manager failed to submit queue!");
         }
-        data.gpu_interface_semaphore.post();
     }
 
     while (c.vkGetFenceStatus(data.device, data.compute_fence) != c.VK_SUCCESS) {
@@ -66,6 +65,9 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
 
     _ = c.vkResetFences(data.device, 1, &data.in_flight_fence);
+
+    data.gpu_interface_semaphore.wait();
+    defer data.gpu_interface_semaphore.post();
 
     var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {

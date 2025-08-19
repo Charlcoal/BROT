@@ -1013,12 +1013,8 @@ fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabi
 }
 
 fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    std.debug.print("num_swap_images: {}\n", .{data.num_swap_images});
-
     data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, data.num_swap_images);
     data.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
-
-    std.debug.print("num swap_chain_images: {}\n", .{data.swap_chain_images.len});
 
     const semaphore_info: c.VkSemaphoreCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
