@@ -18,7 +18,9 @@ pub fn cleanupSwapChain(data: common.AppData, alloc: Allocator) void {
     alloc.free(data.swap_chain_images);
 }
 
-pub fn cleanup(data: common.AppData, alloc: Allocator) void {
+pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
+    data.compute_manager_should_close = true;
+    data.compute_manager_thread.join();
     //vulkan
     for (0..data.num_swap_images) |i| {
         c.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
@@ -33,7 +35,7 @@ pub fn cleanup(data: common.AppData, alloc: Allocator) void {
 
     c.vkDestroyCommandPool(data.device, data.command_pool, null);
 
-    cleanupSwapChain(data, alloc);
+    cleanupSwapChain(data.*, alloc);
 
     c.vkDestroyBuffer(data.device, data.uniform_buffer, null);
     c.vkFreeMemory(data.device, data.uniform_buffer_memory, null);

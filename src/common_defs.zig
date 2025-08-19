@@ -96,6 +96,10 @@ pub const AppData = struct {
     num_swap_images: u32 = 0,
     frame_buffer_resized: bool = false,
 
+    compute_manager_thread: std.Thread = undefined,
+    gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 },
+    compute_manager_should_close: bool = false,
+
     current_uniform_state: UniformBufferObject,
     uniform_buffer: c.VkBuffer = undefined,
     uniform_buffer_memory: c.VkDeviceMemory = undefined,

@@ -9,10 +9,57 @@ const Allocator = std.mem.Allocator;
 pub fn mainLoop(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(data.window) == 0) {
         c.glfwPollEvents();
+
+        data.gpu_interface_semaphore.wait();
         try drawFrame(data, alloc);
+        data.gpu_interface_semaphore.post();
     }
 
+    data.gpu_interface_semaphore.wait();
     _ = c.vkDeviceWaitIdle(data.device);
+    data.gpu_interface_semaphore.post();
+}
+
+pub fn startComputeManager(data: *common.AppData, alloc: Allocator) std.Thread.SpawnError!void {
+    data.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{data});
+}
+
+fn computeManage(data: *common.AppData) void {
+    while (!data.compute_manager_should_close) {
+        while (c.vkGetFenceStatus(data.device, data.compute_fence) != c.VK_SUCCESS) {
+            std.Thread.sleep(10000); // 10us -
+        }
+
+        data.gpu_interface_semaphore.wait();
+        //std.debug.print("starting compute\n", .{});
+        _ = c.vkResetFences(data.device, 1, &data.compute_fence);
+
+        _ = c.vkResetCommandBuffer(data.compute_command_buffer, 0);
+        recordComputeCommandBuffer(data.*, data.compute_command_buffer) catch {
+            @panic("compute manager failed to record buffer!");
+        };
+
+        const wait_stages: u32 = 0;
+        const submit_info: c.VkSubmitInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = null,
+            .pWaitDstStageMask = &wait_stages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &data.compute_command_buffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = null,
+        };
+
+        if (c.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != c.VK_SUCCESS) {
+            @panic("compute manager failed to submit queue!");
+        }
+        data.gpu_interface_semaphore.post();
+    }
+
+    while (c.vkGetFenceStatus(data.device, data.compute_fence) != c.VK_SUCCESS) {
+        std.Thread.sleep(5000); // 5us -
+    }
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
@@ -48,30 +95,6 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
     updateUniformBuffer(data);
-
-    if (c.vkGetFenceStatus(data.device, data.compute_fence) == c.VK_SUCCESS) {
-        //std.debug.print("starting compute\n", .{});
-        _ = c.vkResetFences(data.device, 1, &data.compute_fence);
-
-        _ = c.vkResetCommandBuffer(data.compute_command_buffer, 0);
-        try recordComputeCommandBuffer(data.*, data.compute_command_buffer);
-
-        const wait_stages: u32 = 0;
-        const submit_info: c.VkSubmitInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 0,
-            .pWaitSemaphores = null,
-            .pWaitDstStageMask = &wait_stages,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &data.compute_command_buffer,
-            .signalSemaphoreCount = 0,
-            .pSignalSemaphores = null,
-        };
-
-        if (c.vkQueueSubmit(data.compute_queue, 1, &submit_info, data.compute_fence) != c.VK_SUCCESS) {
-            return MainLoopError.draw_command_buffer_submit_failed;
-        }
-    }
 
     _ = c.vkResetCommandBuffer(data.graphics_command_buffer, 0);
     try recordCommandBuffer(data.*, data.graphics_command_buffer, image_index);
