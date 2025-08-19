@@ -17,7 +17,9 @@ pub const device_extensions = [_][*:0]const u8{
 pub const UniformBufferObject = extern struct {
     center: @Vector(2, f32),
     resolution: @Vector(2, u32),
+    screen_offset: @Vector(2, u32),
     height_scale: f32,
+    resolution_scale_exponent: i32,
 };
 
 pub const target_frame_rate: f64 = 60;
@@ -99,6 +101,7 @@ pub const AppData = struct {
     compute_manager_thread: std.Thread = undefined,
     gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 },
     compute_manager_should_close: bool = false,
+    compute_idle: bool = false,
 
     current_uniform_state: UniformBufferObject,
     uniform_buffer: c.VkBuffer = undefined,

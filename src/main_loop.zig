@@ -22,20 +22,105 @@ pub fn startComputeManager(data: *common.AppData, alloc: Allocator) std.Thread.S
     data.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{data});
 }
 
+const Direction = enum { left, down, right, up };
+
 fn computeManage(data: *common.AppData) void {
-    while (!data.compute_manager_should_close) {
-        while (c.vkGetFenceStatus(data.device, data.compute_fence) != c.VK_SUCCESS) {
-            std.Thread.sleep(10000); // 10us -
+    var spiral_dir: Direction = .left;
+    var spiral_x: i32 = 1;
+    var spiral_y: i32 = 0;
+
+    outer: while (!data.compute_manager_should_close) {
+        if (data.compute_idle) {
+            std.Thread.sleep(1_000_000); // 1ms
+            continue :outer;
         }
+
+        if (c.vkWaitForFences(data.device, 1, &data.compute_fence, c.VK_TRUE, std.math.maxInt(u64)) != c.VK_SUCCESS) {
+            @panic("compute fence failed");
+        }
+
+        //std.Thread.sleep(100_000_000); // 0.1s
+
+        // determine next location
+        const sqrt_workgroup_num: u32 = 8;
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(data.current_uniform_state.resolution_scale_exponent + 3));
+        render_patch_size *= sqrt_workgroup_num;
+        const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(data.width)) - 1, render_patch_size) + 1;
+        const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(data.height)) - 1, render_patch_size) + 1;
+
+        var max_x: bool = false;
+        var max_y: bool = false;
+        var min_x: bool = false;
+        var min_y: bool = false;
+
+        while (true) {
+            switch (spiral_dir) {
+                .left => {
+                    spiral_x -= 1;
+                    if (spiral_x < spiral_y) {
+                        spiral_dir = .down;
+                    }
+                },
+                .down => {
+                    spiral_y += 1;
+                    if (spiral_y >= -spiral_x) {
+                        spiral_dir = .right;
+                    }
+                },
+                .right => {
+                    spiral_x += 1;
+                    if (spiral_x >= spiral_y) {
+                        spiral_dir = .up;
+                    }
+                },
+                .up => {
+                    spiral_y -= 1;
+                    if (spiral_y <= -spiral_x) {
+                        spiral_dir = .left;
+                    }
+                },
+            }
+            var cont: bool = false;
+            // repeat spiral traversal if location is out of bounds
+            if (-spiral_x > @divTrunc(num_render_patch_x, 2)) {
+                cont = true;
+                min_x = true;
+            }
+            if (spiral_x >= @divTrunc(num_render_patch_x + 1, 2)) {
+                cont = true;
+                max_x = true;
+            }
+            if (-spiral_y > @divTrunc(num_render_patch_y, 2)) {
+                cont = true;
+                min_y = true;
+            }
+            if (spiral_y >= @divTrunc(num_render_patch_y + 1, 2)) {
+                cont = true;
+                max_y = true;
+            }
+            if (max_x and min_x and max_y and min_y) {
+                data.compute_idle = true;
+                continue :outer;
+            }
+
+            if (!cont) break;
+        }
+
+        const scr_x: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_x, 2))) + spiral_x;
+        const scr_y: i32 = @as(i32, @intCast(@divTrunc(num_render_patch_y, 2))) + spiral_y;
+        data.current_uniform_state.screen_offset[0] = @as(u32, @intCast(scr_x)) * render_patch_size;
+        data.current_uniform_state.screen_offset[1] = @as(u32, @intCast(scr_y)) * render_patch_size;
 
         data.gpu_interface_semaphore.wait();
         defer data.gpu_interface_semaphore.post();
+
+        updateUniformBuffer(data);
 
         //std.debug.print("starting compute\n", .{});
         _ = c.vkResetFences(data.device, 1, &data.compute_fence);
 
         _ = c.vkResetCommandBuffer(data.compute_command_buffer, 0);
-        recordComputeCommandBuffer(data.*, data.compute_command_buffer) catch {
+        recordComputeCommandBuffer(data.*, data.compute_command_buffer, sqrt_workgroup_num) catch {
             @panic("compute manager failed to record buffer!");
         };
 
@@ -142,7 +227,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer) MainLoopError!void {
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32) MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -169,7 +254,7 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.Vk
         0,
     );
 
-    c.vkCmdDispatch(compute_command_buffer, @intCast((data.width + 7) >> 3), @intCast((data.height + 7) >> 3), 1);
+    c.vkCmdDispatch(compute_command_buffer, render_patch_size, render_patch_size, 1);
 
     if (c.vkEndCommandBuffer(compute_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;

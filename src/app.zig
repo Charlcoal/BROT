@@ -21,7 +21,9 @@ pub fn run(alloc: Allocator) Error!void {
         .current_uniform_state = .{
             .center = .{ 0.0, 0.0 },
             .resolution = .{ 800, 600 },
+            .screen_offset = .{ 0, 0 },
             .height_scale = 2.0,
+            .resolution_scale_exponent = 0,
         },
         .time = try std.time.Timer.start(),
         .prev_time = 0,

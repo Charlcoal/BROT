@@ -3,7 +3,9 @@
 layout(binding = 0) uniform UniformBufferObject {
     vec2 center;
     uvec2 resolution;
+    uvec2 screen_offset;
     float height_scale;
+    int res_scale_exp;
 } ubo;
 layout(std430, binding = 1) buffer storage {
     float potential_vals[];
@@ -15,7 +17,9 @@ void main() {
 	const float escape_radius = 1e8;
 	const float interior_test_e_sqr = 1e-6;
 
-    uvec2 screen_loc = gl_GlobalInvocationID.xy;
+    uvec2 screen_loc = gl_GlobalInvocationID.xy + ubo.screen_offset;
+    if (screen_loc.x >= ubo.resolution.x || screen_loc.y >= ubo.resolution.y) return;
+
     vec2 c = 2.0 * screen_loc / vec2(float(ubo.resolution.y));
     c -= vec2(1.0);
     c *= ubo.height_scale;
@@ -39,11 +43,9 @@ void main() {
         count++;
     }
 
-    if (screen_loc.x < ubo.resolution.x && screen_loc.y < ubo.resolution.y) {
-        if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
-            potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = -1;
-        } else {
-	    	potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
-	    }
-    }
+    if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
+        potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = -1;
+    } else {
+		potential_vals[screen_loc.x + screen_loc.y * ubo.resolution.x] = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
+	}
 }

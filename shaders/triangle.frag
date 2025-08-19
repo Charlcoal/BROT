@@ -5,7 +5,9 @@ layout(location = 0) out vec4 outColor;
 layout(binding = 0) uniform UniformBufferObject {
     vec2 center;
     uvec2 resolution;
+    uvec2 screen_offset;
     float height_scale;
+    int res_scale_exp;
 } ubo;
 layout(std430, binding = 1) readonly buffer storage {
     float potential_vals[];
