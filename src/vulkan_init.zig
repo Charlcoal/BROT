@@ -295,11 +295,11 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = @intCast(data.num_swap_images),
+            .descriptorCount = @intCast(data.swap_chain_images.len),
         },
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = @intCast(data.num_swap_images),
+            .descriptorCount = @intCast(data.swap_chain_images.len),
         },
         //.{
         //    .type = glfw.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -311,7 +311,7 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
-        .maxSets = data.num_swap_images,
+        .maxSets = @intCast(data.swap_chain_images.len),
     };
 
     if (c.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != c.VK_SUCCESS) {
@@ -346,9 +346,9 @@ fn createDescriptorSetLayout(data: *common.AppData) InitVulkanError!void {
 }
 
 fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, data.num_swap_images);
+    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, data.swap_chain_images.len);
     defer alloc.free(layouts);
-    for (0..data.num_swap_images) |i| {
+    for (0..data.swap_chain_images.len) |i| {
         layouts[i] = data.descriptor_set_layout;
     }
 
@@ -917,15 +917,15 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
     const present_mode = chooseSwapPresentMode(swap_chain_support.presentModes);
     const extent = chooseSwapExtent(data.*, &swap_chain_support.capabilities);
 
-    data.num_swap_images = swap_chain_support.capabilities.minImageCount + 1;
-    if (swap_chain_support.capabilities.maxImageCount > 0 and data.num_swap_images > swap_chain_support.capabilities.maxImageCount) {
-        data.num_swap_images = swap_chain_support.capabilities.maxImageCount;
+    data.swap_chain_images.len = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 and data.swap_chain_images.len > swap_chain_support.capabilities.maxImageCount) {
+        data.swap_chain_images.len = swap_chain_support.capabilities.maxImageCount;
     }
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = data.surface,
-        .minImageCount = data.num_swap_images,
+        .minImageCount = @intCast(data.swap_chain_images.len),
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
         .imageExtent = extent,
@@ -955,9 +955,9 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &data.num_swap_images, null);
-    data.swap_chain_images = try alloc.alloc(c.VkImage, data.num_swap_images);
-    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, &data.num_swap_images, data.swap_chain_images.ptr);
+    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, @ptrCast(&data.swap_chain_images.len), null);
+    data.swap_chain_images = try alloc.alloc(c.VkImage, data.swap_chain_images.len);
+    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, @ptrCast(&data.swap_chain_images.len), data.swap_chain_images.ptr);
 
     data.swap_chain_image_format = surface_format.format;
     data.swap_chain_extent = extent;
@@ -1013,7 +1013,7 @@ fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabi
 }
 
 fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, data.num_swap_images);
+    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
     data.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
 
     const semaphore_info: c.VkSemaphoreCreateInfo = .{
@@ -1029,7 +1029,7 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         return InitVulkanError.semaphore_creation_failed;
     }
 
-    for (0..data.num_swap_images) |i| {
+    for (0..data.swap_chain_images.len) |i| {
         if (c.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != c.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }

@@ -22,7 +22,7 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
     data.compute_manager_should_close = true;
     data.compute_manager_thread.join();
     //vulkan
-    for (0..data.num_swap_images) |i| {
+    for (0..data.swap_chain_images.len) |i| {
         c.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
     }
     c.vkDestroyFence(data.device, data.in_flight_fence, null);
