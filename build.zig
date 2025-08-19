@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) !void {
 
         const glslc_cmd = b.addSystemCommand(&.{
             "glslc",
-            "--target-env=vulkan1.4",
+            "--target-env=vulkan1.3",
             "-o",
         });
         const shader_spv = glslc_cmd.addOutputFileArg(spv_stream.getWritten());

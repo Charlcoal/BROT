@@ -125,7 +125,7 @@ fn computeManage(data: *common.AppData) void {
         data.gpu_interface_semaphore.wait();
         defer data.gpu_interface_semaphore.post();
 
-        updateUniformBuffer(data);
+        //updateUniformBuffer(data);
 
         //std.debug.print("starting compute\n", .{});
         _ = c.vkResetFences(data.device, 1, &data.compute_fence);
@@ -263,6 +263,15 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.Vk
         &data.descriptor_set,
         0,
         0,
+    );
+
+    c.vkCmdPushConstants(
+        compute_command_buffer,
+        data.compute_pipeline_layout,
+        c.VK_SHADER_STAGE_COMPUTE_BIT,
+        0,
+        @sizeOf(common.UniformBufferObject),
+        &data.current_uniform_state,
     );
 
     c.vkCmdDispatch(compute_command_buffer, render_patch_size, render_patch_size, 1);

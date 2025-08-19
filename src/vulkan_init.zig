@@ -451,12 +451,18 @@ fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
         .pName = "main",
     };
 
+    const push_constant_range: c.VkPushConstantRange = .{
+        .offset = 0,
+        .size = @sizeOf(common.UniformBufferObject),
+        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &data.descriptor_set_layout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = null,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant_range,
     };
     if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.compute_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
