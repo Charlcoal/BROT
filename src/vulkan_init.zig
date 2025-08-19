@@ -27,7 +27,8 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createGraphicsPipeline(data);
     try createComputePipeline(data);
     try createFrameBuffers(data, alloc);
-    try createCommandPool(data, alloc);
+    try createGraphicsCommandPool(data, alloc);
+    try createComputeCommandPool(data, alloc);
     try createStorageBuffer(data);
     try createUniformBuffers(data);
     try createDescriptorPool(data);
@@ -242,7 +243,7 @@ fn createCommandBuffers(data: *common.AppData) InitVulkanError!void {
 fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = data.graphics_command_pool,
+        .commandPool = data.compute_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
@@ -252,7 +253,7 @@ fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
     }
 }
 
-fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+fn createGraphicsCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
