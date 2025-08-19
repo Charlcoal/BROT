@@ -113,6 +113,8 @@ pub const AppData = struct {
     uniform_buffer: c.VkBuffer = undefined,
     uniform_buffer_memory: c.VkDeviceMemory = undefined,
     uniform_buffer_mapped: ?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
+    render_start_screen_x: u32 = 0,
+    render_start_screen_y: u32 = 0,
 
     storage_buffer_size: u32 = undefined,
     storage_buffer: c.VkBuffer = undefined,

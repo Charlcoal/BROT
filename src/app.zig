@@ -18,6 +18,8 @@ pub fn run(alloc: Allocator) Error!void {
     var app_data = AppData{
         .width = 800,
         .height = 600,
+        .render_start_screen_x = 400,
+        .render_start_screen_y = 300,
         .current_uniform_state = .{
             .center = .{ 0.0, 0.0 },
             .resolution = .{ 800, 600 },

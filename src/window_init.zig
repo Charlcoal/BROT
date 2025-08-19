@@ -23,6 +23,8 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     data.height = height;
     data.current_uniform_state.resolution = .{ @intCast(width), @intCast(height) };
     data.frame_updated = true;
+    data.render_start_screen_x = @intCast(@divFloor(width, 2));
+    data.render_start_screen_y = @intCast(@divFloor(height, 2));
 }
 
 fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
@@ -33,6 +35,9 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     var mouse_pos_x: f64 = undefined;
     var mouse_pos_y: f64 = undefined;
     c.glfwGetCursorPos(window, &mouse_pos_x, &mouse_pos_y);
+
+    data.render_start_screen_x = @intFromFloat(@round(mouse_pos_x));
+    data.render_start_screen_y = @intFromFloat(@round(mouse_pos_y));
 
     // change mouse_pos to Vulkan coords
     mouse_pos_x = 2.0 * mouse_pos_x / @as(f64, @floatFromInt(data.current_uniform_state.resolution[1])) - 1.0;
