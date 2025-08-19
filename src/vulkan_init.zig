@@ -229,7 +229,7 @@ fn debugCallback(
 fn createCommandBuffers(data: *common.AppData) InitVulkanError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = data.command_pool,
+        .commandPool = data.graphics_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
@@ -242,7 +242,7 @@ fn createCommandBuffers(data: *common.AppData) InitVulkanError!void {
 fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = data.command_pool,
+        .commandPool = data.graphics_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
@@ -261,7 +261,21 @@ fn createCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         .queueFamilyIndex = queue_family_indices.graphics_family.?,
     };
 
-    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.command_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.graphics_command_pool) != c.VK_SUCCESS) {
+        return InitVulkanError.command_pool_creation_failed;
+    }
+}
+
+fn createComputeCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+    const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
+
+    const pool_info: c.VkCommandPoolCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queue_family_indices.compute_family.?,
+    };
+
+    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.compute_command_pool) != c.VK_SUCCESS) {
         return InitVulkanError.command_pool_creation_failed;
     }
 }

@@ -33,7 +33,7 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
     alloc.free(data.image_availible_semaphores);
     alloc.free(data.render_finished_semaphores);
 
-    c.vkDestroyCommandPool(data.device, data.command_pool, null);
+    c.vkDestroyCommandPool(data.device, data.graphics_command_pool, null);
 
     cleanupSwapChain(data.*, alloc);
 

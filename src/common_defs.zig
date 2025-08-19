@@ -85,7 +85,8 @@ pub const AppData = struct {
     graphics_pipeline: c.VkPipeline = undefined,
     compute_pipeline: c.VkPipeline = undefined,
 
-    command_pool: c.VkCommandPool = undefined,
+    graphics_command_pool: c.VkCommandPool = undefined,
+    compute_command_pool: c.VkCommandPool = undefined,
     graphics_command_buffer: c.VkCommandBuffer = undefined,
     compute_command_buffer: c.VkCommandBuffer = undefined,
 
