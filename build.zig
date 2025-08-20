@@ -14,10 +14,13 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe.linkLibC();
-    exe.linkSystemLibrary2("glfw", .{});
+
+    const glfw = b.dependency("glfw", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.linkLibrary(glfw.artifact("glfw"));
     exe.linkSystemLibrary2("vulkan", .{});
-    exe.addIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "third-party/glfw/include/" } });
 
     b.installArtifact(exe);
 
@@ -73,16 +76,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe_unit_tests.linkLibC();
-    exe_unit_tests.linkSystemLibrary2("glfw", .{});
+    exe_unit_tests.linkLibrary(glfw.artifact("glfw"));
     exe_unit_tests.linkSystemLibrary2("vulkan", .{});
-    //exe_unit_tests.linkSystemLibrary2("dl", .{});
-    //exe_unit_tests.linkSystemLibrary2("pthread", .{});
-    //exe_unit_tests.linkSystemLibrary2("X11", .{});
-    //exe_unit_tests.linkSystemLibrary2("Xxf86vm", .{});
-    //exe_unit_tests.linkSystemLibrary2("Xrandr", .{});
-    //exe_unit_tests.linkSystemLibrary2("Xi", .{});
-    exe_unit_tests.addIncludePath(.{ .src_path = .{ .owner = b, .sub_path = "third-party/glfw/include/" } });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

@@ -2,13 +2,20 @@
     .fingerprint = 0x648673535e6e09d1,
     .name = .BROT,
     .version = "0.0.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .glfw = .{
+            .url = "https://github.com/allyourcodebase/glfw/archive/98607df.tar.gz",
+            .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "resources.zon",
         "src",
+        "shaders",
         // For example...
-        //"LICENSE",
-        //"README.md",
+        "LICENSE.txt",
+        "README.md",
     },
 }
