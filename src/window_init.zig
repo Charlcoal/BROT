@@ -9,7 +9,7 @@ pub fn initWindow(data: *common.AppData) InitWindowError!void {
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    data.window = c.glfwCreateWindow(data.width, data.height, "Vulkan", null, null) orelse return InitWindowError.create_window_failed;
+    data.window = c.glfwCreateWindow(data.width, data.height, "BROT", null, null) orelse return InitWindowError.create_window_failed;
     c.glfwSetWindowUserPointer(data.window, @ptrCast(data));
     _ = c.glfwSetFramebufferSizeCallback(data.window, framebufferResizeCallback);
     _ = c.glfwSetScrollCallback(data.window, scrollCallback);
