@@ -1104,6 +1104,7 @@ fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError
 fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
     data.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
+    data.current_uniform_state.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
 
     try createBuffer(
         data,

@@ -21,12 +21,13 @@ pub fn run(alloc: Allocator) Error!void {
         .render_start_screen_x = 400,
         .render_start_screen_y = 300,
         .current_uniform_state = .{
-            .center = .{ 0.0, 0.0 },
-            .resolution = .{ 800, 600 },
+            .center = .{ -1.0, -1.0 },
+            .max_resolution = .{ 800, 600 },
             .screen_offset = .{ 0, 0 },
-            .height_scale = 2.0,
+            .height_scale = 2.0 / 600.0,
             .resolution_scale_exponent = 0,
         },
+        .zoom = 2.0,
         .time = try std.time.Timer.start(),
         .prev_time = 0,
     };

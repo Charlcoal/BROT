@@ -16,7 +16,7 @@ pub const device_extensions = [_][*:0]const u8{
 
 pub const UniformBufferObject = extern struct {
     center: @Vector(2, f32),
-    resolution: @Vector(2, u32),
+    max_resolution: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
     height_scale: f32,
     resolution_scale_exponent: i32,
@@ -128,6 +128,7 @@ pub const AppData = struct {
     descriptor_pool: c.VkDescriptorPool = undefined,
     descriptor_sets: []c.VkDescriptorSet = undefined,
 
+    zoom: f32,
     time: std.time.Timer,
     prev_time: u64,
 };

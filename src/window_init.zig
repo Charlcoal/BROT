@@ -21,8 +21,8 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     data.frame_buffer_needs_resize = true;
     data.width = width;
     data.height = height;
-    data.current_uniform_state.resolution = .{ @intCast(width), @intCast(height) };
     data.frame_updated = true;
+    data.current_uniform_state.height_scale = data.zoom / @as(f32, @floatFromInt(height));
     data.render_start_screen_x = @intCast(@divFloor(width, 2));
     data.render_start_screen_y = @intCast(@divFloor(height, 2));
 }
@@ -39,10 +39,6 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     data.render_start_screen_x = @intFromFloat(@round(mouse_pos_x));
     data.render_start_screen_y = @intFromFloat(@round(mouse_pos_y));
 
-    // change mouse_pos to Vulkan coords
-    mouse_pos_x = 2.0 * mouse_pos_x / @as(f64, @floatFromInt(data.current_uniform_state.resolution[1])) - 1.0;
-    mouse_pos_y = 2.0 * mouse_pos_y / @as(f64, @floatFromInt(data.current_uniform_state.resolution[1])) - 1.0;
-
     // change mouse_pos to mandelbrot coords
     mouse_pos_x = mouse_pos_x * data.current_uniform_state.height_scale;
     mouse_pos_y = mouse_pos_y * data.current_uniform_state.height_scale;
@@ -51,6 +47,7 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     data.current_uniform_state.center[1] += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
 
     data.current_uniform_state.height_scale *= scroll_factor;
+    data.zoom *= scroll_factor;
 
     data.frame_updated = true;
 }
