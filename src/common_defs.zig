@@ -99,7 +99,8 @@ pub const AppData = struct {
     swap_chain_image_views: []c.VkImageView = undefined,
     swap_chain_framebuffers: []c.VkFramebuffer = undefined,
     current_frame: u32 = 0,
-    frame_buffer_resized: bool = false,
+    frame_buffer_needs_resize: bool = false,
+    frame_buffer_just_resized: bool = false,
 
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,

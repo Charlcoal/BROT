@@ -18,7 +18,7 @@ pub fn initWindow(data: *common.AppData) InitWindowError!void {
 
 fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
     const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
-    data.frame_buffer_resized = true;
+    data.frame_buffer_needs_resize = true;
     data.width = width;
     data.height = height;
     data.current_uniform_state.resolution = .{ @intCast(width), @intCast(height) };

@@ -156,7 +156,12 @@ fn computeManage(data: *common.AppData) void {
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
+    if (data.frame_buffer_just_resized) {
+        _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, 60_000_000);
+        data.frame_buffer_just_resized = false;
+    } else {
+        _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
+    }
 
     _ = c.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
 
@@ -226,8 +231,8 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
 
     _ = c.vkQueuePresentKHR(data.present_queue, &present_info);
 
-    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
-        data.frame_buffer_resized = false;
+    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or data.frame_buffer_needs_resize) {
+        data.frame_buffer_needs_resize = false;
         try vulkan_init.recreateSwapChain(data, alloc);
         return;
     } else if (result != c.VK_SUCCESS) {

@@ -39,6 +39,8 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
 }
 
 pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+    data.frame_buffer_just_resized = true;
+
     var width: c_int = 0;
     var height: c_int = 0;
     c.glfwGetFramebufferSize(data.window, &width, &height);
