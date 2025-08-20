@@ -19,7 +19,7 @@ void main() {
     if (potential_val == -1) {
     	outColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
-    	outColor = vec4(sin(potential_val * 2.0 - 1.1f) / 2.0f + 0.5f, sin(potential_val * 2.0 - 1.9f) / 2.0f + 0.5f, 0.0, 1.0);
+    	outColor = vec4(sin(potential_val * 1.0 - 1.1f) / 2.0f + 0.5f, sin(potential_val * 1.0 - 1.9f) / 2.0f + 0.5f, 0.0, 1.0);
         outColor = outColor * outColor;
 	}
 

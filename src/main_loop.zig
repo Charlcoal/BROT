@@ -93,78 +93,6 @@ fn computeManage(data: *common.AppData) void {
     _ = c.vkWaitForFences(data.device, data.compute_fences.len, &data.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
 }
 
-fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) bool {
-    // determine next location
-    const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(data.width)) - 1, render_patch_size) + 1;
-    const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(data.height)) - 1, render_patch_size) + 1;
-    const spiral_center_x: i32 = @intCast(@divTrunc(data.render_start_screen_x, render_patch_size));
-    const spiral_center_y: i32 = @intCast(@divTrunc(data.render_start_screen_y, render_patch_size));
-
-    var reached_max_x: bool = false;
-    var reached_max_y: bool = false;
-    var reached_min_x: bool = false;
-    var reached_min_y: bool = false;
-
-    while (true) {
-        switch (spiral.dir) {
-            .left => {
-                spiral.delta_x -= 1;
-                if (spiral.delta_x < spiral.delta_y) {
-                    spiral.dir = .down;
-                }
-            },
-            .down => {
-                spiral.delta_y += 1;
-                if (spiral.delta_y >= -spiral.delta_x) {
-                    spiral.dir = .right;
-                }
-            },
-            .right => {
-                spiral.delta_x += 1;
-                if (spiral.delta_x >= spiral.delta_y) {
-                    spiral.dir = .up;
-                }
-            },
-            .up => {
-                spiral.delta_y -= 1;
-                if (spiral.delta_y <= -spiral.delta_x) {
-                    spiral.dir = .left;
-                }
-            },
-        }
-        var cont: bool = false;
-        // repeat spiral traversal if location is out of bounds
-        if (spiral.delta_x + spiral_center_x < 0) {
-            cont = true;
-            reached_min_x = true;
-        }
-        if (spiral.delta_x + spiral_center_x >= num_render_patch_x) {
-            cont = true;
-            reached_max_x = true;
-        }
-        if (spiral.delta_y + spiral_center_y < 0) {
-            cont = true;
-            reached_min_y = true;
-        }
-        if (spiral.delta_y + spiral_center_y >= num_render_patch_y) {
-            cont = true;
-            reached_max_y = true;
-        }
-        if (reached_max_x and reached_min_x and reached_max_y and reached_min_y) {
-            data.compute_idle = true;
-            return true;
-        }
-
-        if (!cont) break;
-    }
-
-    const scr_x: i32 = spiral_center_x + spiral.delta_x;
-    const scr_y: i32 = spiral_center_y + spiral.delta_y;
-    data.current_uniform_state.screen_offset[0] = @as(u32, @intCast(scr_x)) * render_patch_size;
-    data.current_uniform_state.screen_offset[1] = @as(u32, @intCast(scr_y)) * render_patch_size;
-    return false;
-}
-
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     if (data.frame_buffer_just_resized) {
         _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, 60_000_000);
@@ -248,6 +176,78 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     } else if (result != c.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
+}
+
+fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) bool {
+    // determine next location
+    const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(data.width)) - 1, render_patch_size) + 1;
+    const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(data.height)) - 1, render_patch_size) + 1;
+    const spiral_center_x: i32 = @intCast(@divTrunc(data.render_start_screen_x, render_patch_size));
+    const spiral_center_y: i32 = @intCast(@divTrunc(data.render_start_screen_y, render_patch_size));
+
+    var reached_max_x: bool = false;
+    var reached_max_y: bool = false;
+    var reached_min_x: bool = false;
+    var reached_min_y: bool = false;
+
+    while (true) {
+        switch (spiral.dir) {
+            .left => {
+                spiral.delta_x -= 1;
+                if (spiral.delta_x < spiral.delta_y) {
+                    spiral.dir = .down;
+                }
+            },
+            .down => {
+                spiral.delta_y += 1;
+                if (spiral.delta_y >= -spiral.delta_x) {
+                    spiral.dir = .right;
+                }
+            },
+            .right => {
+                spiral.delta_x += 1;
+                if (spiral.delta_x >= spiral.delta_y) {
+                    spiral.dir = .up;
+                }
+            },
+            .up => {
+                spiral.delta_y -= 1;
+                if (spiral.delta_y <= -spiral.delta_x) {
+                    spiral.dir = .left;
+                }
+            },
+        }
+        var cont: bool = false;
+        // repeat spiral traversal if location is out of bounds
+        if (spiral.delta_x + spiral_center_x < 0) {
+            cont = true;
+            reached_min_x = true;
+        }
+        if (spiral.delta_x + spiral_center_x >= num_render_patch_x) {
+            cont = true;
+            reached_max_x = true;
+        }
+        if (spiral.delta_y + spiral_center_y < 0) {
+            cont = true;
+            reached_min_y = true;
+        }
+        if (spiral.delta_y + spiral_center_y >= num_render_patch_y) {
+            cont = true;
+            reached_max_y = true;
+        }
+        if (reached_max_x and reached_min_x and reached_max_y and reached_min_y) {
+            data.compute_idle = true;
+            return true;
+        }
+
+        if (!cont) break;
+    }
+
+    const scr_x: i32 = spiral_center_x + spiral.delta_x;
+    const scr_y: i32 = spiral_center_y + spiral.delta_y;
+    data.current_uniform_state.screen_offset[0] = @as(u32, @intCast(scr_x)) * render_patch_size;
+    data.current_uniform_state.screen_offset[1] = @as(u32, @intCast(scr_y)) * render_patch_size;
+    return false;
 }
 
 fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32) MainLoopError!void {

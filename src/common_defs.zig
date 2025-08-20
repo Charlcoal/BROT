@@ -65,7 +65,7 @@ pub const MainLoopError = error{
 
 const Allocator = std.mem.Allocator;
 
-const num_compute_buffers = 3;
+const num_compute_buffers = 6;
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
     window: *c.GLFWwindow = undefined,
