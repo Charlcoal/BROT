@@ -195,15 +195,15 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         &image_index,
     );
 
+    data.gpu_interface_semaphore.wait();
+    defer data.gpu_interface_semaphore.post();
+
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
         try vulkan_init.recreateSwapChain(data, alloc);
         return;
     } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
         return MainLoopError.swap_chain_image_acquisition_failed;
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
-
-    data.gpu_interface_semaphore.wait();
-    defer data.gpu_interface_semaphore.post();
 
     updateUniformBuffer(data, data.current_frame);
 
