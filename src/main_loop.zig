@@ -156,9 +156,9 @@ fn computeManage(data: *common.AppData) void {
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
-    _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
+    _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
 
-    _ = c.vkResetFences(data.device, 1, &data.in_flight_fence);
+    _ = c.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
 
     data.gpu_interface_semaphore.wait();
     defer data.gpu_interface_semaphore.post();
@@ -178,7 +178,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         data.device,
         data.swap_chain,
         std.math.maxInt(u64),
-        data.image_availible_semaphores[data.current_swap_image],
+        data.image_availible_semaphores[data.current_frame],
         @ptrCast(c.VK_NULL_HANDLE),
         &image_index,
     );
@@ -190,12 +190,12 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
-    updateUniformBuffer(data);
+    updateUniformBuffer(data, data.current_frame);
 
-    _ = c.vkResetCommandBuffer(data.graphics_command_buffer, 0);
-    try recordCommandBuffer(data.*, data.graphics_command_buffer, image_index);
+    _ = c.vkResetCommandBuffer(data.graphics_command_buffers[data.current_frame], 0);
+    try recordCommandBuffer(data.*, data.graphics_command_buffers[data.current_frame], image_index);
 
-    const wait_semaphors = [_]c.VkSemaphore{data.image_availible_semaphores[data.current_swap_image]};
+    const wait_semaphors = [_]c.VkSemaphore{data.image_availible_semaphores[data.current_frame]};
     const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     const signal_semaphors = [_]c.VkSemaphore{data.render_finished_semaphores[image_index]};
     const submit_info: c.VkSubmitInfo = .{
@@ -204,12 +204,12 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         .pWaitSemaphores = &wait_semaphors,
         .pWaitDstStageMask = &wait_stages,
         .commandBufferCount = 1,
-        .pCommandBuffers = &data.graphics_command_buffer,
+        .pCommandBuffers = &data.graphics_command_buffers[data.current_frame],
         .signalSemaphoreCount = @intCast(signal_semaphors.len),
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (c.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fence) != c.VK_SUCCESS) {
+    if (c.vkQueueSubmit(data.graphics_queue, 1, &submit_info, data.in_flight_fences[data.current_frame]) != c.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 
@@ -225,7 +225,6 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     };
 
     _ = c.vkQueuePresentKHR(data.present_queue, &present_info);
-    data.current_swap_image = (data.current_swap_image + 1) % @as(u32, @intCast(data.swap_chain_images.len));
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or data.frame_buffer_resized) {
         data.frame_buffer_resized = false;
@@ -258,7 +257,7 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.Vk
         data.compute_pipeline_layout,
         0,
         1,
-        &data.descriptor_set,
+        &data.descriptor_sets[0],
         0,
         0,
     );
@@ -328,7 +327,7 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
         data.pipeline_layout,
         0,
         1,
-        &data.descriptor_set,
+        &data.descriptor_sets[data.current_frame],
         0,
         null,
     );
@@ -347,11 +346,11 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     }
 }
 
-fn updateUniformBuffer(data: *common.AppData) void {
+fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
     @memcpy(
         @as(
             [*]common.UniformBufferObject,
-            @ptrCast(data.uniform_buffer_mapped),
+            @ptrCast(data.uniform_buffers_mapped[@intCast(current_image)]),
         ),
         @as(
             *const [1]common.UniformBufferObject,

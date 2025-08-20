@@ -24,6 +24,8 @@ pub const UniformBufferObject = extern struct {
 
 pub const target_frame_rate: f64 = 60;
 
+pub const max_frames_in_flight: u32 = 2;
+
 // ------------------- program defs ---------------------
 
 pub const dbg = builtin.mode == std.builtin.Mode.Debug;
@@ -87,7 +89,7 @@ pub const AppData = struct {
 
     graphics_command_pool: c.VkCommandPool = undefined,
     compute_command_pool: c.VkCommandPool = undefined,
-    graphics_command_buffer: c.VkCommandBuffer = undefined,
+    graphics_command_buffers: []c.VkCommandBuffer = undefined,
     compute_command_buffer: c.VkCommandBuffer = undefined,
 
     swap_chain: c.VkSwapchainKHR = null,
@@ -96,12 +98,12 @@ pub const AppData = struct {
     swap_chain_extent: c.VkExtent2D = undefined,
     swap_chain_image_views: []c.VkImageView = undefined,
     swap_chain_framebuffers: []c.VkFramebuffer = undefined,
-    current_swap_image: u32 = 0,
+    current_frame: u32 = 0,
     frame_buffer_resized: bool = false,
 
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,
-    in_flight_fence: c.VkFence = undefined,
+    in_flight_fences: []c.VkFence = undefined,
     compute_fence: c.VkFence = undefined,
 
     compute_manager_thread: std.Thread = undefined,
@@ -111,9 +113,9 @@ pub const AppData = struct {
     frame_updated: bool = true,
 
     current_uniform_state: UniformBufferObject,
-    uniform_buffer: c.VkBuffer = undefined,
-    uniform_buffer_memory: c.VkDeviceMemory = undefined,
-    uniform_buffer_mapped: ?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
+    uniform_buffers: []c.VkBuffer = undefined,
+    uniform_buffers_memory: []c.VkDeviceMemory = undefined,
+    uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
     render_start_screen_x: u32 = 0,
     render_start_screen_y: u32 = 0,
 
@@ -123,7 +125,7 @@ pub const AppData = struct {
 
     descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
     descriptor_pool: c.VkDescriptorPool = undefined,
-    descriptor_set: c.VkDescriptorSet = undefined,
+    descriptor_sets: []c.VkDescriptorSet = undefined,
 
     time: std.time.Timer,
     prev_time: u64,

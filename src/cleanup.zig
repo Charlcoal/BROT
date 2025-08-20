@@ -22,30 +22,38 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
     data.compute_manager_should_close = true;
     data.compute_manager_thread.join();
     //vulkan
-    for (0..data.swap_chain_images.len) |i| {
+    for (0..common.max_frames_in_flight) |i| {
         c.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
+        c.vkDestroyFence(data.device, data.in_flight_fences[i], null);
     }
-    c.vkDestroyFence(data.device, data.in_flight_fence, null);
     c.vkDestroyFence(data.device, data.compute_fence, null);
     for (data.render_finished_semaphores) |sem| {
         c.vkDestroySemaphore(data.device, sem, null);
     }
     alloc.free(data.image_availible_semaphores);
     alloc.free(data.render_finished_semaphores);
+    alloc.free(data.in_flight_fences);
 
     c.vkDestroyCommandPool(data.device, data.graphics_command_pool, null);
     c.vkDestroyCommandPool(data.device, data.compute_command_pool, null);
+    alloc.free(data.graphics_command_buffers);
 
     cleanupSwapChain(data.*, alloc);
 
-    c.vkDestroyBuffer(data.device, data.uniform_buffer, null);
-    c.vkFreeMemory(data.device, data.uniform_buffer_memory, null);
+    for (0..common.max_frames_in_flight) |i| {
+        c.vkDestroyBuffer(data.device, data.uniform_buffers[i], null);
+        c.vkFreeMemory(data.device, data.uniform_buffers_memory[i], null);
+    }
+    alloc.free(data.uniform_buffers);
+    alloc.free(data.uniform_buffers_memory);
+    alloc.free(data.uniform_buffers_mapped);
 
     c.vkDestroyBuffer(data.device, data.storage_buffer, null);
     c.vkFreeMemory(data.device, data.storage_buffer_memory, null);
 
     c.vkDestroyDescriptorPool(data.device, data.descriptor_pool, null);
     c.vkDestroyDescriptorSetLayout(data.device, data.descriptor_set_layout, null);
+    alloc.free(data.descriptor_sets);
 
     c.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
     c.vkDestroyPipeline(data.device, data.compute_pipeline, null);

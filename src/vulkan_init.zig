@@ -30,11 +30,11 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createGraphicsCommandPool(data, alloc);
     try createComputeCommandPool(data, alloc);
     try createStorageBuffer(data);
-    try createUniformBuffers(data);
+    try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
     try createComputeCommandBuffer(data);
-    try createCommandBuffers(data);
+    try createCommandBuffers(data, alloc);
     try createSyncObjects(data, alloc);
 }
 
@@ -227,15 +227,17 @@ fn debugCallback(
     return c.VK_FALSE;
 }
 
-fn createCommandBuffers(data: *common.AppData) InitVulkanError!void {
+fn createCommandBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+    data.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
+
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = data.graphics_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
+        .commandBufferCount = @intCast(data.graphics_command_buffers.len),
     };
 
-    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.graphics_command_buffer) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, data.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
@@ -317,7 +319,7 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
             .descriptorCount = @intCast(data.swap_chain_images.len),
         },
         //.{
-        //    .type = glfw.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        //    .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         //    .descriptorCount = @intCast(common.max_frames_in_flight),
         //}
     };
@@ -370,65 +372,68 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
     const alloc_info: c.VkDescriptorSetAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = data.descriptor_pool,
-        .descriptorSetCount = 1,
+        .descriptorSetCount = @intCast(common.max_frames_in_flight),
         .pSetLayouts = layouts.ptr,
     };
 
-    if (c.vkAllocateDescriptorSets(data.device, &alloc_info, &data.descriptor_set) != c.VK_SUCCESS) {
+    data.descriptor_sets = try alloc.alloc(c.VkDescriptorSet, common.max_frames_in_flight);
+    if (c.vkAllocateDescriptorSets(data.device, &alloc_info, data.descriptor_sets.ptr) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_sets_allocation_failed;
     }
 
-    const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
-        .buffer = data.uniform_buffer,
-        .offset = 0,
-        .range = @sizeOf(common.UniformBufferObject),
-    };
+    for (0..common.max_frames_in_flight) |i| {
+        const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = data.uniform_buffers[i],
+            .offset = 0,
+            .range = @sizeOf(common.UniformBufferObject),
+        };
 
-    const storage_buffer_info: c.VkDescriptorBufferInfo = .{
-        .buffer = data.storage_buffer,
-        .offset = 0,
-        .range = data.storage_buffer_size,
-    };
+        const storage_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = data.storage_buffer,
+            .offset = 0,
+            .range = data.storage_buffer_size,
+        };
 
-    //const image_info: glfw.VkDescriptorImageInfo = .{
-    //    .imageLayout = glfw.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    //    .imageView = data.texture_image_view,
-    //    .sampler = data.texture_sampler,
-    //};
+        //const image_info: c.VkDescriptorImageInfo = .{
+        //    .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        //    .imageView = data.texture_image_view,
+        //    .sampler = data.texture_sampler,
+        //};
 
-    const descriptor_writes = [_]c.VkWriteDescriptorSet{
-        .{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = data.descriptor_set,
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &uniform_buffer_info,
-            .pImageInfo = null,
-            .pTexelBufferView = null,
-        },
-        .{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = data.descriptor_set,
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &storage_buffer_info,
-        },
-        //.{
-        //    .sType = glfw.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        //    .dstSet = data.descriptor_sets[i],
-        //    .dstBinding = 1,
-        //    .dstArrayElement = 0,
-        //    .descriptorType = glfw.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        //    .descriptorCount = 1,
-        //    .pImageInfo = &image_info,
-        //}
-    };
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = data.descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &uniform_buffer_info,
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            },
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = data.descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &storage_buffer_info,
+            },
+            //.{
+            //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            //    .dstSet = data.descriptor_sets[i],
+            //    .dstBinding = 1,
+            //    .dstArrayElement = 0,
+            //    .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            //    .descriptorCount = 1,
+            //    .pImageInfo = &image_info,
+            //}
+        };
 
-    c.vkUpdateDescriptorSets(data.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(data.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+    }
 }
 
 fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
@@ -1034,8 +1039,9 @@ fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabi
 }
 
 fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
+    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
     data.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
+    data.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
 
     const semaphore_info: c.VkSemaphoreCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1050,13 +1056,12 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         return InitVulkanError.semaphore_creation_failed;
     }
 
-    for (0..data.swap_chain_images.len) |i| {
-        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != c.VK_SUCCESS) {
+    for (0..common.max_frames_in_flight) |i| {
+        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != c.VK_SUCCESS or
+            c.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fences[i]) != c.VK_SUCCESS)
+        {
             return InitVulkanError.semaphore_creation_failed;
         }
-    }
-    if (c.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fence) != c.VK_SUCCESS) {
-        return InitVulkanError.semaphore_creation_failed;
     }
 
     for (data.render_finished_semaphores) |*sem| {
@@ -1066,26 +1071,32 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
     }
 }
 
-fn createUniformBuffers(data: *common.AppData) InitVulkanError!void {
+fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
     const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
 
-    try createBuffer(
-        data,
-        buffer_size,
-        c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &data.uniform_buffer,
-        &data.uniform_buffer_memory,
-    );
+    data.uniform_buffers = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
+    data.uniform_buffers_memory = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
+    data.uniform_buffers_mapped = try alloc.alloc(?*align(@alignOf(common.UniformBufferObject)) anyopaque, common.max_frames_in_flight);
 
-    _ = c.vkMapMemory(
-        data.device,
-        data.uniform_buffer_memory,
-        0,
-        buffer_size,
-        0,
-        @ptrCast(&data.uniform_buffer_mapped),
-    );
+    for (0..common.max_frames_in_flight) |i| {
+        try createBuffer(
+            data,
+            buffer_size,
+            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &data.uniform_buffers[i],
+            &data.uniform_buffers_memory[i],
+        );
+
+        _ = c.vkMapMemory(
+            data.device,
+            data.uniform_buffers_memory[i],
+            0,
+            buffer_size,
+            0,
+            @ptrCast(&data.uniform_buffers_mapped[i]),
+        );
+    }
 }
 
 fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
