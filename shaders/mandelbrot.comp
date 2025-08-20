@@ -22,7 +22,7 @@ layout( push_constant ) uniform UniformBufferObject {
 } ubo;
 
 void main() {
-    const int max_count = 5000;
+    const int max_count = 15000;
 	const float escape_radius = 1e8;
 	const float interior_test_e_sqr = 1e-6;
 

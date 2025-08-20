@@ -249,10 +249,10 @@ fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = data.compute_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
+        .commandBufferCount = data.compute_command_buffers.len,
     };
 
-    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffer) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffers) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
@@ -1054,8 +1054,10 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    if (c.vkCreateFence(data.device, &fence_info, null, &data.compute_fence) != c.VK_SUCCESS) {
-        return InitVulkanError.semaphore_creation_failed;
+    for (&data.compute_fences) |*fence| {
+        if (c.vkCreateFence(data.device, &fence_info, null, fence) != c.VK_SUCCESS) {
+            return InitVulkanError.semaphore_creation_failed;
+        }
     }
 
     for (0..common.max_frames_in_flight) |i| {

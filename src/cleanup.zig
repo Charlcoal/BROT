@@ -26,7 +26,10 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
         c.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
         c.vkDestroyFence(data.device, data.in_flight_fences[i], null);
     }
-    c.vkDestroyFence(data.device, data.compute_fence, null);
+    for (data.compute_fences) |fence| {
+        c.vkDestroyFence(data.device, fence, null);
+    }
+
     for (data.render_finished_semaphores) |sem| {
         c.vkDestroySemaphore(data.device, sem, null);
     }

@@ -65,6 +65,7 @@ pub const MainLoopError = error{
 
 const Allocator = std.mem.Allocator;
 
+const num_compute_buffers = 3;
 //result of following OOP-based tutorial, maybe change in future
 pub const AppData = struct {
     window: *c.GLFWwindow = undefined,
@@ -90,7 +91,7 @@ pub const AppData = struct {
     graphics_command_pool: c.VkCommandPool = undefined,
     compute_command_pool: c.VkCommandPool = undefined,
     graphics_command_buffers: []c.VkCommandBuffer = undefined,
-    compute_command_buffer: c.VkCommandBuffer = undefined,
+    compute_command_buffers: [num_compute_buffers]c.VkCommandBuffer = undefined,
 
     swap_chain: c.VkSwapchainKHR = null,
     swap_chain_images: []c.VkImage = undefined,
@@ -105,7 +106,7 @@ pub const AppData = struct {
     image_availible_semaphores: []c.VkSemaphore = undefined,
     render_finished_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
-    compute_fence: c.VkFence = undefined,
+    compute_fences: [num_compute_buffers]c.VkFence = undefined,
 
     compute_manager_thread: std.Thread = undefined,
     gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 },
