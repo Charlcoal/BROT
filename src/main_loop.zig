@@ -33,9 +33,7 @@ fn computeManage(data: *common.AppData) void {
     var spiral: Spiral = .{};
 
     outer: while (!data.compute_manager_should_close) {
-        if (c.vkWaitForFences(data.device, 1, &data.compute_fence, c.VK_TRUE, std.math.maxInt(u64)) != c.VK_SUCCESS) {
-            @panic("compute fence failed");
-        }
+        _ = c.vkWaitForFences(data.device, 1, &data.compute_fence, c.VK_TRUE, std.math.maxInt(u64));
 
         if (data.frame_updated) {
             data.compute_idle = false;
