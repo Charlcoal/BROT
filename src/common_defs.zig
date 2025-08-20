@@ -14,12 +14,16 @@ pub const device_extensions = [_][*:0]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
-pub const UniformBufferObject = extern struct {
-    center: @Vector(2, f32),
+pub const ComputeConstants = extern struct {
+    fractal_pos: @Vector(2, f32),
     max_resolution: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
     height_scale: f32,
     resolution_scale_exponent: i32,
+};
+
+pub const RenderConstants = extern struct {
+    max_width: u32,
 };
 
 pub const target_frame_rate: f64 = 60;
@@ -83,7 +87,7 @@ pub const AppData = struct {
     present_queue: c.VkQueue = null,
 
     render_pass: c.VkRenderPass = undefined,
-    pipeline_layout: c.VkPipelineLayout = undefined,
+    render_pipeline_layout: c.VkPipelineLayout = undefined,
     compute_pipeline_layout: c.VkPipelineLayout = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
     compute_pipeline: c.VkPipeline = undefined,
@@ -109,17 +113,10 @@ pub const AppData = struct {
     compute_fences: [num_compute_buffers]c.VkFence = undefined,
 
     compute_manager_thread: std.Thread = undefined,
-    gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 },
+    gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }, // needed when compute and graphics are in the same queue
     compute_manager_should_close: bool = false,
     compute_idle: bool = false,
     frame_updated: bool = true,
-
-    current_uniform_state: UniformBufferObject,
-    uniform_buffers: []c.VkBuffer = undefined,
-    uniform_buffers_memory: []c.VkDeviceMemory = undefined,
-    uniform_buffers_mapped: []?*align(@alignOf(UniformBufferObject)) anyopaque = undefined,
-    render_start_screen_x: u32 = 0,
-    render_start_screen_y: u32 = 0,
 
     storage_buffer_size: u32 = undefined,
     storage_buffer: c.VkBuffer = undefined,
@@ -130,6 +127,11 @@ pub const AppData = struct {
     descriptor_sets: []c.VkDescriptorSet = undefined,
 
     zoom: f32,
+    fractal_pos: @Vector(2, f32) = undefined, // where the top left of the screen is in the fractal
+    max_resolution: @Vector(2, u32) = undefined,
+    render_start_screen_x: u32 = 0,
+    render_start_screen_y: u32 = 0,
+
     time: std.time.Timer,
     prev_time: u64,
 };

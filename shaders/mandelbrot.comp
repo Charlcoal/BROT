@@ -1,12 +1,5 @@
 #version 450
 
-layout(binding = 0) uniform OldUniformBufferObject {
-    vec2 center;
-    uvec2 max_resolution;
-    uvec2 screen_offset;
-    float height_scale;
-    int res_scale_exp;
-} old_ubo;
 layout(std430, binding = 1) buffer storage {
     float potential_vals[];
 };

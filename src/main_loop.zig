@@ -56,9 +56,10 @@ fn computeManage(data: *common.AppData) void {
         }
 
         const sqrt_workgroup_num: u32 = 8;
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(data.current_uniform_state.resolution_scale_exponent + 3));
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(3));
         render_patch_size *= sqrt_workgroup_num;
-        if (calculateNextSpiral(data, &spiral, render_patch_size)) continue;
+        const spiral_result = calculateNextSpiral(data, &spiral, render_patch_size);
+        if (spiral_result.spiral_exhausted) continue;
 
         data.gpu_interface_semaphore.wait();
         defer data.gpu_interface_semaphore.post();
@@ -69,7 +70,7 @@ fn computeManage(data: *common.AppData) void {
         _ = c.vkResetFences(data.device, 1, &data.compute_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(data.compute_command_buffers[comp_index], 0);
-        recordComputeCommandBuffer(data.*, data.compute_command_buffers[comp_index], sqrt_workgroup_num) catch {
+        recordComputeCommandBuffer(data.*, data.compute_command_buffers[comp_index], sqrt_workgroup_num, spiral_result.pos) catch {
             @panic("compute manager failed to record buffer!");
         };
 
@@ -133,8 +134,6 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
-    updateUniformBuffer(data, data.current_frame);
-
     _ = c.vkResetCommandBuffer(data.graphics_command_buffers[data.current_frame], 0);
     try recordCommandBuffer(data.*, data.graphics_command_buffers[data.current_frame], image_index);
 
@@ -178,7 +177,7 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) bool {
+fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) struct { spiral_exhausted: bool, pos: @Vector(2, u32) } {
     // determine next location
     const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(data.width)) - 1, render_patch_size) + 1;
     const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(data.height)) - 1, render_patch_size) + 1;
@@ -237,7 +236,7 @@ fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size
         }
         if (reached_max_x and reached_min_x and reached_max_y and reached_min_y) {
             data.compute_idle = true;
-            return true;
+            return .{ .spiral_exhausted = true, .pos = undefined };
         }
 
         if (!cont) break;
@@ -245,12 +244,12 @@ fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size
 
     const scr_x: i32 = spiral_center_x + spiral.delta_x;
     const scr_y: i32 = spiral_center_y + spiral.delta_y;
-    data.current_uniform_state.screen_offset[0] = @as(u32, @intCast(scr_x)) * render_patch_size;
-    data.current_uniform_state.screen_offset[1] = @as(u32, @intCast(scr_y)) * render_patch_size;
-    return false;
+    const pos_x: u32 = @as(u32, @intCast(scr_x)) * render_patch_size;
+    const pos_y: u32 = @as(u32, @intCast(scr_y)) * render_patch_size;
+    return .{ .spiral_exhausted = false, .pos = .{ pos_x, pos_y } };
 }
 
-fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32) MainLoopError!void {
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32, pos: @Vector(2, u32)) MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -282,8 +281,14 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.Vk
         data.compute_pipeline_layout,
         c.VK_SHADER_STAGE_COMPUTE_BIT,
         0,
-        @sizeOf(common.UniformBufferObject),
-        &data.current_uniform_state,
+        @sizeOf(common.ComputeConstants),
+        &common.ComputeConstants{
+            .fractal_pos = data.fractal_pos,
+            .max_resolution = data.max_resolution,
+            .screen_offset = pos,
+            .height_scale = data.zoom / @as(f32, @floatFromInt(data.height)),
+            .resolution_scale_exponent = 0,
+        },
     );
 
     c.vkCmdDispatch(compute_command_buffer, render_patch_size, render_patch_size, 1);
@@ -339,12 +344,21 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     c.vkCmdBindDescriptorSets(
         command_buffer,
         c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        data.pipeline_layout,
+        data.render_pipeline_layout,
         0,
         1,
         &data.descriptor_sets[data.current_frame],
         0,
         null,
+    );
+
+    c.vkCmdPushConstants(
+        command_buffer,
+        data.render_pipeline_layout,
+        c.VK_SHADER_STAGE_FRAGMENT_BIT,
+        0,
+        @sizeOf(common.RenderConstants),
+        &common.RenderConstants{ .max_width = data.max_resolution[0] },
     );
 
     c.vkCmdDraw(
@@ -361,15 +375,15 @@ fn recordCommandBuffer(data: common.AppData, command_buffer: c.VkCommandBuffer, 
     }
 }
 
-fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
-    @memcpy(
-        @as(
-            [*]common.UniformBufferObject,
-            @ptrCast(data.uniform_buffers_mapped[@intCast(current_image)]),
-        ),
-        @as(
-            *const [1]common.UniformBufferObject,
-            @ptrCast(&data.current_uniform_state),
-        ),
-    );
-}
+//fn updateUniformBuffer(data: *common.AppData, current_image: u32) void {
+//    @memcpy(
+//        @as(
+//            [*]common.ComputeConstants,
+//            @ptrCast(data.REPLACE[@intCast(current_image)]),
+//        ),
+//        @as(
+//            *const [1]common.ComputeConstants,
+//            @ptrCast(&data.current_uniform_state),
+//        ),
+//    );
+//}

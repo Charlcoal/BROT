@@ -43,14 +43,6 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
 
     cleanupSwapChain(data.*, alloc);
 
-    for (0..common.max_frames_in_flight) |i| {
-        c.vkDestroyBuffer(data.device, data.uniform_buffers[i], null);
-        c.vkFreeMemory(data.device, data.uniform_buffers_memory[i], null);
-    }
-    alloc.free(data.uniform_buffers);
-    alloc.free(data.uniform_buffers_memory);
-    alloc.free(data.uniform_buffers_mapped);
-
     c.vkDestroyBuffer(data.device, data.storage_buffer, null);
     c.vkFreeMemory(data.device, data.storage_buffer_memory, null);
 
@@ -60,7 +52,7 @@ pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
 
     c.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
     c.vkDestroyPipeline(data.device, data.compute_pipeline, null);
-    c.vkDestroyPipelineLayout(data.device, data.pipeline_layout, null);
+    c.vkDestroyPipelineLayout(data.device, data.render_pipeline_layout, null);
     c.vkDestroyPipelineLayout(data.device, data.compute_pipeline_layout, null);
 
     c.vkDestroyRenderPass(data.device, data.render_pass, null);

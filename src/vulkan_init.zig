@@ -30,7 +30,6 @@ pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
     try createGraphicsCommandPool(data, alloc);
     try createComputeCommandPool(data, alloc);
     try createStorageBuffer(data);
-    try createUniformBuffers(data, alloc);
     try createDescriptorPool(data);
     try createDescriptorSets(data, alloc);
     try createComputeCommandBuffer(data);
@@ -384,11 +383,11 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
     }
 
     for (0..common.max_frames_in_flight) |i| {
-        const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = data.uniform_buffers[i],
-            .offset = 0,
-            .range = @sizeOf(common.UniformBufferObject),
-        };
+        //const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
+        //    .buffer = data.REPLACE[i],
+        //    .offset = 0,
+        //    .range = @sizeOf(common.ComputeConstants),
+        //};
 
         const storage_buffer_info: c.VkDescriptorBufferInfo = .{
             .buffer = data.storage_buffer,
@@ -403,17 +402,17 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
         //};
 
         const descriptor_writes = [_]c.VkWriteDescriptorSet{
-            .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = data.descriptor_sets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &uniform_buffer_info,
-                .pImageInfo = null,
-                .pTexelBufferView = null,
-            },
+            //.{
+            //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            //    .dstSet = data.descriptor_sets[i],
+            //    .dstBinding = 0,
+            //    .dstArrayElement = 0,
+            //    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            //    .descriptorCount = 1,
+            //    .pBufferInfo = &uniform_buffer_info,
+            //    .pImageInfo = null,
+            //    .pTexelBufferView = null,
+            //},
             .{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = data.descriptor_sets[i],
@@ -475,7 +474,7 @@ fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
 
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
-        .size = @sizeOf(common.UniformBufferObject),
+        .size = @sizeOf(common.ComputeConstants),
         .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
     };
 
@@ -599,14 +598,20 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
         .blendConstants = .{ 0, 0, 0, 0 },
     };
 
+    const push_constant_range: c.VkPushConstantRange = .{
+        .offset = 0,
+        .size = @sizeOf(common.RenderConstants),
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &data.descriptor_set_layout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = null,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.render_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
@@ -622,7 +627,7 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
         .pDepthStencilState = null,
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state,
-        .layout = data.pipeline_layout,
+        .layout = data.render_pipeline_layout,
         .renderPass = data.render_pass,
         .subpass = 0,
         .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
@@ -1075,38 +1080,39 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
     }
 }
 
-fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const buffer_size: c.VkDeviceSize = @sizeOf(common.UniformBufferObject);
-
-    data.uniform_buffers = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
-    data.uniform_buffers_memory = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
-    data.uniform_buffers_mapped = try alloc.alloc(?*align(@alignOf(common.UniformBufferObject)) anyopaque, common.max_frames_in_flight);
-
-    for (0..common.max_frames_in_flight) |i| {
-        try createBuffer(
-            data,
-            buffer_size,
-            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            &data.uniform_buffers[i],
-            &data.uniform_buffers_memory[i],
-        );
-
-        _ = c.vkMapMemory(
-            data.device,
-            data.uniform_buffers_memory[i],
-            0,
-            buffer_size,
-            0,
-            @ptrCast(&data.uniform_buffers_mapped[i]),
-        );
-    }
-}
+//fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+//    const buffer_size: c.VkDeviceSize = @sizeOf(common.ComputeConstants);
+//
+//    data.REPLACE = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
+//    data.REPLACE = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
+//    data.REPLACE = try alloc.alloc(?*align(@alignOf(common.ComputeConstants)) anyopaque, common.max_frames_in_flight);
+//
+//    for (0..common.max_frames_in_flight) |i| {
+//        try createBuffer(
+//            data,
+//            buffer_size,
+//            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+//            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//            &data.REPLACE[i],
+//            &data.REPLACE[i],
+//        );
+//
+//        _ = c.vkMapMemory(
+//            data.device,
+//            data.REPLACE[i],
+//            0,
+//            buffer_size,
+//            0,
+//            @ptrCast(&data.REPLACE[i]),
+//        );
+//    }
+//}
 
 fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
     data.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
-    data.current_uniform_state.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
+    data.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
+    //std.debug.print("max_resolution: {any}\n", .{data.max_resolution});
 
     try createBuffer(
         data,
