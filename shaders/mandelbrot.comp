@@ -18,9 +18,9 @@ void main() {
     const int max_count = 15000;
 	const float escape_radius = 1e8;
 	const float interior_test_e_sqr = 1e-6;
+    const uint pixel_scale = 1u << ubo.res_scale_exp;
 
-    uvec2 screen_loc = gl_GlobalInvocationID.xy + ubo.screen_offset;
-    if (screen_loc.x >= ubo.max_resolution.x || screen_loc.y >= ubo.max_resolution.y) return;
+    uvec2 screen_loc = pixel_scale * gl_GlobalInvocationID.xy + ubo.screen_offset;
 
     vec2 c = screen_loc * ubo.height_scale;// / vec2(float(ubo.max_resolution.y));
 	c += ubo.center;
@@ -43,9 +43,17 @@ void main() {
         count++;
     }
 
+    float potential_val;
     if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
-        potential_vals[screen_loc.x + screen_loc.y * ubo.max_resolution.x] = -1;
+        potential_val = -1;
     } else {
-		potential_vals[screen_loc.x + screen_loc.y * ubo.max_resolution.x] = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
+		potential_val = log2(max(1, count - log2(log2(x_sqr + y_sqr) / 2.0f) + 1.0));
 	}
+
+    for (int delta_y = 0; delta_y < pixel_scale; delta_y++) {
+        for (int delta_x = 0; delta_x < pixel_scale; delta_x++) {
+            if (screen_loc.x + delta_x >= ubo.max_resolution.x || screen_loc.y + delta_y >= ubo.max_resolution.y) continue;
+            potential_vals[screen_loc.x + delta_x + (screen_loc.y + delta_y) * ubo.max_resolution.x] = potential_val;
+        }
+    }
 }

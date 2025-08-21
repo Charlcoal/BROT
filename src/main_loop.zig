@@ -23,14 +23,25 @@ pub fn startComputeManager(data: *common.AppData, alloc: Allocator) std.Thread.S
 }
 
 const Direction = enum { left, down, right, up };
+const Twist = enum { clockwise, counter_clockwise };
 const Spiral = struct {
-    dir: Direction = .left,
-    delta_x: i32 = 1,
-    delta_y: i32 = 0,
+    dir: Direction,
+    poke_dir: Direction, // direction that increases the radius in its last step
+    twist: Twist,
+    delta_x: i32,
+    delta_y: i32,
 };
 
+const max_res_scale_exponent = 4;
+const min_res_scale_exponent = 0;
+const num_distinct_res_scales = max_res_scale_exponent - min_res_scale_exponent + 1;
+const sqrt_workgroup_num = 8;
+
 fn computeManage(data: *common.AppData) void {
-    var spiral: Spiral = .{};
+    var spirals: [num_distinct_res_scales]Spiral = undefined;
+    var spiral_counts: [num_distinct_res_scales]u32 = undefined;
+    var spiral_current_min_count: u32 = undefined;
+    var spirals_complete: [num_distinct_res_scales]bool = undefined;
 
     while (!data.compute_manager_should_close) {
         _ = c.vkWaitForFences(data.device, data.compute_fences.len, &data.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
@@ -47,7 +58,10 @@ fn computeManage(data: *common.AppData) void {
         if (data.frame_updated) {
             data.compute_idle = false;
             data.frame_updated = false;
-            spiral = .{};
+            initSpirals(data.*, &spirals);
+            spiral_counts = @splat(0);
+            spirals_complete = @splat(false);
+            spiral_current_min_count = 0;
         }
 
         if (data.compute_idle) {
@@ -55,11 +69,25 @@ fn computeManage(data: *common.AppData) void {
             continue;
         }
 
-        const sqrt_workgroup_num: u32 = 8;
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(3));
+        const res_result = chooseResScaleIndex(spiral_counts, spirals_complete, &spiral_current_min_count);
+        if (res_result.all_exhausted) {
+            data.compute_idle = true;
+            continue;
+        }
+
+        const resolution_scale_index: u32 = res_result.index;
+        const resolution_scale_exponent: i32 = max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
+
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
         render_patch_size *= sqrt_workgroup_num;
-        const spiral_result = calculateNextSpiral(data, &spiral, render_patch_size);
-        if (spiral_result.spiral_exhausted) continue;
+
+        const spiral_result = stepSpiral(data, &spirals[resolution_scale_index], render_patch_size);
+        if (spiral_result.spiral_exhausted) {
+            spirals_complete[resolution_scale_index] = true;
+            continue;
+        }
+
+        spiral_counts[resolution_scale_index] += 1;
 
         data.gpu_interface_semaphore.wait();
         defer data.gpu_interface_semaphore.post();
@@ -70,7 +98,13 @@ fn computeManage(data: *common.AppData) void {
         _ = c.vkResetFences(data.device, 1, &data.compute_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(data.compute_command_buffers[comp_index], 0);
-        recordComputeCommandBuffer(data.*, data.compute_command_buffers[comp_index], sqrt_workgroup_num, spiral_result.pos) catch {
+        recordComputeCommandBuffer(
+            data.*,
+            data.compute_command_buffers[comp_index],
+            sqrt_workgroup_num,
+            spiral_result.pos,
+            resolution_scale_exponent,
+        ) catch {
             @panic("compute manager failed to record buffer!");
         };
 
@@ -91,7 +125,7 @@ fn computeManage(data: *common.AppData) void {
         }
     }
 
-    _ = c.vkWaitForFences(data.device, data.compute_fences.len, &data.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
+    _ = c.vkWaitForFences(data.device, data.compute_fences.len, &data.compute_fences, c.VK_TRUE, std.math.maxInt(u64));
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
@@ -177,7 +211,63 @@ fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) struct { spiral_exhausted: bool, pos: @Vector(2, u32) } {
+fn initSpirals(data: common.AppData, spirals: *[num_distinct_res_scales]Spiral) void {
+    for (0..num_distinct_res_scales) |scale_index| {
+        const resolution_scale_exponent: i32 = max_res_scale_exponent - @as(i32, @intCast(scale_index));
+
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
+        render_patch_size *= sqrt_workgroup_num;
+
+        const render_patch_offset_x: i32 = @as(i32, @intCast(data.render_start_screen_x % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
+        const render_patch_offset_y: i32 = @as(i32, @intCast(data.render_start_screen_y % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
+
+        const horizontal_priority: bool = @abs(render_patch_offset_x) >= @abs(render_patch_offset_y);
+
+        const horizontal_dir: Direction = if (render_patch_offset_x < 0) .left else .right;
+        const vertical_dir: Direction = if (render_patch_offset_y < 0) .up else .down;
+
+        const start_dir = if (horizontal_priority) horizontal_dir else vertical_dir;
+
+        spirals[scale_index] = .{
+            .dir = start_dir,
+            .poke_dir = start_dir,
+            .twist = switch (start_dir) {
+                .left => if (vertical_dir == .up) .clockwise else .counter_clockwise,
+                .down => if (horizontal_dir == .left) .clockwise else .counter_clockwise,
+                .right => if (vertical_dir == .down) .clockwise else .counter_clockwise,
+                .up => if (horizontal_dir == .right) .clockwise else .counter_clockwise,
+            },
+            .delta_x = switch (start_dir) {
+                .left => 1,
+                .right => -1,
+                .up, .down => 0,
+            },
+            .delta_y = switch (start_dir) {
+                .up => 1,
+                .down => -1,
+                .left, .right => 0,
+            },
+        };
+    }
+}
+
+fn chooseResScaleIndex(spiral_counts: [num_distinct_res_scales]u32, spirals_complete: [num_distinct_res_scales]bool, spiral_current_min_count: *u32) struct { all_exhausted: bool, index: u32 } {
+    if (!spirals_complete[0]) return .{ .all_exhausted = false, .index = 0 };
+    for (0..num_distinct_res_scales) |scale_index| {
+        if (spiral_counts[scale_index] <= spiral_current_min_count.* and !spirals_complete[scale_index]) {
+            return .{ .all_exhausted = false, .index = @intCast(scale_index) };
+        }
+    }
+    spiral_current_min_count.* += 1;
+    for (0..num_distinct_res_scales) |scale_index| {
+        if (!spirals_complete[scale_index]) {
+            return .{ .all_exhausted = false, .index = @intCast(scale_index) };
+        }
+    }
+    return .{ .all_exhausted = true, .index = undefined };
+}
+
+fn stepSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size: u32) struct { spiral_exhausted: bool, pos: @Vector(2, u32) } {
     // determine next location
     const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(data.width)) - 1, render_patch_size) + 1;
     const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(data.height)) - 1, render_patch_size) + 1;
@@ -193,26 +283,26 @@ fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size
         switch (spiral.dir) {
             .left => {
                 spiral.delta_x -= 1;
-                if (spiral.delta_x < spiral.delta_y) {
-                    spiral.dir = .down;
+                if (@abs(spiral.delta_x) > @abs(spiral.delta_y) or (@abs(spiral.delta_x) == @abs(spiral.delta_y) and spiral.dir != spiral.poke_dir)) {
+                    spiral.dir = if (spiral.twist == .clockwise) .up else .down;
                 }
             },
             .down => {
                 spiral.delta_y += 1;
-                if (spiral.delta_y >= -spiral.delta_x) {
-                    spiral.dir = .right;
+                if (@abs(spiral.delta_y) > @abs(spiral.delta_x) or (@abs(spiral.delta_y) == @abs(spiral.delta_x) and spiral.dir != spiral.poke_dir)) {
+                    spiral.dir = if (spiral.twist == .clockwise) .left else .right;
                 }
             },
             .right => {
                 spiral.delta_x += 1;
-                if (spiral.delta_x >= spiral.delta_y) {
-                    spiral.dir = .up;
+                if (@abs(spiral.delta_x) > @abs(spiral.delta_y) or (@abs(spiral.delta_x) == @abs(spiral.delta_y) and spiral.dir != spiral.poke_dir)) {
+                    spiral.dir = if (spiral.twist == .clockwise) .down else .up;
                 }
             },
             .up => {
                 spiral.delta_y -= 1;
-                if (spiral.delta_y <= -spiral.delta_x) {
-                    spiral.dir = .left;
+                if (@abs(spiral.delta_y) > @abs(spiral.delta_x) or (@abs(spiral.delta_y) == @abs(spiral.delta_x) and spiral.dir != spiral.poke_dir)) {
+                    spiral.dir = if (spiral.twist == .clockwise) .right else .left;
                 }
             },
         }
@@ -235,7 +325,6 @@ fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size
             reached_max_y = true;
         }
         if (reached_max_x and reached_min_x and reached_max_y and reached_min_y) {
-            data.compute_idle = true;
             return .{ .spiral_exhausted = true, .pos = undefined };
         }
 
@@ -249,7 +338,7 @@ fn calculateNextSpiral(data: *common.AppData, spiral: *Spiral, render_patch_size
     return .{ .spiral_exhausted = false, .pos = .{ pos_x, pos_y } };
 }
 
-fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32, pos: @Vector(2, u32)) MainLoopError!void {
+fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32, pos: @Vector(2, u32), resolution_scale_exponent: i32) MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -287,7 +376,7 @@ fn recordComputeCommandBuffer(data: common.AppData, compute_command_buffer: c.Vk
             .max_resolution = data.max_resolution,
             .screen_offset = pos,
             .height_scale = data.zoom / @as(f32, @floatFromInt(data.height)),
-            .resolution_scale_exponent = 0,
+            .resolution_scale_exponent = resolution_scale_exponent,
         },
     );
 
