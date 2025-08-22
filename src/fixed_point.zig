@@ -19,33 +19,39 @@ pub fn deinit(fixed_point: *FixedPoint) void {
 
 /// rma = a * b. rma, a, and b may alias, but it will be faster if rma is not aliased
 pub fn mul(rma: *FixedPoint, a: FixedPoint, b: FixedPoint) !void {
-    try rma.internal_int.ensureMulCapacity(a.internal_int.toConst(), b.internal_int.toConst());
-    //std.debug.print("before ------- \nrma: {any}\na: {any}\nb: {any}\n\n", .{ rma.internal_int, a.internal_int, b.internal_int });
     try rma.internal_int.mul(&a.internal_int, &b.internal_int);
-    //std.debug.print("after ------- \nrma: {any}\na: {any}\nb: {any}\n\n", .{ rma.internal_int, a.internal_int, b.internal_int });
     try rma.internal_int.shiftRight(&rma.internal_int, limb_bits * @min(a.limbs_after_point, b.limbs_after_point));
-    //std.debug.print("after ------- \nrma: {any}\na: {any}\nb: {any}\n\n", .{ rma.internal_int, a.internal_int, b.internal_int });
     rma.limbs_after_point = @max(a.limbs_after_point, b.limbs_after_point);
 }
 
 /// r = a + b. r, a, and b may alias
 pub fn add(r: *FixedPoint, a: *FixedPoint, b: *FixedPoint) !void {
-    //std.debug.print("a: {any}\nb: {any}\n\n", .{ a.*, b.* });
-    try a.extend(b.limbs_after_point);
-    try b.extend(a.limbs_after_point);
-    //std.debug.print("a: {any}\nb: {any}\n\n\n", .{ a.*, b.* });
-    try r.internal_int.ensureAddCapacity(a.internal_int.toConst(), b.internal_int.toConst());
+    try a.extend(b.limbs_after_point * limb_bits);
+    try b.extend(a.limbs_after_point * limb_bits);
     try r.internal_int.add(&a.internal_int, &b.internal_int);
     r.limbs_after_point = a.limbs_after_point;
 }
 
-/// entends the precision
-pub fn extend(a: *FixedPoint, new_limbs_after_point: usize) !void {
-    if (new_limbs_after_point <= a.limbs_after_point) return;
+pub fn negate(a: *FixedPoint) void {
+    a.internal_int.negate();
+}
 
-    const increase: usize = new_limbs_after_point - a.limbs_after_point;
+/// q = n / d, inherits n's precision. q may alias with n or d, but but it will be faster if q is not aliased
+pub fn div(q: *FixedPoint, scratch: *FixedPoint, n: *FixedPoint, d: FixedPoint) !void {
+    try n.internal_int.shiftLeft(&n.internal_int, d.limbs_after_point * limb_bits);
+    // std.math.big.int.Managed.divFloor is like @divTrunc for some reason
+    try q.internal_int.divFloor(&scratch.internal_int, &n.internal_int, &d.internal_int);
+    if (q != n) try n.internal_int.shiftRight(&n.internal_int, d.limbs_after_point * limb_bits);
+    q.limbs_after_point = n.limbs_after_point;
+}
+
+/// entends the precision of a
+pub fn extend(a: *FixedPoint, new_min_bits_after_decimal: usize) !void {
+    if (new_min_bits_after_decimal <= a.limbs_after_point * limb_bits) return;
+
+    const increase: usize = @divFloor(new_min_bits_after_decimal + limb_bits - 1, limb_bits) - a.limbs_after_point;
     try a.internal_int.shiftLeft(&a.internal_int, limb_bits * increase);
-    a.limbs_after_point = new_limbs_after_point;
+    a.limbs_after_point += increase;
 }
 
 /// currently only handles normal float values (not subnormal / Nan / Inf)
@@ -171,13 +177,13 @@ test "extend precision" {
     const alloc = std.testing.allocator;
 
     var a = try FixedPoint.fromFloat(alloc, 1.9998652e-2);
-    try a.extend(2);
+    try a.extend(2 * limb_bits);
     defer a.deinit();
     try std.testing.expectEqual(1.9998652e-2, a.toFloat());
 
     var b = try FixedPoint.fromFloat(alloc, 2e-100);
     defer b.deinit();
-    try b.extend(8);
+    try b.extend(8 * limb_bits);
     try std.testing.expectEqual(2e-100, b.toFloat());
 }
 
@@ -239,4 +245,70 @@ test "mul - different precision" {
     defer r.deinit();
     try r.mul(a, b);
     try std.testing.expect(std.math.approxEqRel(f64, float_a * float_b, r.toFloat(), 10 * std.math.floatEps(f64)));
+}
+
+test "mul - aliasing" {
+    const alloc = std.testing.allocator;
+
+    const float_a: f64 = 1.9998652e-2;
+    const float_b: f64 = -9.7661523e-23;
+
+    var a = try FixedPoint.fromFloat(alloc, float_a);
+    var b = try FixedPoint.fromFloat(alloc, float_b);
+    defer a.deinit();
+    defer b.deinit();
+    try a.mul(a, b);
+    try std.testing.expect(std.math.approxEqRel(f64, float_a * float_b, a.toFloat(), 10 * std.math.floatEps(f64)));
+}
+
+test "div - same precision" {
+    const alloc = std.testing.allocator;
+
+    const float_a: f64 = 1.9998652;
+    const float_b: f64 = -9.7661523;
+
+    var a = try FixedPoint.fromFloat(alloc, float_a);
+    var b = try FixedPoint.fromFloat(alloc, float_b);
+    var r = try FixedPoint.init(alloc, 0);
+    var scratch = try FixedPoint.init(alloc, 0);
+    defer a.deinit();
+    defer b.deinit();
+    defer r.deinit();
+    defer scratch.deinit();
+    try r.div(&scratch, &a, b);
+    try std.testing.expect(std.math.approxEqRel(f64, float_a / float_b, r.toFloat(), 10 * std.math.floatEps(f64)));
+}
+
+test "div - different precision" {
+    const alloc = std.testing.allocator;
+
+    const float_a: f64 = 1.9998652e-2;
+    const float_b: f64 = -9.7661523e-23;
+
+    var a = try FixedPoint.fromFloat(alloc, float_a);
+    var b = try FixedPoint.fromFloat(alloc, float_b);
+    var r = try FixedPoint.init(alloc, 0);
+    var scratch = try FixedPoint.init(alloc, 0);
+    defer a.deinit();
+    defer b.deinit();
+    defer r.deinit();
+    defer scratch.deinit();
+    try r.div(&scratch, &a, b);
+    try std.testing.expect(std.math.approxEqRel(f64, float_a / float_b, r.toFloat(), 10 * std.math.floatEps(f64)));
+}
+
+test "div - aliasing" {
+    const alloc = std.testing.allocator;
+
+    const float_a: f64 = 1.9998652e-2;
+    const float_b: f64 = -9.7661523e-23;
+
+    var a = try FixedPoint.fromFloat(alloc, float_a);
+    var b = try FixedPoint.fromFloat(alloc, float_b);
+    var scratch = try FixedPoint.init(alloc, 0);
+    defer a.deinit();
+    defer b.deinit();
+    defer scratch.deinit();
+    try b.div(&scratch, &a, b);
+    try std.testing.expect(std.math.approxEqRel(f64, float_a / float_b, b.toFloat(), 10 * std.math.floatEps(f64)));
 }
