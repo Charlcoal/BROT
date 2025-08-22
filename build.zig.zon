@@ -7,6 +7,10 @@
             .url = "https://github.com/allyourcodebase/glfw/archive/98607df.tar.gz",
             .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
         },
+        .cimgui_zig = .{
+            .url = "git+https://github.com/tiawl/cimgui.zig#7613777415be737330272ad7bd9ed7d8ae2d82cd",
+            .hash = "cimgui_zig-1.0.0-2XubknimVQBmbXYhhAxOTaxKCpN6v49Nj9ArsfCmSBBE",
+        },
     },
     .paths = .{
         "build.zig",
