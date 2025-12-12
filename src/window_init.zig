@@ -32,8 +32,8 @@ pub fn initWindow(data: *common.AppData) InitWindowError!void {
     _ = c.glfwSetKeyCallback(data.window, keyCallback);
 }
 
-fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
-    const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
+fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.c) void {
+    const data: *common.AppData = @ptrCast(@alignCast(c.glfwGetWindowUserPointer(window)));
     data.frame_buffer_needs_resize = true;
     data.width = width;
     data.height = height;
@@ -42,9 +42,9 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     data.render_start_screen_y = @intCast(@divFloor(height, 2));
 }
 
-fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.C) void {
+fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.c) void {
     _ = xoffset;
-    const data: *common.AppData = @alignCast(@ptrCast(c.glfwGetWindowUserPointer(window)));
+    const data: *common.AppData = @ptrCast(@alignCast(c.glfwGetWindowUserPointer(window)));
     const scroll_factor: f32 = @floatCast(@exp(0.3 * yoffset));
 
     var mouse_pos_x: f64 = undefined;
@@ -66,7 +66,7 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     data.frame_updated = true;
 }
 
-fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
+fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {
     _ = mods;
     _ = scancode;
     if (key == c.GLFW_KEY_F and action == c.GLFW_PRESS) {

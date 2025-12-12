@@ -9,11 +9,15 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "BROT",
+    const root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "BROT",
+        .root_module = root_module,
     });
 
     const glfw = b.dependency("glfw_zig", .{
@@ -30,7 +34,7 @@ pub fn build(b: *std.Build) !void {
 
     exe.linkLibrary(glfw.artifact("glfw"));
     exe.linkLibrary(cimgui_dep.artifact("cimgui"));
-    exe.linkSystemLibrary2("vulkan", .{});
+    exe.root_module.linkSystemLibrary("vulkan", .{});
 
     b.installArtifact(exe);
 
@@ -82,9 +86,8 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .name = "top level tests",
+        .root_module = root_module,
     });
     exe_unit_tests.linkLibrary(glfw.artifact("glfw"));
     exe_unit_tests.linkSystemLibrary2("vulkan", .{});
