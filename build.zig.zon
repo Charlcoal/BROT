@@ -18,13 +18,13 @@
     .version = "0.0.0",
     .dependencies = .{
         .cimgui_zig = .{
-            .url = "https://github.com/tiawl/cimgui.zig/archive/669aaaf.tar.gz",
-            .hash = "cimgui_zig-1.0.0-2XubkgYNVwAb5_BpHxFX4MqnIKGw7Eq2bCEaWwMUb-r5",
+            .url = "https://github.com/tiawl/cimgui.zig/archive/92d1a33.tar.gz",
+            .hash = "cimgui_zig-1.0.0-2XubkvSmVQArFfT8Mqf9NH63f9dbxEgUtnnX-9iJCCHN",
         },
-        .glfw_zig = .{
-            .url = "https://github.com/tiawl/glfw.zig/archive/12df844.tar.gz",
-            .hash = "glfw_zig-1.0.0-NrvYo8bXGQDNplF8UkNbZbjoTEXXwSu7aKICMnlJiuhl",
-        },
+        //.glfw_zig = .{
+        //    .url = "https://github.com/tiawl/glfw.zig/archive/b2a2f43.tar.gz",
+        //    .hash = "glfw_zig-1.0.0-NrvYozPXGQDAo_awJidMc8GVgvPdlk-Ny-oOPmN74Qle",
+        //},
     },
     .paths = .{
         "build.zig",
