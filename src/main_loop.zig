@@ -145,18 +145,23 @@ fn computeManage(data: *common.AppData) void {
 }
 
 fn drawFrame(data: *common.AppData, alloc: Allocator) MainLoopError!void {
+    var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
+    std.debug.print("pre-wait delta: {}\n", .{delta_time});
+
     if (data.frame_buffer_just_resized) {
         _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, 60_000_000);
         data.frame_buffer_just_resized = false;
     } else {
         _ = c.vkWaitForFences(data.device, 1, &data.in_flight_fences[data.current_frame], c.VK_TRUE, std.math.maxInt(u64));
     }
+    delta_time = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
+    std.debug.print("post-wait delta: {}\n", .{delta_time});
 
     _ = c.vkResetFences(data.device, 1, &data.in_flight_fences[data.current_frame]);
 
-    var delta_time: f64 = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
+    delta_time = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
-        std.time.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
+        std.Thread.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
         delta_time = @as(f64, @floatFromInt(data.time.read() - data.prev_time)) / 1_000_000_000;
     } else {
         //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});

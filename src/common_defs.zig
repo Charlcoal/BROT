@@ -48,7 +48,7 @@ pub const max_frames_in_flight: u32 = 2;
 
 // ------------------- program defs ---------------------
 
-pub const dbg = builtin.mode == std.builtin.Mode.Debug;
+pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
 
 pub const InitWindowError = error{create_window_failed};
 pub const InitVulkanError = error{

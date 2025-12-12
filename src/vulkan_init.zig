@@ -221,7 +221,7 @@ fn debugCallback(
     message_type: c.VkDebugUtilsMessageTypeFlagsEXT,
     p_callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
     p_user_data: ?*anyopaque,
-) callconv(.C) c.VkBool32 {
+) callconv(.c) c.VkBool32 {
     if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
         std.debug.print("ERROR ", .{});
     } else if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
