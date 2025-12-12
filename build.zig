@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const glfw = b.dependency("glfw", .{
+    const glfw = b.dependency("glfw_zig", .{
         .target = target,
         .optimize = optimize,
     });

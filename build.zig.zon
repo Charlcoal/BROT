@@ -3,13 +3,13 @@
     .name = .BROT,
     .version = "0.0.0",
     .dependencies = .{
-        .glfw = .{
-            .url = "https://github.com/allyourcodebase/glfw/archive/98607df.tar.gz",
-            .hash = "glfw-0.0.0-R5AeUm0HGgA_Rlrr9HR91ejkGd-K_JyCjkXz_U3b-jp9",
-        },
         .cimgui_zig = .{
-            .url = "git+https://github.com/tiawl/cimgui.zig#7613777415be737330272ad7bd9ed7d8ae2d82cd",
+            .url = "https://github.com/tiawl/cimgui.zig/archive/7613777.tar.gz",
             .hash = "cimgui_zig-1.0.0-2XubknimVQBmbXYhhAxOTaxKCpN6v49Nj9ArsfCmSBBE",
+        },
+        .glfw_zig = .{
+            .url = "https://github.com/tiawl/glfw.zig/archive/9464043.tar.gz",
+            .hash = "glfw_zig-1.0.0-NrvYo-jWGQDKHRB-8_YYkaBiuRqzh1XH2BC6hGFO4EjT",
         },
     },
     .paths = .{
