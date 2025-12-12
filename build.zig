@@ -20,11 +20,6 @@ pub fn build(b: *std.Build) !void {
         .root_module = root_module,
     });
 
-    const glfw = b.dependency("glfw_zig", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
         .optimize = optimize,
@@ -32,7 +27,6 @@ pub fn build(b: *std.Build) !void {
         .renderer = cimgui.Renderer.Vulkan,
     });
 
-    exe.linkLibrary(glfw.artifact("glfw"));
     exe.linkLibrary(cimgui_dep.artifact("cimgui"));
     exe.root_module.linkSystemLibrary("vulkan", .{});
 
@@ -89,7 +83,6 @@ pub fn build(b: *std.Build) !void {
         .name = "top level tests",
         .root_module = root_module,
     });
-    exe_unit_tests.linkLibrary(glfw.artifact("glfw"));
     exe_unit_tests.linkSystemLibrary2("vulkan", .{});
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
