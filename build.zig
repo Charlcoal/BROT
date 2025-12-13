@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "BROT",
         .root_module = root_module,
+        .use_llvm = true,
     });
 
     const cimgui_dep = b.dependency("cimgui_zig", .{

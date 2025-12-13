@@ -37,8 +37,9 @@ void main() {
     const uint pixel_scale = 1u << ubo.res_scale_exp;
 
     uvec2 screen_loc = pixel_scale * gl_GlobalInvocationID.xy + ubo.screen_offset;
+    uvec2 center_screen_loc = screen_loc + uvec2(pixel_scale/2, pixel_scale/2);
 
-    vec2 c = screen_loc * ubo.height_scale;// / vec2(float(ubo.max_resolution.y));
+    vec2 c = center_screen_loc * ubo.height_scale;// / vec2(float(ubo.max_resolution.y));
 	c += ubo.center;
     vec2 pos = c;
 

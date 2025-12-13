@@ -656,6 +656,7 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
 }
 
 fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
+    //std.debug.print("shader module at: {x}\n", .{@intFromPtr(code.ptr)});
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = code.len,
