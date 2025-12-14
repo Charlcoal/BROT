@@ -31,20 +31,18 @@ const Allocator = std.mem.Allocator;
 const AppData = common.AppData;
 
 pub fn run(alloc: Allocator) Error!void {
-    var app_data = AppData{
-        .width = 800,
-        .height = 600,
-        .render_start_screen_x = 400,
-        .render_start_screen_y = 300,
-        .fractal_pos = .{ -1.0, -1.0 },
-        .zoom = 2.0,
-        .time = try std.time.Timer.start(),
-        .prev_time = 0,
-    };
+    common.width = 800;
+    common.height = 600;
+    common.render_start_screen_x = 400;
+    common.render_start_screen_y = 300;
+    common.fractal_pos = .{ -1.0, -1.0 };
+    common.zoom = 2.0;
+    common.time = try std.time.Timer.start();
+    common.prev_time = 0;
 
-    try window_init.initWindow(&app_data);
-    try vulkan_init.initVulkan(&app_data, alloc);
-    try main_loop.startComputeManager(&app_data, alloc);
-    try main_loop.mainLoop(&app_data, alloc);
-    clean_up.cleanup(&app_data, alloc);
+    try window_init.initWindow();
+    try vulkan_init.initVulkan(alloc);
+    try main_loop.startComputeManager(alloc);
+    try main_loop.mainLoop(alloc);
+    clean_up.cleanup(alloc);
 }

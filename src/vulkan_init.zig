@@ -26,52 +26,52 @@ const vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const frag_code align(4) = @embedFile("triangle_frag_shader").*;
 const comp_code align(4) = @embedFile("mandelbrot_comp_shader").*;
 
-pub fn initVulkan(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    try createInstance(data, alloc);
-    try setupDebugMessenger(data);
+pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
+    try createInstance(alloc);
+    try setupDebugMessenger();
 
-    if (c.glfwCreateWindowSurface(data.instance, data.window, null, &data.surface) != c.VK_SUCCESS) {
+    if (c.glfwCreateWindowSurface(common.instance, common.window, null, &common.surface) != c.VK_SUCCESS) {
         return InitVulkanError.window_surface_creation_failed;
     }
 
-    try pickPhysicalDevice(data, alloc);
-    try createLogicalDevice(data, alloc);
-    try createSwapChain(data, alloc);
-    try createImageViews(data, alloc);
-    try createRenderPass(data);
-    try createDescriptorSetLayout(data);
-    try createGraphicsPipeline(data);
-    try createComputePipeline(data);
-    try createFrameBuffers(data, alloc);
-    try createGraphicsCommandPool(data, alloc);
-    try createComputeCommandPool(data, alloc);
-    try createStorageBuffer(data);
-    try createDescriptorPool(data);
-    try createDescriptorSets(data, alloc);
-    try createComputeCommandBuffer(data);
-    try createCommandBuffers(data, alloc);
-    try createSyncObjects(data, alloc);
+    try pickPhysicalDevice(alloc);
+    try createLogicalDevice(alloc);
+    try createSwapChain(alloc);
+    try createImageViews(alloc);
+    try createRenderPass();
+    try createDescriptorSetLayout();
+    try createGraphicsPipeline();
+    try createComputePipeline();
+    try createFrameBuffers(alloc);
+    try createGraphicsCommandPool(alloc);
+    try createComputeCommandPool(alloc);
+    try createStorageBuffer();
+    try createDescriptorPool();
+    try createDescriptorSets(alloc);
+    try createComputeCommandBuffer();
+    try createCommandBuffers(alloc);
+    try createSyncObjects(alloc);
 }
 
-pub fn recreateSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.frame_buffer_just_resized = true;
+pub fn recreateSwapChain(alloc: Allocator) InitVulkanError!void {
+    common.frame_buffer_just_resized = true;
 
     var width: c_int = 0;
     var height: c_int = 0;
-    c.glfwGetFramebufferSize(data.window, &width, &height);
+    c.glfwGetFramebufferSize(common.window, &width, &height);
     while (width == 0 or height == 0) {
-        if (c.glfwWindowShouldClose(data.window) != 0) return; // for closing while minimized
-        c.glfwGetFramebufferSize(data.window, &width, &height);
+        if (c.glfwWindowShouldClose(common.window) != 0) return; // for closing while minimized
+        c.glfwGetFramebufferSize(common.window, &width, &height);
         c.glfwWaitEvents();
     }
 
-    _ = c.vkDeviceWaitIdle(data.device);
+    _ = c.vkDeviceWaitIdle(common.device);
 
-    cleanup.cleanupSwapChain(data.*, alloc);
+    cleanup.cleanupSwapChain(alloc);
 
-    try createSwapChain(data, alloc);
-    try createImageViews(data, alloc);
-    try createFrameBuffers(data, alloc);
+    try createSwapChain(alloc);
+    try createImageViews(alloc);
+    try createFrameBuffers(alloc);
 }
 
 const SwapChainSupportDetails = struct {
@@ -103,7 +103,7 @@ const QueueFamilyIndices = struct {
     }
 };
 
-fn findQueueFamilies(data: common.AppData, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
+fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
     var indices = QueueFamilyIndices{
         .graphics_family = null,
         .compute_family = null,
@@ -134,7 +134,7 @@ fn findQueueFamilies(data: common.AppData, device: c.VkPhysicalDevice, alloc: Al
         }
 
         var present_support: c.VkBool32 = c.VK_FALSE;
-        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), data.surface, &present_support);
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), common.surface, &present_support);
 
         if ((present_support != c.VK_FALSE) and indices.present_family == null) {
             indices.present_family = @intCast(i);
@@ -169,7 +169,6 @@ fn querySwapChainSupport(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice, al
 }
 
 fn createBuffer(
-    data: *common.AppData,
     size: c.VkDeviceSize,
     usage: c.VkBufferUsageFlags,
     properties: c.VkMemoryPropertyFlags,
@@ -183,29 +182,29 @@ fn createBuffer(
         .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    if (c.vkCreateBuffer(data.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+    if (c.vkCreateBuffer(common.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
         return common.InitVulkanError.buffer_creation_failed;
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(data.device, buffer.*, &mem_requirements);
+    c.vkGetBufferMemoryRequirements(common.device, buffer.*, &mem_requirements);
 
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = mem_requirements.size,
-        .memoryTypeIndex = try findMemoryType(data, mem_requirements.memoryTypeBits, properties),
+        .memoryTypeIndex = try findMemoryType(mem_requirements.memoryTypeBits, properties),
     };
 
-    if (c.vkAllocateMemory(data.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
+    if (c.vkAllocateMemory(common.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
         return common.InitVulkanError.buffer_memory_allocation_failed;
     }
 
-    _ = c.vkBindBufferMemory(data.device, buffer.*, buffer_memory.*, 0);
+    _ = c.vkBindBufferMemory(common.device, buffer.*, buffer_memory.*, 0);
 }
 
-pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
+pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
-    c.vkGetPhysicalDeviceMemoryProperties(data.physical_device, &mem_properties);
+    c.vkGetPhysicalDeviceMemoryProperties(common.physical_device, &mem_properties);
 
     for (0..mem_properties.memoryTypeCount) |i| {
         if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
@@ -219,8 +218,8 @@ pub fn findMemoryType(data: *common.AppData, type_filter: u32, properties: c.VkM
 fn debugCallback(
     message_severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
     message_type: c.VkDebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
-    p_user_data: ?*anyopaque,
+    p_callback_common: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
+    p_user_common: ?*anyopaque,
 ) callconv(.c) c.VkBool32 {
     if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
         std.debug.print("ERROR ", .{});
@@ -238,42 +237,42 @@ fn debugCallback(
         std.debug.print("[general] ", .{});
     }
 
-    std.debug.print("{s}\n", .{p_callback_data.*.pMessage});
-    _ = p_user_data;
+    std.debug.print("{s}\n", .{p_callback_common.*.pMessage});
+    _ = p_user_common;
 
     return c.VK_FALSE;
 }
 
-fn createCommandBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
+fn createCommandBuffers(alloc: Allocator) InitVulkanError!void {
+    common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = data.graphics_command_pool,
+        .commandPool = common.graphics_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = @intCast(data.graphics_command_buffers.len),
+        .commandBufferCount = @intCast(common.graphics_command_buffers.len),
     };
 
-    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, data.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, common.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
 
-fn createComputeCommandBuffer(data: *common.AppData) InitVulkanError!void {
+fn createComputeCommandBuffer() InitVulkanError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = data.compute_command_pool,
+        .commandPool = common.compute_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = data.compute_command_buffers.len,
+        .commandBufferCount = common.compute_command_buffers.len,
     };
 
-    if (c.vkAllocateCommandBuffers(data.device, &alloc_info, &data.compute_command_buffers) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.compute_command_buffers) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
 
-fn createGraphicsCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
+fn createGraphicsCommandPool(alloc: Allocator) InitVulkanError!void {
+    const queue_family_indices = try findQueueFamilies(common.physical_device, alloc);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -281,13 +280,13 @@ fn createGraphicsCommandPool(data: *common.AppData, alloc: Allocator) InitVulkan
         .queueFamilyIndex = queue_family_indices.graphics_family.?,
     };
 
-    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.graphics_command_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
         return InitVulkanError.command_pool_creation_failed;
     }
 }
 
-fn createComputeCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const queue_family_indices = try findQueueFamilies(data.*, data.physical_device, alloc);
+fn createComputeCommandPool(alloc: Allocator) InitVulkanError!void {
+    const queue_family_indices = try findQueueFamilies(common.physical_device, alloc);
 
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -295,18 +294,18 @@ fn createComputeCommandPool(data: *common.AppData, alloc: Allocator) InitVulkanE
         .queueFamilyIndex = queue_family_indices.compute_family.?,
     };
 
-    if (c.vkCreateCommandPool(data.device, &pool_info, null, &data.compute_command_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
         return InitVulkanError.command_pool_creation_failed;
     }
 }
 
-fn setupDebugMessenger(data: *common.AppData) InitVulkanError!void {
+fn setupDebugMessenger() InitVulkanError!void {
     if (!common.enable_validation_layers) return;
 
     var create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     populateDebugMessengerCreateInfo(&create_info);
 
-    if (createDebugUtilsMessengerEXT(data.instance, &create_info, null, &data.debug_messenger) != c.VK_SUCCESS) {
+    if (createDebugUtilsMessengerEXT(common.instance, &create_info, null, &common.debug_messenger) != c.VK_SUCCESS) {
         return InitVulkanError.debug_messenger_setup_failed;
     }
 }
@@ -325,15 +324,15 @@ fn createDebugUtilsMessengerEXT(
     }
 }
 
-fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
+fn createDescriptorPool() InitVulkanError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = @intCast(data.swap_chain_images.len),
+            .descriptorCount = @intCast(common.swap_chain_images.len),
         },
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = @intCast(data.swap_chain_images.len),
+            .descriptorCount = @intCast(common.swap_chain_images.len),
         },
         //.{
         //    .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -345,15 +344,15 @@ fn createDescriptorPool(data: *common.AppData) InitVulkanError!void {
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
-        .maxSets = @intCast(data.swap_chain_images.len),
+        .maxSets = @intCast(common.swap_chain_images.len),
     };
 
-    if (c.vkCreateDescriptorPool(data.device, &pool_info, null, &data.descriptor_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
     }
 }
 
-fn createDescriptorSetLayout(data: *common.AppData) InitVulkanError!void {
+fn createDescriptorSetLayout() InitVulkanError!void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{ .{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -374,53 +373,53 @@ fn createDescriptorSetLayout(data: *common.AppData) InitVulkanError!void {
         .pBindings = &bindings,
     };
 
-    if (c.vkCreateDescriptorSetLayout(data.device, &layout_info, null, &data.descriptor_set_layout) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.descriptor_set_layout) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_set_layout_creation_failed;
     }
 }
 
-fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, data.swap_chain_images.len);
+fn createDescriptorSets(alloc: Allocator) InitVulkanError!void {
+    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, common.swap_chain_images.len);
     defer alloc.free(layouts);
-    for (0..data.swap_chain_images.len) |i| {
-        layouts[i] = data.descriptor_set_layout;
+    for (0..common.swap_chain_images.len) |i| {
+        layouts[i] = common.descriptor_set_layout;
     }
 
     const alloc_info: c.VkDescriptorSetAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = data.descriptor_pool,
+        .descriptorPool = common.descriptor_pool,
         .descriptorSetCount = @intCast(common.max_frames_in_flight),
         .pSetLayouts = layouts.ptr,
     };
 
-    data.descriptor_sets = try alloc.alloc(c.VkDescriptorSet, common.max_frames_in_flight);
-    if (c.vkAllocateDescriptorSets(data.device, &alloc_info, data.descriptor_sets.ptr) != c.VK_SUCCESS) {
+    common.descriptor_sets = try alloc.alloc(c.VkDescriptorSet, common.max_frames_in_flight);
+    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, common.descriptor_sets.ptr) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_sets_allocation_failed;
     }
 
     for (0..common.max_frames_in_flight) |i| {
         //const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
-        //    .buffer = data.REPLACE[i],
+        //    .buffer = common.REPLACE[i],
         //    .offset = 0,
         //    .range = @sizeOf(common.ComputeConstants),
         //};
 
         const storage_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = data.storage_buffer,
+            .buffer = common.storage_buffer,
             .offset = 0,
-            .range = data.storage_buffer_size,
+            .range = common.storage_buffer_size,
         };
 
         //const image_info: c.VkDescriptorImageInfo = .{
         //    .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //    .imageView = data.texture_image_view,
-        //    .sampler = data.texture_sampler,
+        //    .imageView = common.texture_image_view,
+        //    .sampler = common.texture_sampler,
         //};
 
         const descriptor_writes = [_]c.VkWriteDescriptorSet{
             //.{
             //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //    .dstSet = data.descriptor_sets[i],
+            //    .dstSet = common.descriptor_sets[i],
             //    .dstBinding = 0,
             //    .dstArrayElement = 0,
             //    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -431,7 +430,7 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
             //},
             .{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = data.descriptor_sets[i],
+                .dstSet = common.descriptor_sets[i],
                 .dstBinding = 1,
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -440,7 +439,7 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
             },
             //.{
             //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //    .dstSet = data.descriptor_sets[i],
+            //    .dstSet = common.descriptor_sets[i],
             //    .dstBinding = 1,
             //    .dstArrayElement = 0,
             //    .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -449,37 +448,37 @@ fn createDescriptorSets(data: *common.AppData, alloc: Allocator) InitVulkanError
             //}
         };
 
-        c.vkUpdateDescriptorSets(data.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
     }
 }
 
-fn createFrameBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, data.swap_chain_image_views.len);
+fn createFrameBuffers(alloc: Allocator) InitVulkanError!void {
+    common.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, common.swap_chain_image_views.len);
 
-    for (0..data.swap_chain_image_views.len) |i| {
+    for (0..common.swap_chain_image_views.len) |i| {
         const attachments = [_]c.VkImageView{
-            data.swap_chain_image_views[i],
+            common.swap_chain_image_views[i],
         };
 
         const frame_buffer_info: c.VkFramebufferCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .renderPass = data.render_pass,
+            .renderPass = common.render_pass,
             .attachmentCount = @intCast(attachments.len),
             .pAttachments = &attachments,
-            .width = data.swap_chain_extent.width,
-            .height = data.swap_chain_extent.height,
+            .width = common.swap_chain_extent.width,
+            .height = common.swap_chain_extent.height,
             .layers = 1,
         };
 
-        if (c.vkCreateFramebuffer(data.device, &frame_buffer_info, null, &data.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateFramebuffer(common.device, &frame_buffer_info, null, &common.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
             return InitVulkanError.framebuffer_creation_failed;
         }
     }
 }
 
-fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
-    const comp_shader_module = try createShaderModule(data.*, &comp_code);
-    defer _ = c.vkDestroyShaderModule(data.device, comp_shader_module, null);
+fn createComputePipeline() InitVulkanError!void {
+    const comp_shader_module = try createShaderModule(&comp_code);
+    defer _ = c.vkDestroyShaderModule(common.device, comp_shader_module, null);
 
     const comp_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -497,30 +496,30 @@ fn createComputePipeline(data: *common.AppData) InitVulkanError!void {
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &data.descriptor_set_layout,
+        .pSetLayouts = &common.descriptor_set_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.compute_pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.compute_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
     const pipeline_info: c.VkComputePipelineCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .layout = data.compute_pipeline_layout,
+        .layout = common.compute_pipeline_layout,
         .stage = comp_shader_stage_info,
     };
 
-    if (c.vkCreateComputePipelines(data.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.compute_pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.compute_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
-    const vert_shader_module = try createShaderModule(data.*, &vert_code);
-    const frag_shader_module = try createShaderModule(data.*, &frag_code);
-    defer _ = c.vkDestroyShaderModule(data.device, vert_shader_module, null);
-    defer _ = c.vkDestroyShaderModule(data.device, frag_shader_module, null);
+fn createGraphicsPipeline() InitVulkanError!void {
+    const vert_shader_module = try createShaderModule(&vert_code);
+    const frag_shader_module = try createShaderModule(&frag_code);
+    defer _ = c.vkDestroyShaderModule(common.device, vert_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(common.device, frag_shader_module, null);
 
     const vert_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -623,11 +622,11 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &data.descriptor_set_layout,
+        .pSetLayouts = &common.descriptor_set_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(data.device, &pipeline_layout_info, null, &data.render_pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.render_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
@@ -643,19 +642,19 @@ fn createGraphicsPipeline(data: *common.AppData) InitVulkanError!void {
         .pDepthStencilState = null,
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state,
-        .layout = data.render_pipeline_layout,
-        .renderPass = data.render_pass,
+        .layout = common.render_pipeline_layout,
+        .renderPass = common.render_pass,
         .subpass = 0,
         .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
         .basePipelineIndex = -1,
     };
 
-    if (c.vkCreateGraphicsPipelines(data.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &data.graphics_pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.graphics_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
+fn createShaderModule(code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
     //std.debug.print("shader module at: {x}\n", .{@intFromPtr(code.ptr)});
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -663,21 +662,21 @@ fn createShaderModule(data: common.AppData, code: []align(4) const u8) InitVulka
         .pCode = @ptrCast(code.ptr),
     };
     var shader_module: c.VkShaderModule = undefined;
-    if (c.vkCreateShaderModule(data.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
+    if (c.vkCreateShaderModule(common.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
         return InitVulkanError.shader_module_creation_failed;
     }
     return shader_module;
 }
 
-fn createImageViews(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.swap_chain_image_views = try alloc.alloc(c.VkImageView, data.swap_chain_images.len);
+fn createImageViews(alloc: Allocator) InitVulkanError!void {
+    common.swap_chain_image_views = try alloc.alloc(c.VkImageView, common.swap_chain_images.len);
 
-    for (data.swap_chain_images, 0..) |image, i| {
+    for (common.swap_chain_images, 0..) |image, i| {
         const create_info: c.VkImageViewCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = image,
             .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
-            .format = data.swap_chain_image_format,
+            .format = common.swap_chain_image_format,
             .components = .{
                 .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
                 .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -693,13 +692,13 @@ fn createImageViews(data: *common.AppData, alloc: Allocator) InitVulkanError!voi
             },
         };
 
-        if (c.vkCreateImageView(data.device, &create_info, null, &data.swap_chain_image_views[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateImageView(common.device, &create_info, null, &common.swap_chain_image_views[i]) != c.VK_SUCCESS) {
             return InitVulkanError.image_views_creation_failed;
         }
     }
 }
 
-fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+fn createInstance(alloc: Allocator) InitVulkanError!void {
     if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc)) {
         return InitVulkanError.validation_layer_unavailible;
     }
@@ -737,7 +736,7 @@ fn createInstance(data: *common.AppData, alloc: Allocator) InitVulkanError!void 
         create_info.pNext = null;
     }
 
-    const result = c.vkCreateInstance(&create_info, null, &data.instance);
+    const result = c.vkCreateInstance(&create_info, null, &common.instance);
     if (result != c.VK_SUCCESS) {
         return InitVulkanError.instance_creation_failed;
     }
@@ -782,8 +781,8 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
     return out;
 }
 
-fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const indicies = try findQueueFamilies(data.*, data.physical_device, alloc);
+fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
+    const indicies = try findQueueFamilies(common.physical_device, alloc);
 
     var unique_queue_families = [_]u32{ indicies.graphics_family.?, indicies.compute_family.?, indicies.present_family.? };
     const max_queues = [unique_queue_families.len]u32{ indicies.graphics_max_queues, indicies.compute_max_queues, indicies.present_max_queues };
@@ -791,11 +790,11 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
     var unique_queue_num: u32 = 0;
 
     var queue_family_property_count: u32 = 0;
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, null);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(common.physical_device, &queue_family_property_count, null);
 
     const queue_family_properties = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_property_count);
     defer alloc.free(queue_family_properties);
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(data.physical_device, &queue_family_property_count, queue_family_properties.ptr);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(common.physical_device, &queue_family_property_count, queue_family_properties.ptr);
 
     outer: for (unique_queue_families, &num_required_queues, max_queues) |queue_family, *num_req_queues, max_queue| {
         for (unique_queue_families[0..unique_queue_num], num_required_queues[0..unique_queue_num]) |existing_unique_queue_family, *existing_num_req_queues| {
@@ -842,22 +841,22 @@ fn createLogicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!
         createInfo.enabledLayerCount = 0;
     }
 
-    if (c.vkCreateDevice(data.physical_device, &createInfo, null, &data.device) != c.VK_SUCCESS) {
+    if (c.vkCreateDevice(common.physical_device, &createInfo, null, &common.device) != c.VK_SUCCESS) {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    c.vkGetDeviceQueue(data.device, indicies.graphics_family.?, 0, &data.graphics_queue);
-    c.vkGetDeviceQueue(data.device, indicies.present_family.?, 0, &data.present_queue);
+    c.vkGetDeviceQueue(common.device, indicies.graphics_family.?, 0, &common.graphics_queue);
+    c.vkGetDeviceQueue(common.device, indicies.present_family.?, 0, &common.present_queue);
     if (indicies.graphics_family.? == indicies.compute_family.? and indicies.graphics_max_queues >= 2) {
-        c.vkGetDeviceQueue(data.device, indicies.compute_family.?, 1, &data.compute_queue);
+        c.vkGetDeviceQueue(common.device, indicies.compute_family.?, 1, &common.compute_queue);
     } else {
-        c.vkGetDeviceQueue(data.device, indicies.compute_family.?, 0, &data.compute_queue);
+        c.vkGetDeviceQueue(common.device, indicies.compute_family.?, 0, &common.compute_queue);
     }
 }
 
-fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+fn pickPhysicalDevice(alloc: Allocator) InitVulkanError!void {
     var device_count: u32 = 0;
-    _ = c.vkEnumeratePhysicalDevices(data.instance, &device_count, null);
+    _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, null);
 
     if (device_count == 0) {
         return InitVulkanError.gpu_with_vulkan_support_not_found;
@@ -865,11 +864,11 @@ fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!v
 
     const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
     defer alloc.free(devices);
-    _ = c.vkEnumeratePhysicalDevices(data.instance, &device_count, devices.ptr);
+    _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, devices.ptr);
 
     for (devices) |device| {
-        if (try deviceIsSuitable(data.*, device, alloc)) {
-            data.physical_device = device;
+        if (try deviceIsSuitable(device, alloc)) {
+            common.physical_device = device;
             break;
         }
     } else {
@@ -877,14 +876,14 @@ fn pickPhysicalDevice(data: *common.AppData, alloc: Allocator) InitVulkanError!v
     }
 }
 
-fn deviceIsSuitable(data: common.AppData, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
-    const indices = try findQueueFamilies(data, device, alloc);
+fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+    const indices = try findQueueFamilies(device, alloc);
 
     const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
 
     var swap_chain_adequate: bool = false;
     if (extensions_supported) {
-        const swap_chain_support = try querySwapChainSupport(data.surface, device, alloc);
+        const swap_chain_support = try querySwapChainSupport(common.surface, device, alloc);
         defer alloc.free(swap_chain_support.presentModes);
         defer alloc.free(swap_chain_support.formats);
         swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
@@ -911,9 +910,9 @@ fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) All
     return true;
 }
 
-pub fn createRenderPass(data: *common.AppData) InitVulkanError!void {
+pub fn createRenderPass() InitVulkanError!void {
     const color_attachment: c.VkAttachmentDescription = .{
-        .format = data.swap_chain_image_format,
+        .format = common.swap_chain_image_format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
         .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
@@ -953,29 +952,29 @@ pub fn createRenderPass(data: *common.AppData) InitVulkanError!void {
         .pDependencies = &dependency,
     };
 
-    if (c.vkCreateRenderPass(data.device, &render_pass_info, null, &data.render_pass) != c.VK_SUCCESS) {
+    if (c.vkCreateRenderPass(common.device, &render_pass_info, null, &common.render_pass) != c.VK_SUCCESS) {
         return InitVulkanError.render_pass_creation_failed;
     }
 }
 
-fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    const swap_chain_support = try querySwapChainSupport(data.surface, data.physical_device, alloc);
+fn createSwapChain(alloc: Allocator) InitVulkanError!void {
+    const swap_chain_support = try querySwapChainSupport(common.surface, common.physical_device, alloc);
     defer alloc.free(swap_chain_support.formats);
     defer alloc.free(swap_chain_support.presentModes);
 
     const surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
     const present_mode = chooseSwapPresentMode(swap_chain_support.presentModes);
-    const extent = chooseSwapExtent(data.*, &swap_chain_support.capabilities);
+    const extent = chooseSwapExtent(&swap_chain_support.capabilities);
 
-    data.swap_chain_images.len = swap_chain_support.capabilities.minImageCount + 1;
-    if (swap_chain_support.capabilities.maxImageCount > 0 and data.swap_chain_images.len > swap_chain_support.capabilities.maxImageCount) {
-        data.swap_chain_images.len = swap_chain_support.capabilities.maxImageCount;
+    common.swap_chain_images.len = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 and common.swap_chain_images.len > swap_chain_support.capabilities.maxImageCount) {
+        common.swap_chain_images.len = swap_chain_support.capabilities.maxImageCount;
     }
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = data.surface,
-        .minImageCount = @intCast(data.swap_chain_images.len),
+        .surface = common.surface,
+        .minImageCount = @intCast(common.swap_chain_images.len),
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
         .imageExtent = extent,
@@ -987,7 +986,7 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
         .clipped = c.VK_TRUE,
     };
 
-    const indices = try findQueueFamilies(data.*, data.physical_device, alloc);
+    const indices = try findQueueFamilies(common.physical_device, alloc);
     const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
 
     if (indices.graphics_family != indices.present_family) {
@@ -1001,16 +1000,16 @@ fn createSwapChain(data: *common.AppData, alloc: Allocator) InitVulkanError!void
         create_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     }
 
-    if (c.vkCreateSwapchainKHR(data.device, &create_info, null, &data.swap_chain) != c.VK_SUCCESS) {
+    if (c.vkCreateSwapchainKHR(common.device, &create_info, null, &common.swap_chain) != c.VK_SUCCESS) {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, @ptrCast(&data.swap_chain_images.len), null);
-    data.swap_chain_images = try alloc.alloc(c.VkImage, data.swap_chain_images.len);
-    _ = c.vkGetSwapchainImagesKHR(data.device, data.swap_chain, @ptrCast(&data.swap_chain_images.len), data.swap_chain_images.ptr);
+    _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), null);
+    common.swap_chain_images = try alloc.alloc(c.VkImage, common.swap_chain_images.len);
+    _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), common.swap_chain_images.ptr);
 
-    data.swap_chain_image_format = surface_format.format;
-    data.swap_chain_extent = extent;
+    common.swap_chain_image_format = surface_format.format;
+    common.swap_chain_extent = extent;
 }
 
 fn chooseSwapSurfaceFormat(availible_formats: []const c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
@@ -1034,13 +1033,13 @@ fn chooseSwapPresentMode(availible_present_modes: []const c.VkPresentModeKHR) c.
     return c.VK_PRESENT_MODE_FIFO_KHR;
 }
 
-fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
+fn chooseSwapExtent(capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
         return capabilities.currentExtent;
     } else {
         var height: c_int = undefined;
         var width: c_int = undefined;
-        c.glfwGetFramebufferSize(data.window, &width, &height);
+        c.glfwGetFramebufferSize(common.window, &width, &height);
 
         var actualExtent: c.VkExtent2D = .{
             .height = @intCast(height),
@@ -1062,10 +1061,10 @@ fn chooseSwapExtent(data: common.AppData, capabilities: *const c.VkSurfaceCapabi
     }
 }
 
-fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
-    data.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
-    data.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, data.swap_chain_images.len);
-    data.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
+fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
+    common.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
+    common.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, common.swap_chain_images.len);
+    common.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
 
     const semaphore_info: c.VkSemaphoreCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1076,67 +1075,65 @@ fn createSyncObjects(data: *common.AppData, alloc: Allocator) InitVulkanError!vo
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    for (&data.compute_fences) |*fence| {
-        if (c.vkCreateFence(data.device, &fence_info, null, fence) != c.VK_SUCCESS) {
+    for (&common.compute_fences) |*fence| {
+        if (c.vkCreateFence(common.device, &fence_info, null, fence) != c.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
 
     for (0..common.max_frames_in_flight) |i| {
-        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, &data.image_availible_semaphores[i]) != c.VK_SUCCESS or
-            c.vkCreateFence(data.device, &fence_info, null, &data.in_flight_fences[i]) != c.VK_SUCCESS)
+        if (c.vkCreateSemaphore(common.device, &semaphore_info, null, &common.image_availible_semaphores[i]) != c.VK_SUCCESS or
+            c.vkCreateFence(common.device, &fence_info, null, &common.in_flight_fences[i]) != c.VK_SUCCESS)
         {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
 
-    for (data.render_finished_semaphores) |*sem| {
-        if (c.vkCreateSemaphore(data.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
+    for (common.render_finished_semaphores) |*sem| {
+        if (c.vkCreateSemaphore(common.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
             return InitVulkanError.semaphore_creation_failed;
         }
     }
 }
 
-//fn createUniformBuffers(data: *common.AppData, alloc: Allocator) InitVulkanError!void {
+//fn createUniformBuffers(alloc: Allocator) InitVulkanError!void {
 //    const buffer_size: c.VkDeviceSize = @sizeOf(common.ComputeConstants);
 //
-//    data.REPLACE = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
-//    data.REPLACE = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
-//    data.REPLACE = try alloc.alloc(?*align(@alignOf(common.ComputeConstants)) anyopaque, common.max_frames_in_flight);
+//    common.REPLACE = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
+//    common.REPLACE = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
+//    common.REPLACE = try alloc.alloc(?*align(@alignOf(common.ComputeConstants)) anyopaque, common.max_frames_in_flight);
 //
 //    for (0..common.max_frames_in_flight) |i| {
 //        try createBuffer(
-//            data,
 //            buffer_size,
 //            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 //            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//            &data.REPLACE[i],
-//            &data.REPLACE[i],
+//            &common.REPLACE[i],
+//            &common.REPLACE[i],
 //        );
 //
 //        _ = c.vkMapMemory(
-//            data.device,
-//            data.REPLACE[i],
+//            common.device,
+//            common.REPLACE[i],
 //            0,
 //            buffer_size,
 //            0,
-//            @ptrCast(&data.REPLACE[i]),
+//            @ptrCast(&common.REPLACE[i]),
 //        );
 //    }
 //}
 
-fn createStorageBuffer(data: *common.AppData) InitVulkanError!void {
+fn createStorageBuffer() InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
-    data.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
-    data.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
-    //std.debug.print("max_resolution: {any}\n", .{data.max_resolution});
+    common.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
+    common.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
+    //std.debug.print("max_resolution: {any}\n", .{common.max_resolution});
 
     try createBuffer(
-        data,
-        data.storage_buffer_size,
+        common.storage_buffer_size,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &data.storage_buffer,
-        &data.storage_buffer_memory,
+        &common.storage_buffer,
+        &common.storage_buffer_memory,
     );
 }

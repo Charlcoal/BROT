@@ -19,73 +19,73 @@ const common = @import("common_defs.zig");
 const c = common.c;
 const Allocator = std.mem.Allocator;
 
-pub fn cleanupSwapChain(data: common.AppData, alloc: Allocator) void {
-    for (data.swap_chain_framebuffers) |framebuffer| {
-        c.vkDestroyFramebuffer(data.device, framebuffer, null);
+pub fn cleanupSwapChain(alloc: Allocator) void {
+    for (common.swap_chain_framebuffers) |framebuffer| {
+        c.vkDestroyFramebuffer(common.device, framebuffer, null);
     }
-    alloc.free(data.swap_chain_framebuffers);
+    alloc.free(common.swap_chain_framebuffers);
 
-    for (data.swap_chain_image_views) |view| {
-        c.vkDestroyImageView(data.device, view, null);
+    for (common.swap_chain_image_views) |view| {
+        c.vkDestroyImageView(common.device, view, null);
     }
-    alloc.free(data.swap_chain_image_views);
+    alloc.free(common.swap_chain_image_views);
 
-    c.vkDestroySwapchainKHR(data.device, data.swap_chain, null);
-    alloc.free(data.swap_chain_images);
+    c.vkDestroySwapchainKHR(common.device, common.swap_chain, null);
+    alloc.free(common.swap_chain_images);
 }
 
-pub fn cleanup(data: *common.AppData, alloc: Allocator) void {
-    data.compute_manager_should_close = true;
-    data.compute_manager_thread.join();
+pub fn cleanup(alloc: Allocator) void {
+    common.compute_manager_should_close = true;
+    common.compute_manager_thread.join();
     //vulkan
     for (0..common.max_frames_in_flight) |i| {
-        c.vkDestroySemaphore(data.device, data.image_availible_semaphores[i], null);
-        c.vkDestroyFence(data.device, data.in_flight_fences[i], null);
+        c.vkDestroySemaphore(common.device, common.image_availible_semaphores[i], null);
+        c.vkDestroyFence(common.device, common.in_flight_fences[i], null);
     }
-    for (data.compute_fences) |fence| {
-        c.vkDestroyFence(data.device, fence, null);
+    for (common.compute_fences) |fence| {
+        c.vkDestroyFence(common.device, fence, null);
     }
 
-    for (data.render_finished_semaphores) |sem| {
-        c.vkDestroySemaphore(data.device, sem, null);
+    for (common.render_finished_semaphores) |sem| {
+        c.vkDestroySemaphore(common.device, sem, null);
     }
-    alloc.free(data.image_availible_semaphores);
-    alloc.free(data.render_finished_semaphores);
-    alloc.free(data.in_flight_fences);
+    alloc.free(common.image_availible_semaphores);
+    alloc.free(common.render_finished_semaphores);
+    alloc.free(common.in_flight_fences);
 
-    c.vkDestroyCommandPool(data.device, data.graphics_command_pool, null);
-    c.vkDestroyCommandPool(data.device, data.compute_command_pool, null);
-    alloc.free(data.graphics_command_buffers);
+    c.vkDestroyCommandPool(common.device, common.graphics_command_pool, null);
+    c.vkDestroyCommandPool(common.device, common.compute_command_pool, null);
+    alloc.free(common.graphics_command_buffers);
 
-    cleanupSwapChain(data.*, alloc);
+    cleanupSwapChain(alloc);
 
-    c.vkDestroyBuffer(data.device, data.storage_buffer, null);
-    c.vkFreeMemory(data.device, data.storage_buffer_memory, null);
+    c.vkDestroyBuffer(common.device, common.storage_buffer, null);
+    c.vkFreeMemory(common.device, common.storage_buffer_memory, null);
 
-    c.vkDestroyDescriptorPool(data.device, data.descriptor_pool, null);
-    c.vkDestroyDescriptorSetLayout(data.device, data.descriptor_set_layout, null);
-    alloc.free(data.descriptor_sets);
+    c.vkDestroyDescriptorPool(common.device, common.descriptor_pool, null);
+    c.vkDestroyDescriptorSetLayout(common.device, common.descriptor_set_layout, null);
+    alloc.free(common.descriptor_sets);
 
-    c.vkDestroyPipeline(data.device, data.graphics_pipeline, null);
-    c.vkDestroyPipeline(data.device, data.compute_pipeline, null);
-    c.vkDestroyPipelineLayout(data.device, data.render_pipeline_layout, null);
-    c.vkDestroyPipelineLayout(data.device, data.compute_pipeline_layout, null);
+    c.vkDestroyPipeline(common.device, common.graphics_pipeline, null);
+    c.vkDestroyPipeline(common.device, common.compute_pipeline, null);
+    c.vkDestroyPipelineLayout(common.device, common.render_pipeline_layout, null);
+    c.vkDestroyPipelineLayout(common.device, common.compute_pipeline_layout, null);
 
-    c.vkDestroyRenderPass(data.device, data.render_pass, null);
+    c.vkDestroyRenderPass(common.device, common.render_pass, null);
 
-    c.vkDestroyDevice(data.device, null);
+    c.vkDestroyDevice(common.device, null);
 
     if (common.enable_validation_layers) {
-        destroyDebugUtilsMessengerEXT(data.instance, data.debug_messenger, null);
+        destroyDebugUtilsMessengerEXT(common.instance, common.debug_messenger, null);
     }
 
-    c.vkDestroySurfaceKHR(data.instance, data.surface, null);
-    c.vkDestroyInstance(data.instance, null);
+    c.vkDestroySurfaceKHR(common.instance, common.surface, null);
+    c.vkDestroyInstance(common.instance, null);
 
     // ---------------------------------------------------------------------------------------------
 
     //glfw
-    c.glfwDestroyWindow(data.window);
+    c.glfwDestroyWindow(common.window);
     c.glfwTerminate();
 }
 

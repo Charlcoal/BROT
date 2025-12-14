@@ -31,7 +31,9 @@ void main() {
     if (potential_val == -1) {
     	outColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
-    	outColor = vec4(sin(potential_val * 2.0 - 1.1f) / 2.0f + 0.5f, sin(potential_val * 2.0 - 1.9f) / 2.0f + 0.5f, 0.0, 1.0);
+        float r = sin(potential_val * 2.0 - 1.1f) / 2.0f;
+        float g = sin(potential_val * 2.0 - 1.9f) / 2.0f;
+    	outColor = vec4(r+0.5f, g+0.5f, g*0.5f +0.5f, 1.0);
         outColor = outColor * outColor;
 	}
 

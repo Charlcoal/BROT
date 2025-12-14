@@ -19,13 +19,16 @@ const std = @import("std");
 //const glfw = imports.glfw;
 //const mat4 = @import("zglm/mat4.zig");
 const app = @import("app.zig");
+const common = @import("common_defs.zig");
+
+//tests
+comptime {
+    _ = @import("big_float.zig");
+}
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
-    defer {
-        _ = gpa.deinit();
-    }
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
 
-    try app.run(alloc);
+    try app.run(if (common.dbg) gpa.allocator() else std.heap.c_allocator);
 }

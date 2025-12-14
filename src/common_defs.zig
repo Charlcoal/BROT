@@ -87,70 +87,69 @@ const Allocator = std.mem.Allocator;
 
 const num_compute_buffers = 6;
 //result of following OOP-based tutorial, maybe change in future
-pub const AppData = struct {
-    window: *c.GLFWwindow = undefined,
-    height: i32,
-    width: i32,
-    surface: c.VkSurfaceKHR = null,
+//globals...
+pub var window: *c.GLFWwindow = undefined;
+pub var height: i32 = 600;
+pub var width: i32 = 800;
+pub var surface: c.VkSurfaceKHR = null;
 
-    instance: c.VkInstance = null,
-    debug_messenger: c.VkDebugUtilsMessengerEXT = null,
-    physical_device: c.VkPhysicalDevice = null,
-    device: c.VkDevice = null,
+pub var instance: c.VkInstance = null;
+pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
+pub var physical_device: c.VkPhysicalDevice = null;
+pub var device: c.VkDevice = null;
 
-    graphics_queue: c.VkQueue = null,
-    compute_queue: c.VkQueue = null,
-    present_queue: c.VkQueue = null,
+pub var graphics_queue: c.VkQueue = null;
+pub var compute_queue: c.VkQueue = null;
+pub var present_queue: c.VkQueue = null;
 
-    render_pass: c.VkRenderPass = undefined,
-    render_pipeline_layout: c.VkPipelineLayout = undefined,
-    compute_pipeline_layout: c.VkPipelineLayout = undefined,
-    graphics_pipeline: c.VkPipeline = undefined,
-    compute_pipeline: c.VkPipeline = undefined,
+pub var render_pass: c.VkRenderPass = undefined;
+pub var render_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var compute_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var graphics_pipeline: c.VkPipeline = undefined;
+pub var compute_pipeline: c.VkPipeline = undefined;
 
-    graphics_command_pool: c.VkCommandPool = undefined,
-    compute_command_pool: c.VkCommandPool = undefined,
-    graphics_command_buffers: []c.VkCommandBuffer = undefined,
-    compute_command_buffers: [num_compute_buffers]c.VkCommandBuffer = undefined,
+pub var graphics_command_pool: c.VkCommandPool = undefined;
+pub var compute_command_pool: c.VkCommandPool = undefined;
+pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
+pub var compute_command_buffers: [num_compute_buffers]c.VkCommandBuffer = undefined;
 
-    swap_chain: c.VkSwapchainKHR = null,
-    swap_chain_images: []c.VkImage = undefined,
-    swap_chain_image_format: c.VkFormat = undefined,
-    swap_chain_extent: c.VkExtent2D = undefined,
-    swap_chain_image_views: []c.VkImageView = undefined,
-    swap_chain_framebuffers: []c.VkFramebuffer = undefined,
-    current_frame: u32 = 0,
-    frame_buffer_needs_resize: bool = false,
-    frame_buffer_just_resized: bool = false,
+pub var swap_chain: c.VkSwapchainKHR = null;
+pub var swap_chain_images: []c.VkImage = undefined;
+pub var swap_chain_image_format: c.VkFormat = undefined;
+pub var swap_chain_extent: c.VkExtent2D = undefined;
+pub var swap_chain_image_views: []c.VkImageView = undefined;
+pub var swap_chain_framebuffers: []c.VkFramebuffer = undefined;
+pub var current_frame: u32 = 0;
+pub var frame_buffer_needs_resize: bool = false;
+pub var frame_buffer_just_resized: bool = false;
 
-    image_availible_semaphores: []c.VkSemaphore = undefined,
-    render_finished_semaphores: []c.VkSemaphore = undefined,
-    in_flight_fences: []c.VkFence = undefined,
-    compute_fences: [num_compute_buffers]c.VkFence = undefined,
+pub var image_availible_semaphores: []c.VkSemaphore = undefined;
+pub var render_finished_semaphores: []c.VkSemaphore = undefined;
+pub var in_flight_fences: []c.VkFence = undefined;
+pub var compute_fences: [num_compute_buffers]c.VkFence = undefined;
 
-    compute_manager_thread: std.Thread = undefined,
-    gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }, // needed when compute and graphics are in the same queue
-    compute_manager_should_close: bool = false,
-    compute_idle: bool = false,
-    frame_updated: bool = true,
+pub var compute_manager_thread: std.Thread = undefined;
+pub var gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }; // needed when compute and graphics are in the same queue
+pub var compute_manager_should_close: bool = false;
+pub var compute_idle: bool = false;
+pub var frame_updated: bool = true;
 
-    storage_buffer_size: u32 = undefined,
-    storage_buffer: c.VkBuffer = undefined,
-    storage_buffer_memory: c.VkDeviceMemory = undefined,
+pub var storage_buffer_size: u32 = undefined;
+pub var storage_buffer: c.VkBuffer = undefined;
+pub var storage_buffer_memory: c.VkDeviceMemory = undefined;
 
-    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
-    descriptor_pool: c.VkDescriptorPool = undefined,
-    descriptor_sets: []c.VkDescriptorSet = undefined,
+pub var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var descriptor_pool: c.VkDescriptorPool = undefined;
+pub var descriptor_sets: []c.VkDescriptorSet = undefined;
 
-    zoom: f32,
-    fractal_pos: @Vector(2, f32) = undefined, // where the top left of the screen is in the fractal
-    max_resolution: @Vector(2, u32) = undefined,
-    render_start_screen_x: u32 = 0,
-    render_start_screen_y: u32 = 0,
+pub var zoom: f32 = 2.0;
+pub var fractal_pos: @Vector(2, f32) = undefined; // where the top left of the screen is in the fractal
+pub var max_resolution: @Vector(2, u32) = undefined;
+pub var render_start_screen_x: u32 = 0;
+pub var render_start_screen_y: u32 = 0;
 
-    time: std.time.Timer,
-    prev_time: u64,
-};
+pub var time: std.time.Timer = undefined;
+pub var prev_time: u64 = 0;
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
     var i: usize = 0;

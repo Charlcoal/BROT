@@ -103,7 +103,7 @@ pub fn build(b: *std.Build) !void {
         .name = "top level tests",
         .root_module = root_module,
     });
-    exe_unit_tests.linkSystemLibrary2("vulkan", .{});
+    //exe_unit_tests.root_module.linkSystemLibrary("vulkan", .{});
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
