@@ -32,7 +32,7 @@
         "resources.zon",
         "src",
         "shaders",
-        // For example...
+        "include",
         "LICENSE.txt",
         "README.md",
     },
