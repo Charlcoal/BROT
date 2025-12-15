@@ -45,7 +45,7 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createFrameBuffers(alloc);
     try createGraphicsCommandPool(alloc);
     try createComputeCommandPool(alloc);
-    try createStorageBuffer();
+    try createBuffers();
     try createDescriptorPool();
     try createDescriptorSets(alloc);
     try createComputeCommandBuffer();
@@ -334,6 +334,10 @@ fn createDescriptorPool() InitVulkanError!void {
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = @intCast(common.swap_chain_images.len),
         },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = @intCast(common.swap_chain_images.len),
+        },
         //.{
         //    .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         //    .descriptorCount = @intCast(common.max_frames_in_flight),
@@ -364,6 +368,12 @@ fn createDescriptorSetLayout() InitVulkanError!void {
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = null,
+    }, .{
+        .binding = 2,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
         .pImmutableSamplers = null,
     } };
 
@@ -404,10 +414,16 @@ fn createDescriptorSets(alloc: Allocator) InitVulkanError!void {
         //    .range = @sizeOf(common.ComputeConstants),
         //};
 
-        const storage_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = common.storage_buffer,
+        const escape_potential_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = common.escape_potential_buffer,
             .offset = 0,
-            .range = common.storage_buffer_size,
+            .range = common.escape_potential_buffer_size,
+        };
+
+        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = common.perturbation_buffer,
+            .offset = 0,
+            .range = common.max_iterations * 2 * @sizeOf(f32),
         };
 
         //const image_info: c.VkDescriptorImageInfo = .{
@@ -435,7 +451,16 @@ fn createDescriptorSets(alloc: Allocator) InitVulkanError!void {
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
-                .pBufferInfo = &storage_buffer_info,
+                .pBufferInfo = &escape_potential_buffer_info,
+            },
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = common.descriptor_sets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &perturbation_buffer_info,
             },
             //.{
             //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1123,17 +1148,33 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
 //    }
 //}
 
-fn createStorageBuffer() InitVulkanError!void {
+fn createBuffers() InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
-    common.storage_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
+    common.escape_potential_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
     common.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
     //std.debug.print("max_resolution: {any}\n", .{common.max_resolution});
 
     try createBuffer(
-        common.storage_buffer_size,
+        common.escape_potential_buffer_size,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.storage_buffer,
-        &common.storage_buffer_memory,
+        &common.escape_potential_buffer,
+        &common.escape_potential_buffer_memory,
+    );
+
+    try createBuffer(
+        common.max_iterations * 2 * @sizeOf(f32),
+        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &common.perturbation_buffer,
+        &common.perturbation_buffer_memory,
+    );
+
+    try createBuffer(
+        common.max_iterations * 2 * @sizeOf(f32),
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &common.perturbation_staging_buffer,
+        &common.perturbation_staging_buffer_memory,
     );
 }

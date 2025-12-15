@@ -59,8 +59,14 @@ pub fn cleanup(alloc: Allocator) void {
 
     cleanupSwapChain(alloc);
 
-    c.vkDestroyBuffer(common.device, common.storage_buffer, null);
-    c.vkFreeMemory(common.device, common.storage_buffer_memory, null);
+    c.vkDestroyBuffer(common.device, common.escape_potential_buffer, null);
+    c.vkFreeMemory(common.device, common.escape_potential_buffer_memory, null);
+
+    c.vkDestroyBuffer(common.device, common.perturbation_buffer, null);
+    c.vkFreeMemory(common.device, common.perturbation_buffer_memory, null);
+
+    c.vkDestroyBuffer(common.device, common.perturbation_staging_buffer, null);
+    c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
 
     c.vkDestroyDescriptorPool(common.device, common.descriptor_pool, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.descriptor_set_layout, null);
@@ -84,9 +90,20 @@ pub fn cleanup(alloc: Allocator) void {
 
     // ---------------------------------------------------------------------------------------------
 
-    //glfw
+    // glfw
     c.glfwDestroyWindow(common.window);
     c.glfwTerminate();
+
+    // gmp
+    c.mpf_clear(&common.fractal_pos_x);
+    c.mpf_clear(&common.fractal_pos_y);
+    c.mpf_clear(&common.ref_calc_x);
+    c.mpf_clear(&common.ref_calc_y);
+    for (&common.mpf_intermediates) |*intermediate| {
+        c.mpf_clear(intermediate);
+    }
+
+    alloc.free(common.perturbation_vals);
 }
 
 fn destroyDebugUtilsMessengerEXT(

@@ -43,7 +43,7 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
 
 fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.c) void {
     _ = xoffset;
-    const scroll_factor: f32 = @floatCast(@exp(0.3 * yoffset));
+    const scroll_factor: f64 = @exp(0.3 * yoffset);
 
     var mouse_pos_x: f64 = undefined;
     var mouse_pos_y: f64 = undefined;
@@ -52,14 +52,35 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     common.render_start_screen_x = @intFromFloat(@round(mouse_pos_x));
     common.render_start_screen_y = @intFromFloat(@round(mouse_pos_y));
 
+    mouse_pos_x -= @as(f64, @floatFromInt(common.width)) / 2.0;
+    mouse_pos_y -= @as(f64, @floatFromInt(common.height)) / 2.0;
+
     // change mouse_pos to mandelbrot coords
     mouse_pos_x = mouse_pos_x * common.zoom / @as(f64, @floatFromInt(common.height));
     mouse_pos_y = mouse_pos_y * common.zoom / @as(f64, @floatFromInt(common.height));
 
-    common.fractal_pos[0] += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_x));
-    common.fractal_pos[1] += @as(f32, @floatCast((1.0 - scroll_factor) * mouse_pos_y));
+    const needed_prec: usize = @intFromFloat(-std.math.log2(common.zoom) + 32.0);
+    if (needed_prec > c.mpf_get_prec(&common.mpf_intermediates[0])) {
+        for (&common.mpf_intermediates) |*intermediate| {
+            c.mpf_set_prec(intermediate, needed_prec);
+        }
+        c.mpf_set_prec(&common.fractal_pos_x, needed_prec);
+        c.mpf_set_prec(&common.fractal_pos_y, needed_prec);
+        c.mpf_set_prec(&common.ref_calc_x, needed_prec);
+        c.mpf_set_prec(&common.ref_calc_y, needed_prec);
+        std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
+    }
 
-    common.zoom *= scroll_factor;
+    var tmp: c.mpf_t = undefined;
+    c.mpf_init2(&tmp, 32);
+    c.mpf_set_d(&tmp, (1.0 - scroll_factor) * mouse_pos_x);
+    c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &tmp);
+    c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
+    c.mpf_set_d(&tmp, (1.0 - scroll_factor) * mouse_pos_y);
+    c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &tmp);
+    c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
+
+    common.zoom *= @as(f32, @floatCast(scroll_factor));
 
     common.frame_updated = true;
 }
@@ -74,6 +95,12 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
             c.glfwSetWindowMonitor(window, c.glfwGetPrimaryMonitor(), 0, 0, mode.*.width, mode.*.height, mode.*.refreshRate);
         } else { // fullscreen -> windowed
             c.glfwSetWindowMonitor(window, null, 100, 100, 800, 600, 0);
+        }
+    }
+
+    if (key == c.GLFW_KEY_SPACE and action == c.GLFW_PRESS) {
+        for (0.., common.perturbation_vals[0..1000]) |i, val| {
+            std.debug.print("{}: {}, {}\n", .{ i, val[0], val[1] });
         }
     }
 }

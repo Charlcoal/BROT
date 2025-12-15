@@ -18,6 +18,8 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const vulkan_init = @import("vulkan_init.zig");
 const c = common.c;
+const big_float = @import("big_float.zig");
+const reference_calc = @import("reference_calc.zig");
 
 const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
@@ -25,6 +27,8 @@ const Allocator = std.mem.Allocator;
 pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
+
+        reference_calc.update();
 
         try drawFrame(alloc);
     }
@@ -387,11 +391,15 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         0,
         @sizeOf(common.ComputeConstants),
         &common.ComputeConstants{
-            .fractal_pos = common.fractal_pos,
-            .max_resolution = common.max_resolution,
+            .fractal_pos = .{
+                @floatCast(c.mpf_get_d(&common.fractal_pos_x)),
+                @floatCast(c.mpf_get_d(&common.fractal_pos_y)),
+            },
+            .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
             .screen_offset = pos,
             .height_scale = common.zoom / @as(f32, @floatFromInt(common.height)),
             .resolution_scale_exponent = resolution_scale_exponent,
+            .max_width = common.max_resolution[0],
         },
     );
 

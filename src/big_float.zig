@@ -16,7 +16,6 @@
 
 const std = @import("std");
 const c = @import("imports.zig").c;
-const BigFloat = @This();
 const Allocator = std.mem.Allocator;
 
 pub fn string_init(str: [:0]const u8) c.mpf_t {
@@ -39,16 +38,36 @@ pub fn to_string(allocator: Allocator, digits: usize, val: *const c.mpf_t) Alloc
     str.len -= 1;
 
     var exp: c.mp_exp_t = undefined;
-    _ = c.mpf_get_str(str[1..], &exp, 10, digits, val);
+    _ = c.mpf_get_str(str[2..], &exp, 10, digits, val);
 
-    const negative = str[1] == '-';
+    if (str[2] == 0) {
+        str[1] = '0';
+        str[0] = ' ';
+        return str;
+    }
+
+    const negative = str[2] == '-';
+    if (exp == 0) {
+        if (negative) {
+            str[0] = '-';
+            str[1] = '0';
+            str[2] = '.';
+        } else {
+            str[0] = '0';
+            str[1] = '.';
+        }
+        return str;
+    }
+
     if (negative) {
-        str[0] = '-';
+        str[0] = ' ';
+        str[1] = '-';
+        str[2] = str[3];
+        str[3] = '.';
+    } else {
+        str[0] = ' ';
         str[1] = str[2];
         str[2] = '.';
-    } else {
-        str[0] = str[1];
-        str[1] = '.';
     }
 
     const mpf_part: [:0]u8 = std.mem.span(str.ptr);
@@ -56,10 +75,7 @@ pub fn to_string(allocator: Allocator, digits: usize, val: *const c.mpf_t) Alloc
         str[mpf_part.len] = 'e';
         const exp_part = std.fmt.bufPrint(str[mpf_part.len + 1 .. str.len - 1], "{d}", .{exp - 1}) catch unreachable;
         str[exp_part.len + mpf_part.len + 1] = 0;
-    } else {
-        str[mpf_part.len] = 0;
     }
-
     return str;
 }
 

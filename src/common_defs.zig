@@ -32,10 +32,11 @@ pub const device_extensions = [_][*:0]const u8{
 
 pub const ComputeConstants = extern struct {
     fractal_pos: @Vector(2, f32),
-    max_resolution: @Vector(2, u32),
+    cur_resolution: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
     height_scale: f32,
     resolution_scale_exponent: i32,
+    max_width: u32,
 };
 
 pub const RenderConstants = extern struct {
@@ -134,19 +135,32 @@ pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
 pub var frame_updated: bool = true;
 
-pub var storage_buffer_size: u32 = undefined;
-pub var storage_buffer: c.VkBuffer = undefined;
-pub var storage_buffer_memory: c.VkDeviceMemory = undefined;
+pub var escape_potential_buffer_size: u32 = undefined;
+pub var escape_potential_buffer: c.VkBuffer = undefined;
+pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var perturbation_vals: []@Vector(2, f32) = undefined;
+pub var max_iterations: u32 = 20000;
+pub var perturbation_buffer: c.VkBuffer = undefined;
+pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
+pub var perturbation_staging_buffer: c.VkBuffer = undefined;
+pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
 
 pub var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
 pub var descriptor_sets: []c.VkDescriptorSet = undefined;
 
 pub var zoom: f32 = 2.0;
-pub var fractal_pos: @Vector(2, f32) = undefined; // where the top left of the screen is in the fractal
+// where the top left of the screen is in the fractal
+pub var fractal_pos_x: c.mpf_t = undefined;
+pub var fractal_pos_y: c.mpf_t = undefined;
 pub var max_resolution: @Vector(2, u32) = undefined;
 pub var render_start_screen_x: u32 = 0;
 pub var render_start_screen_y: u32 = 0;
+
+pub var ref_calc_x: c.mpf_t = undefined;
+pub var ref_calc_y: c.mpf_t = undefined;
+pub var mpf_intermediates: [3]c.mpf_t = undefined;
 
 pub var time: std.time.Timer = undefined;
 pub var prev_time: u64 = 0;
@@ -169,4 +183,52 @@ pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29
     const out = try alloc.alignedAlloc(u8, alignment, @intCast(num));
     _ = try file.readAll(out);
     return out;
+}
+
+pub fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize) void {
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = graphics_command_pool,
+        .commandBufferCount = 1,
+    };
+
+    var command_buffer: c.VkCommandBuffer = undefined;
+    _ = c.vkAllocateCommandBuffers(device, &alloc_info, &command_buffer);
+
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    _ = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    const copy_region: c.VkBufferCopy = .{
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size,
+    };
+    c.vkCmdCopyBuffer(
+        command_buffer,
+        src,
+        dst,
+        1,
+        &copy_region,
+    );
+
+    _ = c.vkEndCommandBuffer(command_buffer);
+
+    const submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+    _ = c.vkQueueSubmit(graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
+    _ = c.vkQueueWaitIdle(graphics_queue);
+
+    c.vkFreeCommandBuffers(
+        device,
+        graphics_command_pool,
+        1,
+        &command_buffer,
+    );
 }
