@@ -28,6 +28,14 @@ pub fn update() void {
     c.mpf_set_d(&common.ref_calc_y, 0.0);
 
     for (0..common.max_iterations) |i| {
+        const real: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_x));
+        const imag: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_y));
+
+        common.perturbation_vals[i][0] = real;
+        common.perturbation_vals[i][1] = imag;
+
+        if (real * real + imag * imag > 1.0e12) break;
+
         // ------- z^2 --------
         // z = a + bi
         c.mpf_mul(&common.mpf_intermediates[0], &common.ref_calc_x, &common.ref_calc_y); // ab
@@ -42,14 +50,6 @@ pub fn update() void {
         c.mpf_add(&common.mpf_intermediates[1], &common.ref_calc_y, &common.fractal_pos_y);
         c.mpf_swap(&common.mpf_intermediates[0], &common.ref_calc_x);
         c.mpf_swap(&common.mpf_intermediates[1], &common.ref_calc_y);
-
-        const real: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_x));
-        const imag: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_y));
-
-        common.perturbation_vals[i][0] = real;
-        common.perturbation_vals[i][1] = imag;
-
-        if (real * real + imag * imag > 1.0e8) break;
     }
 
     var mapped_data: [*]@Vector(2, f32) = undefined;

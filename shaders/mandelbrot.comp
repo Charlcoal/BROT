@@ -35,9 +35,13 @@ layout( push_constant ) uniform UniformBufferObject {
     uint max_width;
 } ubo;
 
+float rad_sqr(vec2 a) {
+    return a.x*a.x + a.y*a.y;
+}
+
 void main() {
     const int max_count = 20000;
-	const float escape_radius = 1e8;
+	const float escape_radius = 1e6;
 	const float interior_test_e_sqr = 1e-6;
     const uint pixel_scale = 1u << ubo.res_scale_exp;
 
@@ -51,13 +55,12 @@ void main() {
     //potential_vals[screen_loc.x + screen_loc.y * ubo.max_width] = abs(pos.x) + abs(pos.y);
     
     int count = 1;
-    int ref_index = 0;
+    int ref_index = 1;
     float dx_sqr = delta_pos.x * delta_pos.x;
     float dy_sqr = delta_pos.y * delta_pos.y;
     float dxdy = delta_pos.x * delta_pos.y;
-    vec2 Z = perturbation_ref[0];
-    float Z_rad = (Z.x*Z.x + Z.y*Z.y);
-    float tot_rad = Z_rad + dx_sqr + dy_sqr;
+    vec2 Z = perturbation_ref[1];
+    float tot_rad = rad_sqr(Z+delta_pos);
     while (count < max_count && tot_rad < escape_radius) {
         delta_pos = 2 * vec2(
             delta_pos.x * Z.x - delta_pos.y * Z.y,
@@ -68,16 +71,16 @@ void main() {
         dx_sqr = delta_pos.x * delta_pos.x;
         dy_sqr = delta_pos.y * delta_pos.y;
         dxdy = delta_pos.x * delta_pos.y;
-
-        Z_rad = (Z.x*Z.x + Z.y*Z.y);
-        float dz_rad = dx_sqr + dy_sqr;
-        tot_rad = Z_rad + dz_rad;
-
         count++;
         ref_index++;
         Z = perturbation_ref[ref_index];
-        if (Z_rad < 2*dz_rad) {
-            ref_index = -1;
+        tot_rad = rad_sqr(Z+delta_pos);
+
+        float Z_rad = rad_sqr(Z);
+        float dz_rad = dx_sqr + dy_sqr;
+
+        if (tot_rad < dz_rad) {
+            ref_index = 0;
             delta_pos += Z;
             dx_sqr = delta_pos.x * delta_pos.x;
             dy_sqr = delta_pos.y * delta_pos.y;
