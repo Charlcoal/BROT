@@ -25,6 +25,10 @@
         //    .url = "https://github.com/tiawl/glfw.zig/archive/b2a2f43.tar.gz",
         //    .hash = "glfw_zig-1.0.0-NrvYozPXGQDAo_awJidMc8GVgvPdlk-Ny-oOPmN74Qle",
         //},
+        .gmp = .{
+            .url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
+            .hash = "N-V-__8AAE5fAwHUYgLBeqNatYSKf3qBK3l8nwdpjyY8igK0",
+        },
     },
     .paths = .{
         "build.zig",
@@ -32,7 +36,6 @@
         "resources.zon",
         "src",
         "shaders",
-        "include",
         "LICENSE.txt",
         "README.md",
     },

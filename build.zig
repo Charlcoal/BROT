@@ -43,12 +43,14 @@ pub fn build(b: *std.Build) !void {
         .renderer = cimgui.Renderer.Vulkan,
     });
 
+    const gmp = b.dependency("gmp", .{});
+
     exe.root_module.link_libc = true;
-    exe.linkLibrary(cimgui_dep.artifact("cimgui"));
+    exe.root_module.linkLibrary(cimgui_dep.artifact("cimgui"));
     exe.root_module.linkSystemLibrary("vulkan", .{});
     exe.root_module.linkSystemLibrary("gmp", .{});
 
-    exe.addIncludePath(b.path("include"));
+    exe.root_module.addIncludePath(gmp.path("."));
 
     b.installArtifact(exe);
 
