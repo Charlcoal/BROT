@@ -49,7 +49,6 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.linkLibrary(cimgui_dep.artifact("cimgui"));
     exe.root_module.linkSystemLibrary("vulkan", .{});
     exe.root_module.linkSystemLibrary("gmp", .{});
-
     exe.root_module.addIncludePath(gmp.path("."));
 
     b.installArtifact(exe);

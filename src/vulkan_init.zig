@@ -1148,9 +1148,19 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
 //    }
 //}
 
+fn ceil(val: u32, size: u32) u32 {
+    return size * ((val + size - 1) / size);
+}
+
 fn createBuffers() InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
-    common.escape_potential_buffer_size = @intCast(video_mode.?.*.width * video_mode.?.*.height * @sizeOf(u32));
+    const min_block_width: u32 = @as(u32, @intCast(2 * video_mode.?.*.width + 2)) / 3;
+    const min_block_height: u32 = @as(u32, @intCast(2 * video_mode.?.*.height + 2)) / 3;
+    const render_patch_size: u32 = (@as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent + 3))) * common.sqrt_workgroup_num;
+    common.escape_potential_buffer_block_width = ceil(min_block_width, render_patch_size);
+    common.escape_potential_buffer_block_height = ceil(min_block_height, render_patch_size);
+    std.debug.print("buffer block size: {} by {}\n", .{ common.escape_potential_buffer_block_width, common.escape_potential_buffer_block_height });
+    common.escape_potential_buffer_size = 16 * common.escape_potential_buffer_block_width * common.escape_potential_buffer_block_height;
     common.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
     //std.debug.print("max_resolution: {any}\n", .{common.max_resolution});
 

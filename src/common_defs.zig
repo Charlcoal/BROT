@@ -135,6 +135,10 @@ pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
 pub var frame_updated: bool = true;
 
+pub var escape_potential_buffer_map: BlockMap = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+pub var escape_potential_buffer_block_width: u32 = undefined;
+pub var escape_potential_buffer_block_height: u32 = undefined;
+
 pub var escape_potential_buffer_size: u32 = undefined;
 pub var escape_potential_buffer: c.VkBuffer = undefined;
 pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
@@ -184,6 +188,22 @@ pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29
     _ = try file.readAll(out);
     return out;
 }
+
+pub const max_res_scale_exponent = 2;
+pub const min_res_scale_exponent = 0;
+pub const num_distinct_res_scales = max_res_scale_exponent - min_res_scale_exponent + 1;
+pub const sqrt_workgroup_num = 8;
+
+pub const BlockMap = struct {
+    x_offset: u2,
+    y_offset: u2,
+
+    pub fn pack(map: BlockMap) u4 {
+        const PackedBlockMap = packed struct { x: u2, y: u2 };
+        const tmp: PackedBlockMap = .{ .x = map.x_offset, .y = map.y_offset };
+        return @bitCast(tmp);
+    }
+};
 
 pub fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize) void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{

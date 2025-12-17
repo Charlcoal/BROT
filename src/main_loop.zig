@@ -52,16 +52,11 @@ const Spiral = struct {
     delta_y: i32,
 };
 
-const max_res_scale_exponent = 4;
-const min_res_scale_exponent = 0;
-const num_distinct_res_scales = max_res_scale_exponent - min_res_scale_exponent + 1;
-const sqrt_workgroup_num = 8;
-
 fn computeManage() void {
-    var spirals: [num_distinct_res_scales]Spiral = undefined;
-    var spiral_counts: [num_distinct_res_scales]u32 = undefined;
+    var spirals: [common.num_distinct_res_scales]Spiral = undefined;
+    var spiral_counts: [common.num_distinct_res_scales]u32 = undefined;
     var spiral_current_min_count: u32 = undefined;
-    var spirals_complete: [num_distinct_res_scales]bool = undefined;
+    var spirals_complete: [common.num_distinct_res_scales]bool = undefined;
 
     while (!common.compute_manager_should_close) {
         _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
@@ -96,10 +91,10 @@ fn computeManage() void {
         }
 
         const resolution_scale_index: u32 = res_result.index;
-        const resolution_scale_exponent: i32 = max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
+        const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
 
         var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
-        render_patch_size *= sqrt_workgroup_num;
+        render_patch_size *= common.sqrt_workgroup_num;
 
         const spiral_result = stepSpiral(&spirals[resolution_scale_index], render_patch_size);
         if (spiral_result.spiral_exhausted) {
@@ -120,7 +115,7 @@ fn computeManage() void {
         _ = c.vkResetCommandBuffer(common.compute_command_buffers[comp_index], 0);
         recordComputeCommandBuffer(
             common.compute_command_buffers[comp_index],
-            sqrt_workgroup_num,
+            common.sqrt_workgroup_num,
             spiral_result.pos,
             resolution_scale_exponent,
         ) catch {
@@ -230,12 +225,12 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn initSpirals(spirals: *[num_distinct_res_scales]Spiral) void {
-    for (0..num_distinct_res_scales) |scale_index| {
-        const resolution_scale_exponent: i32 = max_res_scale_exponent - @as(i32, @intCast(scale_index));
+fn initSpirals(spirals: *[common.num_distinct_res_scales]Spiral) void {
+    for (0..common.num_distinct_res_scales) |scale_index| {
+        const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(scale_index));
 
         var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
-        render_patch_size *= sqrt_workgroup_num;
+        render_patch_size *= common.sqrt_workgroup_num;
 
         const render_patch_offset_x: i32 = @as(i32, @intCast(common.render_start_screen_x % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
         const render_patch_offset_y: i32 = @as(i32, @intCast(common.render_start_screen_y % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
@@ -270,15 +265,15 @@ fn initSpirals(spirals: *[num_distinct_res_scales]Spiral) void {
     }
 }
 
-fn chooseResScaleIndex(spiral_counts: [num_distinct_res_scales]u32, spirals_complete: [num_distinct_res_scales]bool, spiral_current_min_count: *u32) struct { all_exhausted: bool, index: u32 } {
+fn chooseResScaleIndex(spiral_counts: [common.num_distinct_res_scales]u32, spirals_complete: [common.num_distinct_res_scales]bool, spiral_current_min_count: *u32) struct { all_exhausted: bool, index: u32 } {
     if (!spirals_complete[0]) return .{ .all_exhausted = false, .index = 0 };
-    for (0..num_distinct_res_scales) |scale_index| {
+    for (0..common.num_distinct_res_scales) |scale_index| {
         if (spiral_counts[scale_index] <= spiral_current_min_count.* and !spirals_complete[scale_index]) {
             return .{ .all_exhausted = false, .index = @intCast(scale_index) };
         }
     }
     spiral_current_min_count.* += 1;
-    for (0..num_distinct_res_scales) |scale_index| {
+    for (0..common.num_distinct_res_scales) |scale_index| {
         if (!spirals_complete[scale_index]) {
             return .{ .all_exhausted = false, .index = @intCast(scale_index) };
         }
