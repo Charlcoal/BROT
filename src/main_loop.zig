@@ -386,15 +386,11 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         0,
         @sizeOf(common.ComputeConstants),
         &common.ComputeConstants{
-            .fractal_pos = .{
-                @floatCast(c.mpf_get_d(&common.fractal_pos_x)),
-                @floatCast(c.mpf_get_d(&common.fractal_pos_y)),
-            },
             .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
             .screen_offset = pos,
-            .height_scale = common.zoom / @as(f32, @floatFromInt(common.height)),
+            .height_scale_exp = @intFromFloat(std.math.log(f32, 2.0, common.zoom / @as(f32, @floatFromInt(common.height)))),
             .resolution_scale_exponent = resolution_scale_exponent,
-            .max_width = common.max_resolution[0],
+            .max_width = 4 * common.escape_potential_buffer_block_width,
         },
     );
 
@@ -465,7 +461,7 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         c.VK_SHADER_STAGE_FRAGMENT_BIT,
         0,
         @sizeOf(common.RenderConstants),
-        &common.RenderConstants{ .max_width = common.max_resolution[0] },
+        &common.RenderConstants{ .max_width = 4 * common.escape_potential_buffer_block_width },
     );
 
     c.vkCmdDraw(

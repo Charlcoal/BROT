@@ -27,10 +27,9 @@ layout(std430, binding = 2) readonly buffer storage_from_cpu {
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout( push_constant ) uniform UniformBufferObject {
-    vec2 center;
     uvec2 cur_resolution;
     uvec2 screen_offset;
-    float height_scale;
+    int height_scale_exp;
     int res_scale_exp;
     uint max_width;
 } ubo;
@@ -40,6 +39,7 @@ float rad_sqr(vec2 a) {
 }
 
 void main() {
+    const float height_scale = exp2(float(ubo.height_scale_exp));
     const int max_count = 20000;
 	const float escape_radius = 1e6;
 	const float interior_test_e_sqr = 1e-6;
@@ -49,10 +49,8 @@ void main() {
     ivec2 center_screen_loc = ivec2(screen_loc + uvec2(pixel_scale/2, pixel_scale/2));
 
     center_screen_loc = ivec2(center_screen_loc - ubo.cur_resolution / 2);
-    vec2 delta_c = center_screen_loc * ubo.height_scale;// / vec2(float(ubo.cur_resolution.y));
+    vec2 delta_c = center_screen_loc * height_scale;
     vec2 delta_pos = delta_c;
-
-    //potential_vals[screen_loc.x + screen_loc.y * ubo.max_width] = abs(pos.x) + abs(pos.y);
     
     int count = 1;
     int ref_index = 1;
@@ -97,15 +95,6 @@ void main() {
     float y_sqr = pos.y * pos.y;
 	float rad_sqr = x_sqr + y_sqr;
 	float interior_test_sqr = rad_sqr;
-    //while (rad_sqr < escape_radius * escape_radius && count < max_count && interior_test_sqr > interior_test_e_sqr) {
-    //    pos.y = 2.0 * pos.x * pos.y + c.y;
-    //    pos.x = x_sqr - y_sqr + c.x;
-    //    x_sqr = pos.x * pos.x;
-    //    y_sqr = pos.y * pos.y;
-	//	rad_sqr = x_sqr + y_sqr;
-	//	interior_test_sqr *= 4.0 * rad_sqr;
-    //    count++;
-    //}
 
     float potential_val;
     if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
@@ -116,7 +105,6 @@ void main() {
 
     for (int delta_y = 0; delta_y < pixel_scale; delta_y++) {
         for (int delta_x = 0; delta_x < pixel_scale; delta_x++) {
-            if (screen_loc.x + delta_x >= ubo.cur_resolution.x || screen_loc.y + delta_y >= ubo.cur_resolution.y) continue;
             potential_vals[screen_loc.x + delta_x + (screen_loc.y + delta_y) * ubo.max_width] = potential_val;
         }
     }

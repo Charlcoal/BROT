@@ -1160,9 +1160,7 @@ fn createBuffers() InitVulkanError!void {
     common.escape_potential_buffer_block_width = ceil(min_block_width, render_patch_size);
     common.escape_potential_buffer_block_height = ceil(min_block_height, render_patch_size);
     std.debug.print("buffer block size: {} by {}\n", .{ common.escape_potential_buffer_block_width, common.escape_potential_buffer_block_height });
-    common.escape_potential_buffer_size = 16 * common.escape_potential_buffer_block_width * common.escape_potential_buffer_block_height;
-    common.max_resolution = .{ @intCast(video_mode.?.*.width), @intCast(video_mode.?.*.height) };
-    //std.debug.print("max_resolution: {any}\n", .{common.max_resolution});
+    common.escape_potential_buffer_size = 4 * 16 * common.escape_potential_buffer_block_width * common.escape_potential_buffer_block_height;
 
     try createBuffer(
         common.escape_potential_buffer_size,

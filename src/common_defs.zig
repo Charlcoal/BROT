@@ -31,10 +31,9 @@ pub const device_extensions = [_][*:0]const u8{
 };
 
 pub const ComputeConstants = extern struct {
-    fractal_pos: @Vector(2, f32),
     cur_resolution: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
-    height_scale: f32,
+    height_scale_exp: i32,
     resolution_scale_exponent: i32,
     max_width: u32,
 };
