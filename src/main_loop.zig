@@ -261,6 +261,25 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
     }
 }
 
+fn patchVisible(patch: RenderPatch) bool {
+    const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
+
+    const screen_center_x: f32 = @floatFromInt((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2);
+    const screen_center_y: f32 = @floatFromInt((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2);
+
+    const screen_left_edge: u32 = @intFromFloat(@max(screen_center_x - @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
+    const screen_right_edge: u32 = @intFromFloat(@max(screen_center_x + @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
+    const screen_top_edge: u32 = @intFromFloat(@max(screen_center_y - @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
+    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center_y + @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
+
+    if (patch_size * patch.x_pos > screen_right_edge) return false;
+    if (patch_size * (patch.x_pos + 1) < screen_left_edge) return false;
+    if (patch_size * patch.y_pos > screen_bottom_edge) return false;
+    if (patch_size * (patch.y_pos + 1) < screen_top_edge) return false;
+
+    return true;
+}
+
 fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]bool) ?RenderPatch {
     const buffer_width: u32 = common.escape_potential_buffer_block_num_x * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
     const buffer_height: u32 = common.escape_potential_buffer_block_num_y * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
@@ -298,6 +317,12 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
         for (0.., resolutions_complete[res_scale_exp]) |i, max_res_col| {
             for (0.., max_res_col) |j, max_res_patch| {
                 if (!max_res_patch) {
+                    if (!patchVisible(.{
+                        .resolution_scale_exponent = @intCast(res_scale_exp),
+                        .x_pos = @intCast(i),
+                        .y_pos = @intCast(j),
+                    })) continue;
+
                     res_incompletes[res_scale_exp] = true;
                     const patch_dist = calculateModularDist(
                         .{ .x = buffer_target_pos_x, .y = buffer_target_pos_y },
