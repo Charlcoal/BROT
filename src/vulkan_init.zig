@@ -39,7 +39,8 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createSwapChain(alloc);
     try createImageViews(alloc);
     try createRenderPass();
-    try createDescriptorSetLayout();
+    try createCpuToRndDescriptorSetLayout();
+    try createRndToClrDescriptorSetLayout();
     try createGraphicsPipeline();
     try createComputePipeline();
     try createFrameBuffers(alloc);
@@ -47,7 +48,8 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createComputeCommandPool(alloc);
     try createBuffers();
     try createDescriptorPool();
-    try createDescriptorSets(alloc);
+    try createCpuToRndDescriptorSets();
+    try createRndToClrDescriptorSets();
     try createComputeCommandBuffer();
     try createCommandBuffers(alloc);
     try createSyncObjects(alloc);
@@ -327,28 +329,21 @@ fn createDebugUtilsMessengerEXT(
 fn createDescriptorPool() InitVulkanError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
-            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = @intCast(common.swap_chain_images.len),
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = @intCast(common.render_to_coloring_descriptor_sets.len),
         },
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = @intCast(common.swap_chain_images.len),
+            .descriptorCount = @intCast(common.cpu_to_render_descriptor_sets.len),
         },
-        .{
-            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = @intCast(common.swap_chain_images.len),
-        },
-        //.{
-        //    .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        //    .descriptorCount = @intCast(common.max_frames_in_flight),
-        //}
     };
 
     const pool_info: c.VkDescriptorPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
-        .maxSets = @intCast(common.swap_chain_images.len),
+        .maxSets = @intCast(common.render_to_coloring_descriptor_sets.len +
+            common.cpu_to_render_descriptor_sets.len),
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
@@ -356,26 +351,14 @@ fn createDescriptorPool() InitVulkanError!void {
     }
 }
 
-fn createDescriptorSetLayout() InitVulkanError!void {
-    const bindings = [_]c.VkDescriptorSetLayoutBinding{ .{
+fn createCpuToRndDescriptorSetLayout() InitVulkanError!void {
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
-        .pImmutableSamplers = null,
-    }, .{
-        .binding = 1,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
-        .pImmutableSamplers = null,
-    }, .{
-        .binding = 2,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
         .pImmutableSamplers = null,
-    } };
+    }};
 
     var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -383,94 +366,105 @@ fn createDescriptorSetLayout() InitVulkanError!void {
         .pBindings = &bindings,
     };
 
-    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.descriptor_set_layout) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.cpu_to_render_descriptor_set_layout) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_set_layout_creation_failed;
     }
 }
 
-fn createDescriptorSets(alloc: Allocator) InitVulkanError!void {
-    const layouts: []c.VkDescriptorSetLayout = try alloc.alloc(c.VkDescriptorSetLayout, common.swap_chain_images.len);
-    defer alloc.free(layouts);
-    for (0..common.swap_chain_images.len) |i| {
-        layouts[i] = common.descriptor_set_layout;
+fn createRndToClrDescriptorSetLayout() InitVulkanError!void {
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
+        .binding = 0,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT | c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = null,
+    }};
+
+    var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = bindings.len,
+        .pBindings = &bindings,
+    };
+
+    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_set_layout_creation_failed;
+    }
+}
+
+fn createCpuToRndDescriptorSets() InitVulkanError!void {
+    var layouts: [common.cpu_to_render_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
+    for (&layouts) |*layout| {
+        layout.* = common.cpu_to_render_descriptor_set_layout;
     }
 
     const alloc_info: c.VkDescriptorSetAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = common.descriptor_pool,
-        .descriptorSetCount = @intCast(common.max_frames_in_flight),
-        .pSetLayouts = layouts.ptr,
+        .descriptorSetCount = layouts.len,
+        .pSetLayouts = &layouts,
     };
 
-    common.descriptor_sets = try alloc.alloc(c.VkDescriptorSet, common.max_frames_in_flight);
-    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, common.descriptor_sets.ptr) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.cpu_to_render_descriptor_sets) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_sets_allocation_failed;
     }
 
-    for (0..common.max_frames_in_flight) |i| {
-        //const uniform_buffer_info: c.VkDescriptorBufferInfo = .{
-        //    .buffer = common.REPLACE[i],
-        //    .offset = 0,
-        //    .range = @sizeOf(common.ComputeConstants),
-        //};
-
-        const escape_potential_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = common.escape_potential_buffer,
-            .offset = 0,
-            .range = common.escape_potential_buffer_size,
-        };
-
+    for (0..common.cpu_to_render_descriptor_sets.len) |i| {
         const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
             .buffer = common.perturbation_buffer,
             .offset = 0,
             .range = common.max_iterations * 2 * @sizeOf(f32),
         };
 
-        //const image_info: c.VkDescriptorImageInfo = .{
-        //    .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //    .imageView = common.texture_image_view,
-        //    .sampler = common.texture_sampler,
-        //};
-
         const descriptor_writes = [_]c.VkWriteDescriptorSet{
-            //.{
-            //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //    .dstSet = common.descriptor_sets[i],
-            //    .dstBinding = 0,
-            //    .dstArrayElement = 0,
-            //    .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            //    .descriptorCount = 1,
-            //    .pBufferInfo = &uniform_buffer_info,
-            //    .pImageInfo = null,
-            //    .pTexelBufferView = null,
-            //},
             .{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = common.descriptor_sets[i],
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &escape_potential_buffer_info,
-            },
-            .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = common.descriptor_sets[i],
-                .dstBinding = 2,
+                .dstSet = common.cpu_to_render_descriptor_sets[i],
+                .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
                 .pBufferInfo = &perturbation_buffer_info,
             },
-            //.{
-            //    .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //    .dstSet = common.descriptor_sets[i],
-            //    .dstBinding = 1,
-            //    .dstArrayElement = 0,
-            //    .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            //    .descriptorCount = 1,
-            //    .pImageInfo = &image_info,
-            //}
+        };
+
+        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+    }
+}
+
+fn createRndToClrDescriptorSets() InitVulkanError!void {
+    var layouts: [common.render_to_coloring_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
+    for (&layouts) |*layout| {
+        layout.* = common.render_to_coloring_descriptor_set_layout;
+    }
+
+    const alloc_info: c.VkDescriptorSetAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = common.descriptor_pool,
+        .descriptorSetCount = layouts.len,
+        .pSetLayouts = &layouts,
+    };
+
+    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_to_coloring_descriptor_sets) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_sets_allocation_failed;
+    }
+
+    for (0..common.render_to_coloring_descriptor_sets.len) |i| {
+        const escape_potential_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = common.escape_potential_buffer,
+            .offset = 0,
+            .range = common.escape_potential_buffer_size,
+        };
+
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = common.render_to_coloring_descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &escape_potential_buffer_info,
+            },
         };
 
         c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
@@ -518,10 +512,15 @@ fn createComputePipeline() InitVulkanError!void {
         .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
     };
 
+    const descriptor_sets = [_]c.VkDescriptorSetLayout{
+        common.render_to_coloring_descriptor_set_layout,
+        common.cpu_to_render_descriptor_set_layout,
+    };
+
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &common.descriptor_set_layout,
+        .setLayoutCount = descriptor_sets.len,
+        .pSetLayouts = &descriptor_sets,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
@@ -647,7 +646,7 @@ fn createGraphicsPipeline() InitVulkanError!void {
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &common.descriptor_set_layout,
+        .pSetLayouts = &common.render_to_coloring_descriptor_set_layout,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
@@ -1120,33 +1119,6 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
         }
     }
 }
-
-//fn createUniformBuffers(alloc: Allocator) InitVulkanError!void {
-//    const buffer_size: c.VkDeviceSize = @sizeOf(common.ComputeConstants);
-//
-//    common.REPLACE = try alloc.alloc(c.VkBuffer, common.max_frames_in_flight);
-//    common.REPLACE = try alloc.alloc(c.VkDeviceMemory, common.max_frames_in_flight);
-//    common.REPLACE = try alloc.alloc(?*align(@alignOf(common.ComputeConstants)) anyopaque, common.max_frames_in_flight);
-//
-//    for (0..common.max_frames_in_flight) |i| {
-//        try createBuffer(
-//            buffer_size,
-//            c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-//            c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//            &common.REPLACE[i],
-//            &common.REPLACE[i],
-//        );
-//
-//        _ = c.vkMapMemory(
-//            common.device,
-//            common.REPLACE[i],
-//            0,
-//            buffer_size,
-//            0,
-//            @ptrCast(&common.REPLACE[i]),
-//        );
-//    }
-//}
 
 fn createBuffers() InitVulkanError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());

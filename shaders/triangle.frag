@@ -24,7 +24,7 @@ layout(push_constant) uniform UniformBufferObject {
     uint max_width;
     float zoom_diff;
 } ubo;
-layout(std430, binding = 1) readonly buffer storage {
+layout(std430, binding = 0) readonly buffer storage {
     float potential_vals[];
 };
 

@@ -152,9 +152,15 @@ pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
 pub var perturbation_staging_buffer: c.VkBuffer = undefined;
 pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
 
-pub var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
-pub var descriptor_sets: []c.VkDescriptorSet = undefined;
+
+pub var current_render_to_coloring_descriptor_index: usize = 0;
+pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
+pub var current_cpu_to_render_descriptor_index: usize = 0;
+pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 
 pub var zoom_exp: i32 = 1;
 pub var zoom_diff: f32 = 1.0;

@@ -288,8 +288,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     const buffer_width: u32 = common.escape_potential_buffer_block_num_x * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
     const buffer_height: u32 = common.escape_potential_buffer_block_num_y * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
 
-    const buffer_center_x: u32 = buffer_width / 2;
-    const buffer_center_y: u32 = buffer_height / 2;
+    const screen_center = common.get_screen_center();
 
     var mouse_x_flt: f64 = undefined;
     var mouse_y_flt: f64 = undefined;
@@ -300,14 +299,15 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     mouse_x_flt = std.math.clamp(mouse_x_flt, 0.0, @as(f64, @floatFromInt(common.width)));
     mouse_y_flt = std.math.clamp(mouse_y_flt, 0.0, @as(f64, @floatFromInt(common.height)));
 
-    const mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
-    const mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.height)) / 2.0);
+    var mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
+    var mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.height)) / 2.0);
 
-    const mouse_x_from_buffer_center = mouse_x_from_screen_center * 2.0 / common.zoom_diff;
-    const mouse_y_from_buffer_center = mouse_y_from_screen_center * 2.0 / common.zoom_diff;
+    // to buffer coordinates
+    mouse_x_from_screen_center = mouse_x_from_screen_center * common.zoom_diff;
+    mouse_y_from_screen_center = mouse_y_from_screen_center * common.zoom_diff;
 
-    const buffer_target_pos_x: u32 = @intCast(@as(i32, @intFromFloat(mouse_x_from_buffer_center)) + @as(i32, @intCast(buffer_center_x)));
-    const buffer_target_pos_y: u32 = @intCast(@as(i32, @intFromFloat(mouse_y_from_buffer_center)) + @as(i32, @intCast(buffer_center_y)));
+    const buffer_target_pos_x: u32 = @intFromFloat(mouse_x_from_screen_center + screen_center.x);
+    const buffer_target_pos_y: u32 = @intFromFloat(mouse_y_from_screen_center + screen_center.y);
 
     //std.debug.print("target render pos: {}, {}\n", .{ buffer_target_pos_x, buffer_target_pos_y });
 
@@ -514,6 +514,11 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         return MainLoopError.command_buffer_recording_begin_failed;
     }
 
+    const descriptor_sets = [_]c.VkDescriptorSet{
+        common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        common.cpu_to_render_descriptor_sets[common.current_cpu_to_render_descriptor_index],
+    };
+
     c.vkCmdBindPipeline(
         compute_command_buffer,
         c.VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -524,8 +529,8 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         c.VK_PIPELINE_BIND_POINT_COMPUTE,
         common.compute_pipeline_layout,
         0,
-        1,
-        &common.descriptor_sets[0],
+        descriptor_sets.len,
+        &descriptor_sets,
         0,
         0,
     );
@@ -605,7 +610,7 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         common.render_pipeline_layout,
         0,
         1,
-        &common.descriptor_sets[common.current_frame],
+        &common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
         0,
         null,
     );

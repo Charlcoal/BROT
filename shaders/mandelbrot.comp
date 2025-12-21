@@ -16,11 +16,11 @@
 
 #version 450
 
-layout(std430, binding = 1) writeonly buffer storage_to_frag {
+layout(set = 0, std430, binding = 0) writeonly buffer storage_to_frag {
     float potential_vals[];
 };
 
-layout(std430, binding = 2) readonly buffer storage_from_cpu {
+layout(set = 1, std430, binding = 0) readonly buffer storage_from_cpu {
     vec2 perturbation_ref[];
 };
 

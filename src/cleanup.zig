@@ -69,8 +69,8 @@ pub fn cleanup(alloc: Allocator) void {
     c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
 
     c.vkDestroyDescriptorPool(common.device, common.descriptor_pool, null);
-    c.vkDestroyDescriptorSetLayout(common.device, common.descriptor_set_layout, null);
-    alloc.free(common.descriptor_sets);
+    c.vkDestroyDescriptorSetLayout(common.device, common.render_to_coloring_descriptor_set_layout, null);
+    c.vkDestroyDescriptorSetLayout(common.device, common.cpu_to_render_descriptor_set_layout, null);
 
     c.vkDestroyPipeline(common.device, common.graphics_pipeline, null);
     c.vkDestroyPipeline(common.device, common.compute_pipeline, null);
