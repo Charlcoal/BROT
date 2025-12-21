@@ -49,6 +49,7 @@ pub const ComputeConstants = extern struct {
 
 pub const RenderConstants = extern struct {
     cur_resolution: @Vector(2, u32),
+    center_position: @Vector(2, u32),
     max_width: u32,
     zoom_diff: f32,
 };

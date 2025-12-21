@@ -79,11 +79,6 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         }
     }
 
-    //var spirals: [common.num_distinct_res_scales]Spiral = undefined;
-    //var spiral_counts: [common.num_distinct_res_scales]u32 = undefined;
-    //var spiral_current_min_count: u32 = undefined;
-    //var spirals_complete: [common.num_distinct_res_scales]bool = undefined;
-
     while (!common.compute_manager_should_close) {
         _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
 
@@ -100,22 +95,12 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             common.compute_idle = false;
             common.frame_updated = false;
             resetRenderPatchsResComps(resolutions_complete);
-            //initSpirals(&spirals);
-            //spiral_counts = @splat(0);
-            //spirals_complete = @splat(false);
-            //spiral_current_min_count = 0;
         }
 
         if (common.compute_idle) {
             std.Thread.sleep(1_000_000); // 1ms
             continue;
         }
-
-        //const res_result = chooseResScaleIndex(spiral_counts, spirals_complete, &spiral_current_min_count);
-        //if (res_result.all_exhausted) {
-        //    common.compute_idle = true;
-        //    continue;
-        //}
 
         const patch_to_render_maybe = chooseRenderPatch(resolutions_complete);
         var patch_to_render: RenderPatch = undefined;
@@ -126,21 +111,11 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             continue;
         }
 
-        //const resolution_scale_index: u32 = res_result.index;
-        //const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
         const resolution_scale_exponent: u32 = patch_to_render.resolution_scale_exponent;
 
         var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
         render_patch_size *= common.sqrt_invocation_num;
         render_patch_size *= common.sqrt_workgroup_num;
-
-        //const spiral_result = stepSpiral(&spirals[resolution_scale_index], render_patch_size);
-        //if (spiral_result.spiral_exhausted) {
-        //    spirals_complete[resolution_scale_index] = true;
-        //    continue;
-        //}
-
-        //spiral_counts[resolution_scale_index] += 1;
 
         common.gpu_interface_semaphore.wait();
         defer common.gpu_interface_semaphore.post();
@@ -273,20 +248,7 @@ fn calculateModularDist(pos1: struct { x: u32, y: u32 }, pos2: struct { x: u32, 
     const x_2: f32 = @floatFromInt(pos2.x % width);
     const y_2: f32 = @floatFromInt(pos2.y % height);
 
-    const w_flt: f32 = @floatFromInt(width);
-    const h_flt: f32 = @floatFromInt(height);
-
-    var running_dist: f32 = std.math.floatMax(f32);
-    for (0..2) |i| {
-        for (0..2) |j| {
-            const x_dist: f32 = x_1 - x_2 - w_flt + @as(f32, @floatFromInt(i)) * w_flt;
-            const y_dist: f32 = y_1 - y_2 - h_flt + @as(f32, @floatFromInt(j)) * h_flt;
-            const dist: f32 = std.math.sqrt(x_dist * x_dist + y_dist * y_dist);
-            if (dist < running_dist) running_dist = dist;
-        }
-    }
-
-    return running_dist;
+    return std.math.sqrt((x_1 - x_2) * (x_1 - x_2) + (y_1 - y_2) * (y_1 - y_2));
 }
 
 fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scales][][]bool) void {
@@ -310,8 +272,13 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     var mouse_y_flt: f64 = undefined;
     c.glfwGetCursorPos(common.window, &mouse_x_flt, &mouse_y_flt);
 
+    //std.debug.print("mouse position: {}, {}\n", .{ mouse_x_flt, mouse_y_flt });
+
+    mouse_x_flt = std.math.clamp(mouse_x_flt, 0.0, @as(f64, @floatFromInt(common.width)));
+    mouse_y_flt = std.math.clamp(mouse_y_flt, 0.0, @as(f64, @floatFromInt(common.height)));
+
     const mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
-    const mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
+    const mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.height)) / 2.0);
 
     const mouse_x_from_buffer_center = mouse_x_from_screen_center * 2.0 / common.zoom_diff;
     const mouse_y_from_buffer_center = mouse_y_from_screen_center * 2.0 / common.zoom_diff;
@@ -319,20 +286,22 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     const buffer_target_pos_x: u32 = @intCast(@as(i32, @intFromFloat(mouse_x_from_buffer_center)) + @as(i32, @intCast(buffer_center_x)));
     const buffer_target_pos_y: u32 = @intCast(@as(i32, @intFromFloat(mouse_y_from_buffer_center)) + @as(i32, @intCast(buffer_center_y)));
 
+    //std.debug.print("target render pos: {}, {}\n", .{ buffer_target_pos_x, buffer_target_pos_y });
+
     const Pos = struct { x: u32 = 0, y: u32 = 0 };
 
     var running_dists: [common.num_distinct_res_scales]f32 = [1]f32{std.math.floatMax(f32)} ** common.num_distinct_res_scales;
     var min_dist_poss: [common.num_distinct_res_scales]Pos = [1]Pos{.{}} ** common.num_distinct_res_scales;
     var res_incompletes: [common.num_distinct_res_scales]bool = [1]bool{false} ** common.num_distinct_res_scales;
     for (0..common.num_distinct_res_scales) |res_scale_exp| {
-        const max_res_size: u32 = common.renderPatchSize(@intCast(res_scale_exp));
+        const patch_size: u32 = common.renderPatchSize(@intCast(res_scale_exp));
         for (0.., resolutions_complete[res_scale_exp]) |i, max_res_col| {
             for (0.., max_res_col) |j, max_res_patch| {
                 if (!max_res_patch) {
                     res_incompletes[res_scale_exp] = true;
                     const patch_dist = calculateModularDist(
                         .{ .x = buffer_target_pos_x, .y = buffer_target_pos_y },
-                        .{ .x = @intCast(i * max_res_size + max_res_size / 2), .y = @intCast(j * max_res_size + max_res_size / 2) },
+                        .{ .x = @intCast(i * patch_size + patch_size / 2), .y = @intCast(j * patch_size + patch_size / 2) },
                         buffer_width,
                         buffer_height,
                     );
@@ -540,8 +509,8 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         @sizeOf(common.ComputeConstants),
         &common.ComputeConstants{
             .center_screen_pos = @Vector(2, u32){
-                @intCast(common.width),
-                @intCast(common.height),
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
             },
             .screen_offset = pos,
             .height_scale_exp = common.zoom_exp,
@@ -620,6 +589,10 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         @sizeOf(common.RenderConstants),
         &common.RenderConstants{
             .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
+            .center_position = @Vector(2, u32){
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
+            },
             .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
             .zoom_diff = common.zoom_diff,
         },
