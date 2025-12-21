@@ -39,7 +39,7 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
 }
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
-    common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{});
+    common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{alloc});
 }
 
 const Direction = enum { left, down, right, up };
@@ -52,11 +52,37 @@ const Spiral = struct {
     delta_y: i32,
 };
 
-fn computeManage() void {
-    var spirals: [common.num_distinct_res_scales]Spiral = undefined;
-    var spiral_counts: [common.num_distinct_res_scales]u32 = undefined;
-    var spiral_current_min_count: u32 = undefined;
-    var spirals_complete: [common.num_distinct_res_scales]bool = undefined;
+const RenderPatch = struct {
+    resolution_scale_exponent: u32,
+    x_pos: u32,
+    y_pos: u32,
+};
+
+fn computeManage(alloc: Allocator) Allocator.Error!void {
+    var resolutions_complete: [common.num_distinct_res_scales][][]bool = undefined;
+
+    for (0.., &resolutions_complete) |i, *res| {
+        const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
+        const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
+        res.* = try alloc.alloc([]bool, width);
+        for (res.*) |*col| {
+            col.* = try alloc.alloc(bool, height);
+        }
+    }
+
+    defer {
+        for (resolutions_complete) |res| {
+            for (res) |col| {
+                alloc.free(col);
+            }
+            alloc.free(res);
+        }
+    }
+
+    //var spirals: [common.num_distinct_res_scales]Spiral = undefined;
+    //var spiral_counts: [common.num_distinct_res_scales]u32 = undefined;
+    //var spiral_current_min_count: u32 = undefined;
+    //var spirals_complete: [common.num_distinct_res_scales]bool = undefined;
 
     while (!common.compute_manager_should_close) {
         _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
@@ -73,10 +99,11 @@ fn computeManage() void {
         if (common.frame_updated) {
             common.compute_idle = false;
             common.frame_updated = false;
-            initSpirals(&spirals);
-            spiral_counts = @splat(0);
-            spirals_complete = @splat(false);
-            spiral_current_min_count = 0;
+            resetRenderPatchsResComps(resolutions_complete);
+            //initSpirals(&spirals);
+            //spiral_counts = @splat(0);
+            //spirals_complete = @splat(false);
+            //spiral_current_min_count = 0;
         }
 
         if (common.compute_idle) {
@@ -84,25 +111,36 @@ fn computeManage() void {
             continue;
         }
 
-        const res_result = chooseResScaleIndex(spiral_counts, spirals_complete, &spiral_current_min_count);
-        if (res_result.all_exhausted) {
+        //const res_result = chooseResScaleIndex(spiral_counts, spirals_complete, &spiral_current_min_count);
+        //if (res_result.all_exhausted) {
+        //    common.compute_idle = true;
+        //    continue;
+        //}
+
+        const patch_to_render_maybe = chooseRenderPatch(resolutions_complete);
+        var patch_to_render: RenderPatch = undefined;
+        if (patch_to_render_maybe) |patch| {
+            patch_to_render = patch;
+        } else {
             common.compute_idle = true;
             continue;
         }
 
-        const resolution_scale_index: u32 = res_result.index;
-        const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
+        //const resolution_scale_index: u32 = res_result.index;
+        //const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(resolution_scale_index));
+        const resolution_scale_exponent: u32 = patch_to_render.resolution_scale_exponent;
 
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
+        render_patch_size *= common.sqrt_invocation_num;
         render_patch_size *= common.sqrt_workgroup_num;
 
-        const spiral_result = stepSpiral(&spirals[resolution_scale_index], render_patch_size);
-        if (spiral_result.spiral_exhausted) {
-            spirals_complete[resolution_scale_index] = true;
-            continue;
-        }
+        //const spiral_result = stepSpiral(&spirals[resolution_scale_index], render_patch_size);
+        //if (spiral_result.spiral_exhausted) {
+        //    spirals_complete[resolution_scale_index] = true;
+        //    continue;
+        //}
 
-        spiral_counts[resolution_scale_index] += 1;
+        //spiral_counts[resolution_scale_index] += 1;
 
         common.gpu_interface_semaphore.wait();
         defer common.gpu_interface_semaphore.post();
@@ -116,8 +154,11 @@ fn computeManage() void {
         recordComputeCommandBuffer(
             common.compute_command_buffers[comp_index],
             common.sqrt_workgroup_num,
-            spiral_result.pos,
-            resolution_scale_exponent,
+            @Vector(2, u32){
+                render_patch_size * patch_to_render.x_pos,
+                render_patch_size * patch_to_render.y_pos,
+            }, //spiral_result.pos,
+            @intCast(resolution_scale_exponent),
         ) catch {
             @panic("compute manager failed to record buffer!");
         };
@@ -225,11 +266,123 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
     }
 }
 
+/// calculated minimum distance between 2 points on a modular (looping) grid
+fn calculateModularDist(pos1: struct { x: u32, y: u32 }, pos2: struct { x: u32, y: u32 }, width: u32, height: u32) f32 {
+    const x_1: f32 = @floatFromInt(pos1.x % width);
+    const y_1: f32 = @floatFromInt(pos1.y % height);
+    const x_2: f32 = @floatFromInt(pos2.x % width);
+    const y_2: f32 = @floatFromInt(pos2.y % height);
+
+    const w_flt: f32 = @floatFromInt(width);
+    const h_flt: f32 = @floatFromInt(height);
+
+    var running_dist: f32 = std.math.floatMax(f32);
+    for (0..2) |i| {
+        for (0..2) |j| {
+            const x_dist: f32 = x_1 - x_2 - w_flt + @as(f32, @floatFromInt(i)) * w_flt;
+            const y_dist: f32 = y_1 - y_2 - h_flt + @as(f32, @floatFromInt(j)) * h_flt;
+            const dist: f32 = std.math.sqrt(x_dist * x_dist + y_dist * y_dist);
+            if (dist < running_dist) running_dist = dist;
+        }
+    }
+
+    return running_dist;
+}
+
+fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scales][][]bool) void {
+    for (resolutions_complete) |res| {
+        for (res) |col| {
+            for (col) |*patch| {
+                patch.* = false;
+            }
+        }
+    }
+}
+
+fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]bool) ?RenderPatch {
+    const buffer_width: u32 = common.escape_potential_buffer_block_num_x * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
+    const buffer_height: u32 = common.escape_potential_buffer_block_num_y * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
+
+    const buffer_center_x: u32 = buffer_width / 2;
+    const buffer_center_y: u32 = buffer_height / 2;
+
+    var mouse_x_flt: f64 = undefined;
+    var mouse_y_flt: f64 = undefined;
+    c.glfwGetCursorPos(common.window, &mouse_x_flt, &mouse_y_flt);
+
+    const mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
+    const mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
+
+    const mouse_x_from_buffer_center = mouse_x_from_screen_center * 2.0 / common.zoom_diff;
+    const mouse_y_from_buffer_center = mouse_y_from_screen_center * 2.0 / common.zoom_diff;
+
+    const buffer_target_pos_x: u32 = @intCast(@as(i32, @intFromFloat(mouse_x_from_buffer_center)) + @as(i32, @intCast(buffer_center_x)));
+    const buffer_target_pos_y: u32 = @intCast(@as(i32, @intFromFloat(mouse_y_from_buffer_center)) + @as(i32, @intCast(buffer_center_y)));
+
+    const Pos = struct { x: u32 = 0, y: u32 = 0 };
+
+    var running_dists: [common.num_distinct_res_scales]f32 = [1]f32{std.math.floatMax(f32)} ** common.num_distinct_res_scales;
+    var min_dist_poss: [common.num_distinct_res_scales]Pos = [1]Pos{.{}} ** common.num_distinct_res_scales;
+    var res_incompletes: [common.num_distinct_res_scales]bool = [1]bool{false} ** common.num_distinct_res_scales;
+    for (0..common.num_distinct_res_scales) |res_scale_exp| {
+        const max_res_size: u32 = common.renderPatchSize(@intCast(res_scale_exp));
+        for (0.., resolutions_complete[res_scale_exp]) |i, max_res_col| {
+            for (0.., max_res_col) |j, max_res_patch| {
+                if (!max_res_patch) {
+                    res_incompletes[res_scale_exp] = true;
+                    const patch_dist = calculateModularDist(
+                        .{ .x = buffer_target_pos_x, .y = buffer_target_pos_y },
+                        .{ .x = @intCast(i * max_res_size + max_res_size / 2), .y = @intCast(j * max_res_size + max_res_size / 2) },
+                        buffer_width,
+                        buffer_height,
+                    );
+                    if (patch_dist < running_dists[res_scale_exp]) {
+                        running_dists[res_scale_exp] = patch_dist;
+                        min_dist_poss[res_scale_exp] = .{ .x = @intCast(i), .y = @intCast(j) };
+                    }
+                }
+            }
+        }
+    }
+
+    if (res_incompletes[common.max_res_scale_exponent]) {
+        const pos: Pos = min_dist_poss[common.max_res_scale_exponent];
+        resolutions_complete[common.max_res_scale_exponent][pos.x][pos.y] = true;
+        return RenderPatch{
+            .resolution_scale_exponent = common.max_res_scale_exponent,
+            .x_pos = pos.x,
+            .y_pos = pos.y,
+        };
+    }
+
+    var min_dist: f32 = std.math.floatMax(f32);
+    var min_dist_exp: u32 = 0;
+    for (0..common.max_res_scale_exponent) |exp| {
+        if (!res_incompletes[exp]) continue;
+        if (running_dists[exp] / @as(f32, @floatFromInt(1 + exp)) < min_dist) {
+            min_dist = running_dists[exp] / @as(f32, @floatFromInt(1 + exp));
+            min_dist_exp = @intCast(exp);
+        }
+    }
+
+    // all complete
+    if (min_dist == std.math.floatMax(f32)) return null;
+
+    const pos: Pos = min_dist_poss[min_dist_exp];
+    resolutions_complete[min_dist_exp][pos.x][pos.y] = true;
+    return RenderPatch{
+        .resolution_scale_exponent = min_dist_exp,
+        .x_pos = pos.x,
+        .y_pos = pos.y,
+    };
+}
+
 fn initSpirals(spirals: *[common.num_distinct_res_scales]Spiral) void {
     for (0..common.num_distinct_res_scales) |scale_index| {
         const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(scale_index));
 
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent + 3));
+        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
+        render_patch_size *= common.sqrt_invocation_num;
         render_patch_size *= common.sqrt_workgroup_num;
 
         const render_patch_offset_x: i32 = @as(i32, @intCast(common.render_start_screen_x % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
@@ -386,11 +539,15 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
         0,
         @sizeOf(common.ComputeConstants),
         &common.ComputeConstants{
-            .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
+            .center_screen_pos = @Vector(2, u32){
+                @intCast(common.width),
+                @intCast(common.height),
+            },
             .screen_offset = pos,
-            .height_scale_exp = @intFromFloat(std.math.log(f32, 2.0, common.zoom / @as(f32, @floatFromInt(common.height)))),
+            .height_scale_exp = common.zoom_exp,
             .resolution_scale_exponent = resolution_scale_exponent,
-            .max_width = 4 * common.escape_potential_buffer_block_width,
+            .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
+            .cur_height = @intCast(common.height),
         },
     );
 
@@ -461,7 +618,11 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         c.VK_SHADER_STAGE_FRAGMENT_BIT,
         0,
         @sizeOf(common.RenderConstants),
-        &common.RenderConstants{ .max_width = 4 * common.escape_potential_buffer_block_width },
+        &common.RenderConstants{
+            .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
+            .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
+            .zoom_diff = common.zoom_diff,
+        },
     );
 
     c.vkCmdDraw(

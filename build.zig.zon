@@ -21,10 +21,6 @@
             .url = "https://github.com/tiawl/cimgui.zig/archive/92d1a33.tar.gz",
             .hash = "cimgui_zig-1.0.0-2XubkvSmVQArFfT8Mqf9NH63f9dbxEgUtnnX-9iJCCHN",
         },
-        //.glfw_zig = .{
-        //    .url = "https://github.com/tiawl/glfw.zig/archive/b2a2f43.tar.gz",
-        //    .hash = "glfw_zig-1.0.0-NrvYozPXGQDAo_awJidMc8GVgvPdlk-Ny-oOPmN74Qle",
-        //},
         .gmp = .{
             .url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
             .hash = "N-V-__8AAE5fAwHUYgLBeqNatYSKf3qBK3l8nwdpjyY8igK0",

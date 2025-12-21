@@ -27,11 +27,12 @@ layout(std430, binding = 2) readonly buffer storage_from_cpu {
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout( push_constant ) uniform UniformBufferObject {
-    uvec2 cur_resolution;
+    uvec2 center_screen_pos;
     uvec2 screen_offset;
-    int height_scale_exp;
+    int scale_exp;
     int res_scale_exp;
     uint max_width;
+    uint cur_height;
 } ubo;
 
 float rad_sqr(vec2 a) {
@@ -39,16 +40,17 @@ float rad_sqr(vec2 a) {
 }
 
 void main() {
-    const float height_scale = exp2(float(ubo.height_scale_exp));
+    const float height_scale = exp2(float(ubo.scale_exp)) / ubo.cur_height;
     const int max_count = 20000;
 	const float escape_radius = 1e6;
 	const float interior_test_e_sqr = 1e-6;
     const uint pixel_scale = 1u << ubo.res_scale_exp;
 
     uvec2 screen_loc = pixel_scale * gl_GlobalInvocationID.xy + ubo.screen_offset;
+    // center within render patch
     ivec2 center_screen_loc = ivec2(screen_loc + uvec2(pixel_scale/2, pixel_scale/2));
 
-    center_screen_loc = ivec2(center_screen_loc - ubo.cur_resolution / 2);
+    center_screen_loc = ivec2(center_screen_loc - ubo.center_screen_pos);
     vec2 delta_c = center_screen_loc * height_scale;
     vec2 delta_pos = delta_c;
     

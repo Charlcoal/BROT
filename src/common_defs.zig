@@ -30,25 +30,28 @@ pub const device_extensions = [_][*:0]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
-pub const ComputeConstants = extern struct {
-    cur_resolution: @Vector(2, u32),
-    screen_offset: @Vector(2, u32),
-    height_scale_exp: i32,
-    resolution_scale_exponent: i32,
-    max_width: u32,
-};
-
-pub const RenderConstants = extern struct {
-    max_width: u32,
-};
-
 pub const target_frame_rate: f64 = 60;
-
 pub const max_frames_in_flight: u32 = 2;
+const num_compute_buffers = 6;
 
 // ------------------- program defs ---------------------
 
 pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
+
+pub const ComputeConstants = extern struct {
+    center_screen_pos: @Vector(2, u32),
+    screen_offset: @Vector(2, u32),
+    height_scale_exp: i32,
+    resolution_scale_exponent: i32,
+    max_width: u32,
+    cur_height: u32,
+};
+
+pub const RenderConstants = extern struct {
+    cur_resolution: @Vector(2, u32),
+    max_width: u32,
+    zoom_diff: f32,
+};
 
 pub const InitWindowError = error{create_window_failed};
 pub const InitVulkanError = error{
@@ -84,8 +87,6 @@ pub const MainLoopError = error{
 } || InitVulkanError || std.time.Timer.Error;
 
 const Allocator = std.mem.Allocator;
-
-const num_compute_buffers = 6;
 //result of following OOP-based tutorial, maybe change in future
 //globals...
 pub var window: *c.GLFWwindow = undefined;
@@ -134,9 +135,9 @@ pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
 pub var frame_updated: bool = true;
 
-pub var escape_potential_buffer_map: BlockMap = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
-pub var escape_potential_buffer_block_width: u32 = undefined;
-pub var escape_potential_buffer_block_height: u32 = undefined;
+pub var escape_potential_buffer_map: BlockMap = .{};
+pub var escape_potential_buffer_block_num_x: u32 = undefined;
+pub var escape_potential_buffer_block_num_y: u32 = undefined;
 
 pub var escape_potential_buffer_size: u32 = undefined;
 pub var escape_potential_buffer: c.VkBuffer = undefined;
@@ -153,7 +154,8 @@ pub var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
 pub var descriptor_sets: []c.VkDescriptorSet = undefined;
 
-pub var zoom: f32 = 2.0;
+pub var zoom_exp: i32 = 1;
+pub var zoom_diff: f32 = 1.0;
 // where the top left of the screen is in the fractal
 pub var fractal_pos_x: c.mpf_t = undefined;
 pub var fractal_pos_y: c.mpf_t = undefined;
@@ -176,9 +178,9 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
     return false;
 }
 
+// readToEndAlloc doesn't provide error type :/
 pub const ReadFileError = Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.GetSeekPosError;
 
-// readToEndAlloc doesn't provide error type :/
 /// caller owns slice, slice contains entire file exactly. File limited to 100kB
 pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29) ReadFileError![]align(alignment) u8 {
     const file = try std.fs.cwd().openFile(file_name, .{});
@@ -188,20 +190,27 @@ pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29
     return out;
 }
 
-pub const max_res_scale_exponent = 2;
-pub const min_res_scale_exponent = 0;
-pub const num_distinct_res_scales = max_res_scale_exponent - min_res_scale_exponent + 1;
+pub const max_res_scale_exponent = 3;
+pub const num_distinct_res_scales = max_res_scale_exponent + 1;
+/// per workgroup, needs to be same as compute shader
+pub const sqrt_invocation_num = 8;
 pub const sqrt_workgroup_num = 8;
 
-pub const BlockMap = struct {
-    x_offset: u2,
-    y_offset: u2,
+pub fn renderPatchSize(mip_map_exp: u5) u32 {
+    var render_patch_size: u32 = @as(u32, 1) << mip_map_exp;
+    render_patch_size *= sqrt_invocation_num;
+    render_patch_size *= sqrt_workgroup_num;
+    return render_patch_size;
+}
 
-    pub fn pack(map: BlockMap) u4 {
-        const PackedBlockMap = packed struct { x: u2, y: u2 };
-        const tmp: PackedBlockMap = .{ .x = map.x_offset, .y = map.y_offset };
-        return @bitCast(tmp);
-    }
+// could theoretically use fewer bits, but u8's should be
+// future-proof for very large displays (up to 64K, if that ever exists)
+// (given 512x512 pixel blocks)
+pub const BlockMap = struct {
+    x_offset: u8 = 0,
+    y_offset: u8 = 0,
+    x_max: u8 = 10,
+    y_max: u8 = 7,
 };
 
 pub fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize) void {
