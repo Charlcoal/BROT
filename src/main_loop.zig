@@ -91,10 +91,15 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             unreachable;
         };
 
+        if (common.buffer_invalidated) {
+            common.compute_idle = false;
+            common.buffer_invalidated = false;
+            resetRenderPatchsResComps(resolutions_complete);
+        }
+
         if (common.frame_updated) {
             common.compute_idle = false;
             common.frame_updated = false;
-            resetRenderPatchsResComps(resolutions_complete);
         }
 
         if (common.compute_idle) {
@@ -264,13 +269,12 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
 fn patchVisible(patch: RenderPatch) bool {
     const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
 
-    const screen_center_x: f32 = @floatFromInt((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2);
-    const screen_center_y: f32 = @floatFromInt((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2);
+    const screen_center = common.get_screen_center();
 
-    const screen_left_edge: u32 = @intFromFloat(@max(screen_center_x - @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
-    const screen_right_edge: u32 = @intFromFloat(@max(screen_center_x + @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
-    const screen_top_edge: u32 = @intFromFloat(@max(screen_center_y - @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
-    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center_y + @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
+    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
+    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
+    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
+    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
 
     if (patch_size * patch.x_pos > screen_right_edge) return false;
     if (patch_size * (patch.x_pos + 1) < screen_left_edge) return false;
@@ -606,6 +610,8 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         null,
     );
 
+    const screen_center = common.get_screen_center();
+
     c.vkCmdPushConstants(
         command_buffer,
         common.render_pipeline_layout,
@@ -615,8 +621,8 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
         &common.RenderConstants{
             .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
             .center_position = @Vector(2, u32){
-                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
-                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
+                @intFromFloat(screen_center.x),
+                @intFromFloat(screen_center.y),
             },
             .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
             .zoom_diff = common.zoom_diff,

@@ -36,7 +36,7 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
     common.frame_buffer_needs_resize = true;
     common.width = width;
     common.height = height;
-    common.frame_updated = true;
+    common.buffer_invalidated = true;
     common.render_start_screen_x = @intCast(@divFloor(width, 2));
     common.render_start_screen_y = @intCast(@divFloor(height, 2));
 }
@@ -71,28 +71,42 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
         std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
     }
 
-    var tmp: c.mpf_t = undefined;
-    c.mpf_init2(&tmp, 32);
+    const diff_x: f64 = (1.0 - scroll_factor) * mouse_pos_x;
+    const diff_y: f64 = (1.0 - scroll_factor) * mouse_pos_y;
 
-    c.mpf_set_d(&tmp, (1.0 - scroll_factor) * mouse_pos_x);
-    if (common.zoom_exp < 0) {
-        c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
-    } else {
-        c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
-    }
-    c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &common.mpf_intermediates[1]);
-    c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
-
-    c.mpf_set_d(&tmp, (1.0 - scroll_factor) * mouse_pos_y);
-    if (common.zoom_exp < 0) {
-        c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
-    } else {
-        c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
-    }
-    c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &common.mpf_intermediates[1]);
-    c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
+    common.fractal_x_diff += @floatCast(diff_x);
+    common.fractal_y_diff += @floatCast(diff_y);
 
     common.zoom_diff *= @as(f32, @floatCast(scroll_factor));
+    if (common.zoom_diff < 1.0 or common.zoom_diff >= 2.0) {
+        var tmp: c.mpf_t = undefined;
+        c.mpf_init2(&tmp, 32);
+        defer c.mpf_clear(&tmp);
+
+        c.mpf_set_d(&tmp, common.fractal_x_diff);
+        if (common.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+        }
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
+
+        c.mpf_set_d(&tmp, common.fractal_y_diff);
+        if (common.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+        }
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
+
+        common.fractal_x_diff = 0;
+        common.fractal_y_diff = 0;
+
+        common.buffer_invalidated = true;
+    }
+
     if (common.zoom_diff >= 2.0) {
         common.zoom_diff /= 2.0;
         common.zoom_exp += 1;

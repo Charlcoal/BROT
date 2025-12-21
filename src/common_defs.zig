@@ -134,7 +134,8 @@ pub var compute_manager_thread: std.Thread = undefined;
 pub var gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }; // needed when compute and graphics are in the same queue
 pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
-pub var frame_updated: bool = true;
+pub var frame_updated: bool = false;
+pub var buffer_invalidated: bool = true;
 
 pub var escape_potential_buffer_map: BlockMap = .{};
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
@@ -157,7 +158,9 @@ pub var descriptor_sets: []c.VkDescriptorSet = undefined;
 
 pub var zoom_exp: i32 = 1;
 pub var zoom_diff: f32 = 1.0;
-// where the top left of the screen is in the fractal
+pub var fractal_x_diff: f32 = 0.0;
+pub var fractal_y_diff: f32 = 0.0;
+// where the center of the screen is in the fractal
 pub var fractal_pos_x: c.mpf_t = undefined;
 pub var fractal_pos_y: c.mpf_t = undefined;
 pub var max_resolution: @Vector(2, u32) = undefined;
@@ -177,6 +180,18 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
         if (a[i] == 0) return true;
     }
     return false;
+}
+
+// in terms of buffer coordinates
+pub fn get_screen_center() struct { x: f32, y: f32 } {
+    return .{
+        .x = @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            escape_potential_buffer_block_num_x) / 2)) +
+            @as(f32, @floatFromInt(height)) * fractal_x_diff,
+        .y = @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            escape_potential_buffer_block_num_y) / 2)) +
+            @as(f32, @floatFromInt(height)) * fractal_y_diff,
+    };
 }
 
 // readToEndAlloc doesn't provide error type :/
