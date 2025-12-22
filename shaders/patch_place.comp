@@ -1,0 +1,48 @@
+// BROT - A fast mandelbrot set explorer
+// Copyright (C) 2025  Charles Reischer
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+// 
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#version 450
+
+layout(set = 0, std430, binding = 0) readonly buffer patch_buffer {
+    float patch_potential_vals[];
+};
+
+layout(set = 1, std430, binding = 0) writeonly buffer main_buffer {
+    float buff_potential_vals[];
+};
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout( push_constant ) uniform UniformBufferObject {
+    uint start_position;
+    uint buffer_width;
+    int res_scale_exp;
+} ubo;
+
+void main() {
+    const uint pixel_scale = 1u << ubo.res_scale_exp;
+    const uint local_start_pos = ubo.start_position + 
+        gl_GlobalInvocationID.x * pixel_scale + 
+        gl_GlobalInvocationID.y * pixel_scale * ubo.buffer_width;
+
+    const float potential_val = patch_potential_vals[gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_WorkGroupSize.y * gl_NumWorkGroups.y];
+
+    for (int delta_y = 0; delta_y < pixel_scale; delta_y++) {
+        for (int delta_x = 0; delta_x < pixel_scale; delta_x++) {
+            buff_potential_vals[local_start_pos + delta_x + delta_y * ubo.buffer_width] = potential_val;
+        }
+    }
+}

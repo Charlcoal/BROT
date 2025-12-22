@@ -52,11 +52,7 @@ const Spiral = struct {
     delta_y: i32,
 };
 
-const RenderPatch = struct {
-    resolution_scale_exponent: u32,
-    x_pos: u32,
-    y_pos: u32,
-};
+const RenderPatch = common.RenderPatch;
 
 fn computeManage(alloc: Allocator) Allocator.Error!void {
     var resolutions_complete: [common.num_distinct_res_scales][][]bool = undefined;
@@ -80,6 +76,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
     }
 
     while (!common.compute_manager_should_close) {
+        // wait for a rendering task to complete
         _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
 
         const comp_index: usize = label: {
@@ -90,6 +87,11 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             }
             unreachable;
         };
+
+        if (common.fence_to_patch_index[comp_index]) |index| {
+            common.render_patches_status[index] = .complete;
+            common.fence_to_patch_index[comp_index] = null;
+        }
 
         if (common.buffer_invalidated) {
             common.compute_idle = false;
@@ -107,6 +109,16 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             continue;
         }
 
+        const buffer_to_render_to: ?usize = for (0.., common.render_patches_status) |i, status| {
+            if (status == .empty) break i;
+        } else null;
+
+        // waiting on render queue to empty patch buffers
+        if (buffer_to_render_to == null) {
+            std.Thread.sleep(1_000_000); // 1ms
+            continue;
+        }
+
         const patch_to_render_maybe = chooseRenderPatch(resolutions_complete);
         var patch_to_render: RenderPatch = undefined;
         if (patch_to_render_maybe) |patch| {
@@ -115,6 +127,10 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             common.compute_idle = true;
             continue;
         }
+
+        common.fence_to_patch_index[comp_index] = buffer_to_render_to;
+        common.render_patches_status[buffer_to_render_to.?] = .rendering;
+        common.render_patches[buffer_to_render_to.?] = patch_to_render;
 
         const resolution_scale_exponent: u32 = patch_to_render.resolution_scale_exponent;
 
@@ -130,9 +146,10 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         //std.debug.print("starting compute\n", .{});
         _ = c.vkResetFences(common.device, 1, &common.compute_fences[comp_index]);
 
-        _ = c.vkResetCommandBuffer(common.compute_command_buffers[comp_index], 0);
-        recordComputeCommandBuffer(
-            common.compute_command_buffers[comp_index],
+        _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
+        recordRenderingCommandBuffer(
+            common.rendering_command_buffers[comp_index],
+            buffer_to_render_to.?,
             common.sqrt_workgroup_num,
             @Vector(2, u32){
                 render_patch_size * patch_to_render.x_pos,
@@ -150,7 +167,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             .pWaitSemaphores = null,
             .pWaitDstStageMask = &wait_stages,
             .commandBufferCount = 1,
-            .pCommandBuffers = &common.compute_command_buffers[comp_index],
+            .pCommandBuffers = &common.rendering_command_buffers[comp_index],
             .signalSemaphoreCount = 0,
             .pSignalSemaphores = null,
         };
@@ -203,8 +220,28 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
         return MainLoopError.swap_chain_image_acquisition_failed;
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
+    // TODO: properly syncronize with semaphore
+    _ = c.vkResetCommandBuffer(common.patch_place_command_buffer, 0);
+    try recordPatchPlaceCommandBuffer();
+
+    const compute_wait_stages: u32 = 0;
+    const compute_submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = null,
+        .pWaitDstStageMask = &compute_wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &common.patch_place_command_buffer,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = null,
+    };
+
+    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, null) != c.VK_SUCCESS) {
+        @panic("patch placement failed to submit queue!");
+    }
+
     _ = c.vkResetCommandBuffer(common.graphics_command_buffers[common.current_frame], 0);
-    try recordCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
+    try recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
 
     const wait_semaphors = [_]c.VkSemaphore{common.image_availible_semaphores[common.current_frame]};
     const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -220,7 +257,12 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
         .pSignalSemaphores = &signal_semaphors,
     };
 
-    if (c.vkQueueSubmit(common.graphics_queue, 1, &submit_info, common.in_flight_fences[common.current_frame]) != c.VK_SUCCESS) {
+    if (c.vkQueueSubmit(
+        common.graphics_queue,
+        1,
+        &submit_info,
+        common.in_flight_fences[common.current_frame],
+    ) != c.VK_SUCCESS) {
         return MainLoopError.draw_command_buffer_submit_failed;
     }
 
@@ -244,16 +286,6 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
     } else if (result != c.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
     }
-}
-
-/// calculated minimum distance between 2 points on a modular (looping) grid
-fn calculateModularDist(pos1: struct { x: u32, y: u32 }, pos2: struct { x: u32, y: u32 }, width: u32, height: u32) f32 {
-    const x_1: f32 = @floatFromInt(pos1.x % width);
-    const y_1: f32 = @floatFromInt(pos1.y % height);
-    const x_2: f32 = @floatFromInt(pos2.x % width);
-    const y_2: f32 = @floatFromInt(pos2.y % height);
-
-    return std.math.sqrt((x_1 - x_2) * (x_1 - x_2) + (y_1 - y_2) * (y_1 - y_2));
 }
 
 fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scales][][]bool) void {
@@ -285,9 +317,6 @@ fn patchVisible(patch: RenderPatch) bool {
 }
 
 fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]bool) ?RenderPatch {
-    const buffer_width: u32 = common.escape_potential_buffer_block_num_x * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
-    const buffer_height: u32 = common.escape_potential_buffer_block_num_y * common.renderPatchSize(@intCast(common.max_res_scale_exponent));
-
     const screen_center = common.get_screen_center();
 
     var mouse_x_flt: f64 = undefined;
@@ -328,12 +357,13 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
                     })) continue;
 
                     res_incompletes[res_scale_exp] = true;
-                    const patch_dist = calculateModularDist(
-                        .{ .x = buffer_target_pos_x, .y = buffer_target_pos_y },
-                        .{ .x = @intCast(i * patch_size + patch_size / 2), .y = @intCast(j * patch_size + patch_size / 2) },
-                        buffer_width,
-                        buffer_height,
-                    );
+
+                    const dist_x: f32 = @as(f32, @floatFromInt(buffer_target_pos_x)) -
+                        @as(f32, @floatFromInt(i * patch_size + patch_size / 2));
+                    const dist_y: f32 = @as(f32, @floatFromInt(buffer_target_pos_y)) -
+                        @as(f32, @floatFromInt(j * patch_size + patch_size / 2));
+                    const patch_dist = std.math.sqrt(dist_x * dist_x + dist_y * dist_y);
+
                     if (patch_dist < running_dists[res_scale_exp]) {
                         running_dists[res_scale_exp] = patch_dist;
                         min_dist_poss[res_scale_exp] = .{ .x = @intCast(i), .y = @intCast(j) };
@@ -375,159 +405,106 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     };
 }
 
-fn initSpirals(spirals: *[common.num_distinct_res_scales]Spiral) void {
-    for (0..common.num_distinct_res_scales) |scale_index| {
-        const resolution_scale_exponent: i32 = common.max_res_scale_exponent - @as(i32, @intCast(scale_index));
-
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
-        render_patch_size *= common.sqrt_invocation_num;
-        render_patch_size *= common.sqrt_workgroup_num;
-
-        const render_patch_offset_x: i32 = @as(i32, @intCast(common.render_start_screen_x % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
-        const render_patch_offset_y: i32 = @as(i32, @intCast(common.render_start_screen_y % render_patch_size)) - @as(i32, @intCast(@divFloor(render_patch_size, 2)));
-
-        const horizontal_priority: bool = @abs(render_patch_offset_x) >= @abs(render_patch_offset_y);
-
-        const horizontal_dir: Direction = if (render_patch_offset_x < 0) .left else .right;
-        const vertical_dir: Direction = if (render_patch_offset_y < 0) .up else .down;
-
-        const start_dir = if (horizontal_priority) horizontal_dir else vertical_dir;
-
-        spirals[scale_index] = .{
-            .dir = start_dir,
-            .poke_dir = start_dir,
-            .twist = switch (start_dir) {
-                .left => if (vertical_dir == .up) .clockwise else .counter_clockwise,
-                .down => if (horizontal_dir == .left) .clockwise else .counter_clockwise,
-                .right => if (vertical_dir == .down) .clockwise else .counter_clockwise,
-                .up => if (horizontal_dir == .right) .clockwise else .counter_clockwise,
-            },
-            .delta_x = switch (start_dir) {
-                .left => 1,
-                .right => -1,
-                .up, .down => 0,
-            },
-            .delta_y = switch (start_dir) {
-                .up => 1,
-                .down => -1,
-                .left, .right => 0,
-            },
-        };
-    }
-}
-
-fn chooseResScaleIndex(spiral_counts: [common.num_distinct_res_scales]u32, spirals_complete: [common.num_distinct_res_scales]bool, spiral_current_min_count: *u32) struct { all_exhausted: bool, index: u32 } {
-    if (!spirals_complete[0]) return .{ .all_exhausted = false, .index = 0 };
-    for (0..common.num_distinct_res_scales) |scale_index| {
-        if (spiral_counts[scale_index] <= spiral_current_min_count.* and !spirals_complete[scale_index]) {
-            return .{ .all_exhausted = false, .index = @intCast(scale_index) };
-        }
-    }
-    spiral_current_min_count.* += 1;
-    for (0..common.num_distinct_res_scales) |scale_index| {
-        if (!spirals_complete[scale_index]) {
-            return .{ .all_exhausted = false, .index = @intCast(scale_index) };
-        }
-    }
-    return .{ .all_exhausted = true, .index = undefined };
-}
-
-fn stepSpiral(spiral: *Spiral, render_patch_size: u32) struct { spiral_exhausted: bool, pos: @Vector(2, u32) } {
-    // determine next location
-    const num_render_patch_x: u32 = @divTrunc(@as(u32, @intCast(common.width)) - 1, render_patch_size) + 1;
-    const num_render_patch_y: u32 = @divTrunc(@as(u32, @intCast(common.height)) - 1, render_patch_size) + 1;
-    const spiral_center_x: i32 = @intCast(@divTrunc(common.render_start_screen_x, render_patch_size));
-    const spiral_center_y: i32 = @intCast(@divTrunc(common.render_start_screen_y, render_patch_size));
-
-    var reached_max_x: bool = false;
-    var reached_max_y: bool = false;
-    var reached_min_x: bool = false;
-    var reached_min_y: bool = false;
-
-    while (true) {
-        switch (spiral.dir) {
-            .left => {
-                spiral.delta_x -= 1;
-                if (@abs(spiral.delta_x) > @abs(spiral.delta_y) or (@abs(spiral.delta_x) == @abs(spiral.delta_y) and spiral.dir != spiral.poke_dir)) {
-                    spiral.dir = if (spiral.twist == .clockwise) .up else .down;
-                }
-            },
-            .down => {
-                spiral.delta_y += 1;
-                if (@abs(spiral.delta_y) > @abs(spiral.delta_x) or (@abs(spiral.delta_y) == @abs(spiral.delta_x) and spiral.dir != spiral.poke_dir)) {
-                    spiral.dir = if (spiral.twist == .clockwise) .left else .right;
-                }
-            },
-            .right => {
-                spiral.delta_x += 1;
-                if (@abs(spiral.delta_x) > @abs(spiral.delta_y) or (@abs(spiral.delta_x) == @abs(spiral.delta_y) and spiral.dir != spiral.poke_dir)) {
-                    spiral.dir = if (spiral.twist == .clockwise) .down else .up;
-                }
-            },
-            .up => {
-                spiral.delta_y -= 1;
-                if (@abs(spiral.delta_y) > @abs(spiral.delta_x) or (@abs(spiral.delta_y) == @abs(spiral.delta_x) and spiral.dir != spiral.poke_dir)) {
-                    spiral.dir = if (spiral.twist == .clockwise) .right else .left;
-                }
-            },
-        }
-        var cont: bool = false;
-        // repeat spiral traversal if location is out of bounds
-        if (spiral.delta_x + spiral_center_x < 0) {
-            cont = true;
-            reached_min_x = true;
-        }
-        if (spiral.delta_x + spiral_center_x >= num_render_patch_x) {
-            cont = true;
-            reached_max_x = true;
-        }
-        if (spiral.delta_y + spiral_center_y < 0) {
-            cont = true;
-            reached_min_y = true;
-        }
-        if (spiral.delta_y + spiral_center_y >= num_render_patch_y) {
-            cont = true;
-            reached_max_y = true;
-        }
-        if (reached_max_x and reached_min_x and reached_max_y and reached_min_y) {
-            return .{ .spiral_exhausted = true, .pos = undefined };
-        }
-
-        if (!cont) break;
-    }
-
-    const scr_x: i32 = spiral_center_x + spiral.delta_x;
-    const scr_y: i32 = spiral_center_y + spiral.delta_y;
-    const pos_x: u32 = @as(u32, @intCast(scr_x)) * render_patch_size;
-    const pos_y: u32 = @as(u32, @intCast(scr_y)) * render_patch_size;
-    return .{ .spiral_exhausted = false, .pos = .{ pos_x, pos_y } };
-}
-
-fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_patch_size: u32, pos: @Vector(2, u32), resolution_scale_exponent: i32) MainLoopError!void {
+fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
         .pInheritanceInfo = null,
     };
 
-    if (c.vkBeginCommandBuffer(compute_command_buffer, &begin_info) != c.VK_SUCCESS) {
+    if (c.vkBeginCommandBuffer(common.patch_place_command_buffer, &begin_info) != c.VK_SUCCESS) {
+        return MainLoopError.command_buffer_recording_begin_failed;
+    }
+
+    c.vkCmdBindPipeline(
+        common.patch_place_command_buffer,
+        c.VK_PIPELINE_BIND_POINT_COMPUTE,
+        common.patch_place_pipeline,
+    );
+
+    for (0.., &common.render_patches_status, common.render_patches) |i, *status, patch| {
+        if (status.* != .complete) continue;
+        status.* = .empty;
+
+        const descriptor_sets = [_]c.VkDescriptorSet{
+            common.render_patch_descriptor_sets[i],
+            common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        };
+
+        c.vkCmdBindDescriptorSets(
+            common.patch_place_command_buffer,
+            c.VK_PIPELINE_BIND_POINT_COMPUTE,
+            common.patch_place_pipeline_layout,
+            0,
+            descriptor_sets.len,
+            &descriptor_sets,
+            0,
+            0,
+        );
+
+        const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
+        const buffer_offset: u32 = patch_size * (patch.x_pos +
+            patch.y_pos * common.escape_potential_buffer_block_num_x *
+                common.renderPatchSize(common.max_res_scale_exponent));
+
+        c.vkCmdPushConstants(
+            common.patch_place_command_buffer,
+            common.patch_place_pipeline_layout,
+            c.VK_SHADER_STAGE_COMPUTE_BIT,
+            0,
+            @sizeOf(common.PatchPlaceConstants),
+            &common.PatchPlaceConstants{
+                .buffer_offset = buffer_offset,
+                .max_width = common.renderPatchSize(common.max_res_scale_exponent) *
+                    common.escape_potential_buffer_block_num_x,
+                .resolution_scale_exponent = @intCast(patch.resolution_scale_exponent),
+            },
+        );
+
+        c.vkCmdDispatch(
+            common.patch_place_command_buffer,
+            common.sqrt_workgroup_num,
+            common.sqrt_workgroup_num,
+            1,
+        );
+    }
+
+    if (c.vkEndCommandBuffer(common.patch_place_command_buffer) != c.VK_SUCCESS) {
+        return MainLoopError.command_buffer_record_failed;
+    }
+}
+
+fn recordRenderingCommandBuffer(
+    rendering_command_buffer: c.VkCommandBuffer,
+    patch_buffer_index: usize,
+    render_patch_size: u32,
+    pos: @Vector(2, u32),
+    resolution_scale_exponent: i32,
+) MainLoopError!void {
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = 0,
+        .pInheritanceInfo = null,
+    };
+
+    if (c.vkBeginCommandBuffer(rendering_command_buffer, &begin_info) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_recording_begin_failed;
     }
 
     const descriptor_sets = [_]c.VkDescriptorSet{
-        common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        common.render_patch_descriptor_sets[patch_buffer_index],
         common.cpu_to_render_descriptor_sets[common.current_cpu_to_render_descriptor_index],
     };
 
     c.vkCmdBindPipeline(
-        compute_command_buffer,
+        rendering_command_buffer,
         c.VK_PIPELINE_BIND_POINT_COMPUTE,
-        common.compute_pipeline,
+        common.rendering_pipeline,
     );
     c.vkCmdBindDescriptorSets(
-        compute_command_buffer,
+        rendering_command_buffer,
         c.VK_PIPELINE_BIND_POINT_COMPUTE,
-        common.compute_pipeline_layout,
+        common.rendering_pipeline_layout,
         0,
         descriptor_sets.len,
         &descriptor_sets,
@@ -536,12 +513,12 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
     );
 
     c.vkCmdPushConstants(
-        compute_command_buffer,
-        common.compute_pipeline_layout,
+        rendering_command_buffer,
+        common.rendering_pipeline_layout,
         c.VK_SHADER_STAGE_COMPUTE_BIT,
         0,
-        @sizeOf(common.ComputeConstants),
-        &common.ComputeConstants{
+        @sizeOf(common.RenderingConstants),
+        &common.RenderingConstants{
             .center_screen_pos = @Vector(2, u32){
                 @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
                 @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
@@ -549,19 +526,18 @@ fn recordComputeCommandBuffer(compute_command_buffer: c.VkCommandBuffer, render_
             .screen_offset = pos,
             .height_scale_exp = common.zoom_exp,
             .resolution_scale_exponent = resolution_scale_exponent,
-            .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
             .cur_height = @intCast(common.height),
         },
     );
 
-    c.vkCmdDispatch(compute_command_buffer, render_patch_size, render_patch_size, 1);
+    c.vkCmdDispatch(rendering_command_buffer, render_patch_size, render_patch_size, 1);
 
-    if (c.vkEndCommandBuffer(compute_command_buffer) != c.VK_SUCCESS) {
+    if (c.vkEndCommandBuffer(rendering_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
 }
 
-fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) MainLoopError!void {
+fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -586,7 +562,7 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
     };
 
     c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
-    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, common.graphics_pipeline);
+    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, common.coloring_pipeline);
 
     const viewport: c.VkViewport = .{
         .x = 0,
@@ -607,7 +583,7 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
     c.vkCmdBindDescriptorSets(
         command_buffer,
         c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        common.render_pipeline_layout,
+        common.coloring_pipeline_layout,
         0,
         1,
         &common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
@@ -619,11 +595,11 @@ fn recordCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) Main
 
     c.vkCmdPushConstants(
         command_buffer,
-        common.render_pipeline_layout,
+        common.coloring_pipeline_layout,
         c.VK_SHADER_STAGE_FRAGMENT_BIT,
         0,
-        @sizeOf(common.RenderConstants),
-        &common.RenderConstants{
+        @sizeOf(common.ColoringConstants),
+        &common.ColoringConstants{
             .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
             .center_position = @Vector(2, u32){
                 @intFromFloat(screen_center.x),

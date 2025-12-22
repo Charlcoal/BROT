@@ -59,6 +59,9 @@ pub fn cleanup(alloc: Allocator) void {
 
     cleanupSwapChain(alloc);
 
+    c.vkDestroyBuffer(common.device, common.render_patch_buffer, null);
+    c.vkFreeMemory(common.device, common.render_patch_buffer_memory, null);
+
     c.vkDestroyBuffer(common.device, common.escape_potential_buffer, null);
     c.vkFreeMemory(common.device, common.escape_potential_buffer_memory, null);
 
@@ -69,13 +72,16 @@ pub fn cleanup(alloc: Allocator) void {
     c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
 
     c.vkDestroyDescriptorPool(common.device, common.descriptor_pool, null);
+    c.vkDestroyDescriptorSetLayout(common.device, common.render_patch_descriptor_set_layout, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.render_to_coloring_descriptor_set_layout, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.cpu_to_render_descriptor_set_layout, null);
 
-    c.vkDestroyPipeline(common.device, common.graphics_pipeline, null);
-    c.vkDestroyPipeline(common.device, common.compute_pipeline, null);
-    c.vkDestroyPipelineLayout(common.device, common.render_pipeline_layout, null);
-    c.vkDestroyPipelineLayout(common.device, common.compute_pipeline_layout, null);
+    c.vkDestroyPipeline(common.device, common.coloring_pipeline, null);
+    c.vkDestroyPipeline(common.device, common.rendering_pipeline, null);
+    c.vkDestroyPipeline(common.device, common.patch_place_pipeline, null);
+    c.vkDestroyPipelineLayout(common.device, common.coloring_pipeline_layout, null);
+    c.vkDestroyPipelineLayout(common.device, common.rendering_pipeline_layout, null);
+    c.vkDestroyPipelineLayout(common.device, common.patch_place_pipeline_layout, null);
 
     c.vkDestroyRenderPass(common.device, common.render_pass, null);
 

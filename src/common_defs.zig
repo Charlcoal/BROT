@@ -32,26 +32,43 @@ pub const device_extensions = [_][*:0]const u8{
 
 pub const target_frame_rate: f64 = 60;
 pub const max_frames_in_flight: u32 = 2;
-const num_compute_buffers = 6;
+const num_active_render_patches = 6;
 
 // ------------------- program defs ---------------------
 
 pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
 
-pub const ComputeConstants = extern struct {
+pub const RenderingConstants = extern struct {
     center_screen_pos: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
     height_scale_exp: i32,
     resolution_scale_exponent: i32,
-    max_width: u32,
     cur_height: u32,
 };
 
-pub const RenderConstants = extern struct {
+pub const ColoringConstants = extern struct {
     cur_resolution: @Vector(2, u32),
     center_position: @Vector(2, u32),
     max_width: u32,
     zoom_diff: f32,
+};
+
+pub const PatchPlaceConstants = extern struct {
+    buffer_offset: u32,
+    max_width: u32,
+    resolution_scale_exponent: i32,
+};
+
+pub const RenderPatch = struct {
+    resolution_scale_exponent: u32,
+    x_pos: u32,
+    y_pos: u32,
+};
+
+pub const RenderPatchStatus = enum {
+    empty,
+    rendering,
+    complete,
 };
 
 pub const InitWindowError = error{create_window_failed};
@@ -105,15 +122,18 @@ pub var compute_queue: c.VkQueue = null;
 pub var present_queue: c.VkQueue = null;
 
 pub var render_pass: c.VkRenderPass = undefined;
-pub var render_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var compute_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var graphics_pipeline: c.VkPipeline = undefined;
-pub var compute_pipeline: c.VkPipeline = undefined;
+pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var coloring_pipeline: c.VkPipeline = undefined;
+pub var rendering_pipeline: c.VkPipeline = undefined;
+pub var patch_place_pipeline: c.VkPipeline = undefined;
 
 pub var graphics_command_pool: c.VkCommandPool = undefined;
 pub var compute_command_pool: c.VkCommandPool = undefined;
 pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
-pub var compute_command_buffers: [num_compute_buffers]c.VkCommandBuffer = undefined;
+pub var rendering_command_buffers: [num_active_render_patches]c.VkCommandBuffer = undefined;
+pub var patch_place_command_buffer: c.VkCommandBuffer = undefined;
 
 pub var swap_chain: c.VkSwapchainKHR = null;
 pub var swap_chain_images: []c.VkImage = undefined;
@@ -128,7 +148,7 @@ pub var frame_buffer_just_resized: bool = false;
 pub var image_availible_semaphores: []c.VkSemaphore = undefined;
 pub var render_finished_semaphores: []c.VkSemaphore = undefined;
 pub var in_flight_fences: []c.VkFence = undefined;
-pub var compute_fences: [num_compute_buffers]c.VkFence = undefined;
+pub var compute_fences: [num_active_render_patches]c.VkFence = undefined;
 
 pub var compute_manager_thread: std.Thread = undefined;
 pub var gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }; // needed when compute and graphics are in the same queue
@@ -137,13 +157,15 @@ pub var compute_idle: bool = false;
 pub var frame_updated: bool = false;
 pub var buffer_invalidated: bool = true;
 
-pub var escape_potential_buffer_map: BlockMap = .{};
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;
 
 pub var escape_potential_buffer_size: u32 = undefined;
 pub var escape_potential_buffer: c.VkBuffer = undefined;
 pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var render_patch_buffer: c.VkBuffer = undefined;
+pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
 
 pub var perturbation_vals: []@Vector(2, f32) = undefined;
 pub var max_iterations: u32 = 20000;
@@ -154,6 +176,9 @@ pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
 
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
 
+pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var render_patch_descriptor_sets: [2 * num_active_render_patches]c.VkDescriptorSet = undefined;
+
 pub var current_render_to_coloring_descriptor_index: usize = 0;
 pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
@@ -161,6 +186,10 @@ pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 pub var current_cpu_to_render_descriptor_index: usize = 0;
 pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
+pub var render_patches: [2 * num_active_render_patches]RenderPatch = undefined;
+pub var render_patches_status = [1]RenderPatchStatus{.empty} ** (2 * num_active_render_patches);
+pub var fence_to_patch_index = [1]?usize{null} ** num_active_render_patches;
 
 pub var zoom_exp: i32 = 1;
 pub var zoom_diff: f32 = 1.0;
@@ -224,16 +253,6 @@ pub fn renderPatchSize(mip_map_exp: u5) u32 {
     render_patch_size *= sqrt_workgroup_num;
     return render_patch_size;
 }
-
-// could theoretically use fewer bits, but u8's should be
-// future-proof for very large displays (up to 64K, if that ever exists)
-// (given 512x512 pixel blocks)
-pub const BlockMap = struct {
-    x_offset: u8 = 0,
-    y_offset: u8 = 0,
-    x_max: u8 = 10,
-    y_max: u8 = 7,
-};
 
 pub fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize) void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{

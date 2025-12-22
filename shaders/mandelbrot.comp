@@ -16,7 +16,7 @@
 
 #version 450
 
-layout(set = 0, std430, binding = 0) writeonly buffer storage_to_frag {
+layout(set = 0, std430, binding = 0) writeonly buffer render_patch_buffer {
     float potential_vals[];
 };
 
@@ -31,7 +31,6 @@ layout( push_constant ) uniform UniformBufferObject {
     uvec2 screen_offset;
     int scale_exp;
     int res_scale_exp;
-    uint max_width;
     uint cur_height;
 } ubo;
 
@@ -100,14 +99,10 @@ void main() {
 
     float potential_val;
     if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
-        potential_val = -1;
+        potential_val = -1.0;
     } else {
 		potential_val = log2(max(1, count - log2(log2(rad_sqr) / 2.0f) + 1.0));
 	}
 
-    for (int delta_y = 0; delta_y < pixel_scale; delta_y++) {
-        for (int delta_x = 0; delta_x < pixel_scale; delta_x++) {
-            potential_vals[screen_loc.x + delta_x + (screen_loc.y + delta_y) * ubo.max_width] = potential_val;
-        }
-    }
+    potential_vals[gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_WorkGroupSize.y * gl_NumWorkGroups.y] = potential_val;
 }

@@ -17,5 +17,6 @@
         "triangle.frag",
         "triangle.vert",
         "mandelbrot.comp",
+        "patch_place.comp",
     },
 }

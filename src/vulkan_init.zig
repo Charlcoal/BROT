@@ -24,7 +24,8 @@ const InitVulkanError = common.InitVulkanError;
 
 const vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const frag_code align(4) = @embedFile("triangle_frag_shader").*;
-const comp_code align(4) = @embedFile("mandelbrot_comp_shader").*;
+const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
+const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
 
 pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createInstance(alloc);
@@ -39,19 +40,23 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createSwapChain(alloc);
     try createImageViews(alloc);
     try createRenderPass();
+    try createPatchPlaceDescriptorSetLayout();
     try createCpuToRndDescriptorSetLayout();
     try createRndToClrDescriptorSetLayout();
-    try createGraphicsPipeline();
-    try createComputePipeline();
+    try createPatchPlacePipeline();
+    try createColoringPipeline();
+    try createRendingPipeline();
     try createFrameBuffers(alloc);
     try createGraphicsCommandPool(alloc);
     try createComputeCommandPool(alloc);
     try createBuffers();
     try createDescriptorPool();
+    try createPatchPlaceDescriptorSets();
     try createCpuToRndDescriptorSets();
     try createRndToClrDescriptorSets();
-    try createComputeCommandBuffer();
-    try createCommandBuffers(alloc);
+    try createRenderCommandBuffers();
+    try createPatchPlaceCommandBuffer();
+    try createColoringCommandBuffers(alloc);
     try createSyncObjects(alloc);
 }
 
@@ -245,7 +250,7 @@ fn debugCallback(
     return c.VK_FALSE;
 }
 
-fn createCommandBuffers(alloc: Allocator) InitVulkanError!void {
+fn createColoringCommandBuffers(alloc: Allocator) InitVulkanError!void {
     common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
@@ -260,15 +265,28 @@ fn createCommandBuffers(alloc: Allocator) InitVulkanError!void {
     }
 }
 
-fn createComputeCommandBuffer() InitVulkanError!void {
+fn createPatchPlaceCommandBuffer() InitVulkanError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = common.compute_command_pool,
         .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = common.compute_command_buffers.len,
+        .commandBufferCount = 1,
     };
 
-    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.compute_command_buffers) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.patch_place_command_buffer) != c.VK_SUCCESS) {
+        return InitVulkanError.command_buffer_allocation_failed;
+    }
+}
+
+fn createRenderCommandBuffers() InitVulkanError!void {
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = common.compute_command_pool,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = common.rendering_command_buffers.len,
+    };
+
+    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rendering_command_buffers) != c.VK_SUCCESS) {
         return InitVulkanError.command_buffer_allocation_failed;
     }
 }
@@ -336,6 +354,10 @@ fn createDescriptorPool() InitVulkanError!void {
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = @intCast(common.cpu_to_render_descriptor_sets.len),
         },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = @intCast(common.render_patch_descriptor_sets.len),
+        },
     };
 
     const pool_info: c.VkDescriptorPoolCreateInfo = .{
@@ -343,11 +365,32 @@ fn createDescriptorPool() InitVulkanError!void {
         .poolSizeCount = @intCast(pool_sizes.len),
         .pPoolSizes = &pool_sizes,
         .maxSets = @intCast(common.render_to_coloring_descriptor_sets.len +
-            common.cpu_to_render_descriptor_sets.len),
+            common.cpu_to_render_descriptor_sets.len +
+            common.render_patch_descriptor_sets.len),
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
+    }
+}
+
+fn createPatchPlaceDescriptorSetLayout() InitVulkanError!void {
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
+        .binding = 0,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = null,
+    }};
+
+    var layout_info: c.VkDescriptorSetLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = bindings.len,
+        .pBindings = &bindings,
+    };
+
+    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_patch_descriptor_set_layout) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_set_layout_creation_failed;
     }
 }
 
@@ -388,6 +431,49 @@ fn createRndToClrDescriptorSetLayout() InitVulkanError!void {
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_set_layout_creation_failed;
+    }
+}
+
+fn createPatchPlaceDescriptorSets() InitVulkanError!void {
+    var layouts: [common.render_patch_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
+    for (&layouts) |*layout| {
+        layout.* = common.render_patch_descriptor_set_layout;
+    }
+
+    const alloc_info: c.VkDescriptorSetAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = common.descriptor_pool,
+        .descriptorSetCount = layouts.len,
+        .pSetLayouts = &layouts,
+    };
+
+    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_patch_descriptor_sets) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_sets_allocation_failed;
+    }
+
+    const patch_size: usize =
+        @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
+
+    for (0..common.render_patch_descriptor_sets.len) |i| {
+        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = common.render_patch_buffer,
+            .offset = i * patch_size,
+            .range = patch_size,
+        };
+
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = common.render_patch_descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &perturbation_buffer_info,
+            },
+        };
+
+        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
     }
 }
 
@@ -495,8 +581,52 @@ fn createFrameBuffers(alloc: Allocator) InitVulkanError!void {
     }
 }
 
-fn createComputePipeline() InitVulkanError!void {
-    const comp_shader_module = try createShaderModule(&comp_code);
+fn createPatchPlacePipeline() InitVulkanError!void {
+    const shader_module = try createShaderModule(&patch_place_code);
+    defer _ = c.vkDestroyShaderModule(common.device, shader_module, null);
+
+    const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = shader_module,
+        .pName = "main",
+    };
+
+    const push_constant_range: c.VkPushConstantRange = .{
+        .offset = 0,
+        .size = @sizeOf(common.PatchPlaceConstants),
+        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+
+    const descriptor_sets = [_]c.VkDescriptorSetLayout{
+        common.render_patch_descriptor_set_layout,
+        common.render_to_coloring_descriptor_set_layout,
+    };
+
+    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = descriptor_sets.len,
+        .pSetLayouts = &descriptor_sets,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant_range,
+    };
+    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.patch_place_pipeline_layout) != c.VK_SUCCESS) {
+        return InitVulkanError.pipeline_layout_creation_failed;
+    }
+
+    const pipeline_info: c.VkComputePipelineCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .layout = common.patch_place_pipeline_layout,
+        .stage = shader_stage_info,
+    };
+
+    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.patch_place_pipeline) != c.VK_SUCCESS) {
+        return InitVulkanError.graphics_pipeline_creation_failed;
+    }
+}
+
+fn createRendingPipeline() InitVulkanError!void {
+    const comp_shader_module = try createShaderModule(&render_code);
     defer _ = c.vkDestroyShaderModule(common.device, comp_shader_module, null);
 
     const comp_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
@@ -508,12 +638,12 @@ fn createComputePipeline() InitVulkanError!void {
 
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
-        .size = @sizeOf(common.ComputeConstants),
+        .size = @sizeOf(common.RenderingConstants),
         .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
     };
 
     const descriptor_sets = [_]c.VkDescriptorSetLayout{
-        common.render_to_coloring_descriptor_set_layout,
+        common.render_patch_descriptor_set_layout,
         common.cpu_to_render_descriptor_set_layout,
     };
 
@@ -524,22 +654,22 @@ fn createComputePipeline() InitVulkanError!void {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.compute_pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.rendering_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
     const pipeline_info: c.VkComputePipelineCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .layout = common.compute_pipeline_layout,
+        .layout = common.rendering_pipeline_layout,
         .stage = comp_shader_stage_info,
     };
 
-    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.compute_pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.rendering_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createGraphicsPipeline() InitVulkanError!void {
+fn createColoringPipeline() InitVulkanError!void {
     const vert_shader_module = try createShaderModule(&vert_code);
     const frag_shader_module = try createShaderModule(&frag_code);
     defer _ = c.vkDestroyShaderModule(common.device, vert_shader_module, null);
@@ -639,7 +769,7 @@ fn createGraphicsPipeline() InitVulkanError!void {
 
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
-        .size = @sizeOf(common.RenderConstants),
+        .size = @sizeOf(common.ColoringConstants),
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
@@ -650,7 +780,7 @@ fn createGraphicsPipeline() InitVulkanError!void {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.render_pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.coloring_pipeline_layout) != c.VK_SUCCESS) {
         return InitVulkanError.pipeline_layout_creation_failed;
     }
 
@@ -666,14 +796,14 @@ fn createGraphicsPipeline() InitVulkanError!void {
         .pDepthStencilState = null,
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state,
-        .layout = common.render_pipeline_layout,
+        .layout = common.coloring_pipeline_layout,
         .renderPass = common.render_pass,
         .subpass = 0,
         .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
         .basePipelineIndex = -1,
     };
 
-    if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.graphics_pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.coloring_pipeline) != c.VK_SUCCESS) {
         return InitVulkanError.graphics_pipeline_creation_failed;
     }
 }
@@ -1126,17 +1256,21 @@ fn createBuffers() InitVulkanError!void {
         @as(u32, @intCast(2 * video_mode.?.*.width)) / common.renderPatchSize(common.max_res_scale_exponent) + 2;
     common.escape_potential_buffer_block_num_y =
         @as(u32, @intCast(2 * video_mode.?.*.height)) / common.renderPatchSize(common.max_res_scale_exponent) + 2;
-    //std.debug.print("buffer is {} blocks by {} blocks\n", .{
-    //    common.escape_potential_buffer_block_num_x,
-    //    common.escape_potential_buffer_block_num_y,
-    //});
-    //std.debug.print("blocks are {} pixel squares\n", .{common.renderPatchSize(common.max_res_scale_exponent)});
     common.escape_potential_buffer_size =
         @sizeOf(f32) * common.renderPatchSize(common.max_res_scale_exponent) *
         common.renderPatchSize(common.max_res_scale_exponent) *
         common.escape_potential_buffer_block_num_x * common.escape_potential_buffer_block_num_y;
 
-    //std.debug.print("total buffer size: {}\n", .{common.escape_potential_buffer_size});
+    const render_patch_buffer_size: usize = common.render_patch_descriptor_sets.len *
+        @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
+
+    try createBuffer(
+        render_patch_buffer_size,
+        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &common.render_patch_buffer,
+        &common.render_patch_buffer_memory,
+    );
 
     try createBuffer(
         common.escape_potential_buffer_size,
