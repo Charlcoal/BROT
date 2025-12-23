@@ -64,11 +64,68 @@ pub fn update() void {
     @memcpy(mapped_data, common.perturbation_vals);
     _ = c.vkUnmapMemory(common.device, common.perturbation_staging_buffer_memory);
 
+    const next_index: usize = (common.current_cpu_to_render_descriptor_index + 1) % 2;
+
     common.gpu_interface_semaphore.wait();
-    common.copyBuffer(
+    copyBuffer(
         common.perturbation_buffer,
         common.perturbation_staging_buffer,
         2 * @sizeOf(f32) * common.max_iterations,
+        .{ .dst_offset = next_index * 2 * @sizeOf(f32) * common.max_iterations },
     );
+    common.current_cpu_to_render_descriptor_index = next_index;
     common.gpu_interface_semaphore.post();
+}
+
+const CopyBufferOptions = struct {
+    src_offset: u64 = 0,
+    dst_offset: u64 = 0,
+};
+
+fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize, options: CopyBufferOptions) void {
+    const alloc_info: c.VkCommandBufferAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = common.graphics_command_pool,
+        .commandBufferCount = 1,
+    };
+
+    var command_buffer: c.VkCommandBuffer = undefined;
+    _ = c.vkAllocateCommandBuffers(common.device, &alloc_info, &command_buffer);
+
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    _ = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    const copy_region: c.VkBufferCopy = .{
+        .srcOffset = options.src_offset,
+        .dstOffset = options.dst_offset,
+        .size = size,
+    };
+    c.vkCmdCopyBuffer(
+        command_buffer,
+        src,
+        dst,
+        1,
+        &copy_region,
+    );
+
+    _ = c.vkEndCommandBuffer(command_buffer);
+
+    const submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+    _ = c.vkQueueSubmit(common.graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
+    _ = c.vkQueueWaitIdle(common.graphics_queue);
+
+    c.vkFreeCommandBuffers(
+        common.device,
+        common.graphics_command_pool,
+        1,
+        &command_buffer,
+    );
 }

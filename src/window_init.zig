@@ -17,6 +17,7 @@
 const std = @import("std");
 const common = @import("common_defs.zig");
 const c = common.c;
+const reference_calc = @import("reference_calc.zig");
 
 const InitWindowError = common.InitWindowError;
 
@@ -117,6 +118,11 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     }
 
     common.frame_updated = true;
+    common.reference_center_updated = true;
+
+    reference_calc.update();
+
+    common.reference_center_updated = false;
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {

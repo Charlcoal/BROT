@@ -29,8 +29,6 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
-        reference_calc.update();
-
         try drawFrame(alloc);
     }
 
@@ -198,6 +196,12 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         if (common.frame_updated) {
             common.compute_idle = false;
             common.frame_updated = false;
+        }
+
+        // waiting on reference to be calculated
+        if (common.reference_center_updated) {
+            std.Thread.sleep(1_000_000); // 1ms
+            continue;
         }
 
         if (common.compute_idle) {

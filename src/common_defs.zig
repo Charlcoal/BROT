@@ -161,6 +161,7 @@ pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
 pub var frame_updated: bool = false;
 pub var buffer_invalidated: bool = true;
+pub var reference_center_updated: bool = false;
 
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;
@@ -258,52 +259,4 @@ pub fn renderPatchSize(mip_map_exp: u5) u32 {
     render_patch_size *= sqrt_invocation_num;
     render_patch_size *= sqrt_workgroup_num;
     return render_patch_size;
-}
-
-pub fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize) void {
-    const alloc_info: c.VkCommandBufferAllocateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandPool = graphics_command_pool,
-        .commandBufferCount = 1,
-    };
-
-    var command_buffer: c.VkCommandBuffer = undefined;
-    _ = c.vkAllocateCommandBuffers(device, &alloc_info, &command_buffer);
-
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    _ = c.vkBeginCommandBuffer(command_buffer, &begin_info);
-
-    const copy_region: c.VkBufferCopy = .{
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size = size,
-    };
-    c.vkCmdCopyBuffer(
-        command_buffer,
-        src,
-        dst,
-        1,
-        &copy_region,
-    );
-
-    _ = c.vkEndCommandBuffer(command_buffer);
-
-    const submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &command_buffer,
-    };
-    _ = c.vkQueueSubmit(graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
-    _ = c.vkQueueWaitIdle(graphics_queue);
-
-    c.vkFreeCommandBuffers(
-        device,
-        graphics_command_pool,
-        1,
-        &command_buffer,
-    );
 }
