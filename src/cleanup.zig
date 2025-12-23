@@ -37,14 +37,16 @@ pub fn cleanupSwapChain(alloc: Allocator) void {
 pub fn cleanup(alloc: Allocator) void {
     common.compute_manager_should_close = true;
     common.compute_manager_thread.join();
+    common.patch_placer_thread.join();
     //vulkan
     for (0..common.max_frames_in_flight) |i| {
         c.vkDestroySemaphore(common.device, common.image_availible_semaphores[i], null);
         c.vkDestroyFence(common.device, common.in_flight_fences[i], null);
     }
-    for (common.compute_fences) |fence| {
+    for (common.rendering_fences) |fence| {
         c.vkDestroyFence(common.device, fence, null);
     }
+    c.vkDestroyFence(common.device, common.patch_place_fence, null);
 
     for (common.render_finished_semaphores) |sem| {
         c.vkDestroySemaphore(common.device, sem, null);

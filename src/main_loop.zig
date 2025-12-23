@@ -23,6 +23,7 @@ const reference_calc = @import("reference_calc.zig");
 
 const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
+const RenderPatch = common.RenderPatch;
 
 pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
@@ -40,19 +41,108 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
     common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{alloc});
+    common.patch_placer_thread = try std.Thread.spawn(.{ .allocator = alloc }, placePatches, .{});
 }
 
-const Direction = enum { left, down, right, up };
-const Twist = enum { clockwise, counter_clockwise };
-const Spiral = struct {
-    dir: Direction,
-    poke_dir: Direction, // direction that increases the radius in its last step
-    twist: Twist,
-    delta_x: i32,
-    delta_y: i32,
-};
+fn drawFrame(alloc: Allocator) MainLoopError!void {
+    if (common.frame_buffer_just_resized) {
+        _ = c.vkWaitForFences(
+            common.device,
+            1,
+            &common.in_flight_fences[common.current_frame],
+            c.VK_TRUE,
+            60_000_000,
+        );
+        common.frame_buffer_just_resized = false;
+    } else {
+        _ = c.vkWaitForFences(
+            common.device,
+            1,
+            &common.in_flight_fences[common.current_frame],
+            c.VK_TRUE,
+            std.math.maxInt(u64),
+        );
+    }
 
-const RenderPatch = common.RenderPatch;
+    _ = c.vkResetFences(common.device, 1, &common.in_flight_fences[common.current_frame]);
+
+    var delta_time: f64 = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
+    if (delta_time < 1.0 / common.target_frame_rate) {
+        std.Thread.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
+        delta_time = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
+    } else {
+        //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
+    }
+    //std.debug.print("time: {d:.3}\n", .{delta_time});
+    common.prev_time = common.time.read();
+
+    var image_index: u32 = undefined;
+    const result = c.vkAcquireNextImageKHR(
+        common.device,
+        common.swap_chain,
+        std.math.maxInt(u64),
+        common.image_availible_semaphores[common.current_frame],
+        @ptrCast(c.VK_NULL_HANDLE),
+        &image_index,
+    );
+
+    common.gpu_interface_semaphore.wait();
+    defer common.gpu_interface_semaphore.post();
+
+    if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
+        try vulkan_init.recreateSwapChain(alloc);
+        return;
+    } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
+        return MainLoopError.swap_chain_image_acquisition_failed;
+    } else if (result == c.VK_SUBOPTIMAL_KHR) {}
+
+    _ = c.vkResetCommandBuffer(common.graphics_command_buffers[common.current_frame], 0);
+    try recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
+
+    const wait_semaphors = [_]c.VkSemaphore{common.image_availible_semaphores[common.current_frame]};
+    const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    const signal_semaphors = [_]c.VkSemaphore{common.render_finished_semaphores[image_index]};
+    const submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = @intCast(wait_semaphors.len),
+        .pWaitSemaphores = &wait_semaphors,
+        .pWaitDstStageMask = &wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &common.graphics_command_buffers[common.current_frame],
+        .signalSemaphoreCount = @intCast(signal_semaphors.len),
+        .pSignalSemaphores = &signal_semaphors,
+    };
+
+    if (c.vkQueueSubmit(
+        common.graphics_queue,
+        1,
+        &submit_info,
+        common.in_flight_fences[common.current_frame],
+    ) != c.VK_SUCCESS) {
+        return MainLoopError.draw_command_buffer_submit_failed;
+    }
+
+    const swap_chains = [_]c.VkSwapchainKHR{common.swap_chain};
+    const present_info: c.VkPresentInfoKHR = .{
+        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = @intCast(signal_semaphors.len),
+        .pWaitSemaphores = &signal_semaphors,
+        .swapchainCount = @intCast(swap_chains.len),
+        .pSwapchains = &swap_chains,
+        .pImageIndices = &image_index,
+        .pResults = null,
+    };
+
+    _ = c.vkQueuePresentKHR(common.present_queue, &present_info);
+
+    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or common.frame_buffer_needs_resize) {
+        common.frame_buffer_needs_resize = false;
+        try vulkan_init.recreateSwapChain(alloc);
+        return;
+    } else if (result != c.VK_SUCCESS) {
+        return MainLoopError.swap_chain_image_acquisition_failed;
+    }
+}
 
 fn computeManage(alloc: Allocator) Allocator.Error!void {
     var resolutions_complete: [common.num_distinct_res_scales][][]bool = undefined;
@@ -77,11 +167,17 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
 
     while (!common.compute_manager_should_close) {
         // wait for a rendering task to complete
-        _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_FALSE, std.math.maxInt(u64));
+        _ = c.vkWaitForFences(
+            common.device,
+            common.rendering_fences.len,
+            &common.rendering_fences,
+            c.VK_FALSE,
+            std.math.maxInt(u64),
+        );
 
         const comp_index: usize = label: {
-            for (0..common.compute_fences.len) |i| {
-                if (c.vkGetFenceStatus(common.device, common.compute_fences[i]) == c.VK_SUCCESS) {
+            for (0..common.rendering_fences.len) |i| {
+                if (c.vkGetFenceStatus(common.device, common.rendering_fences[i]) == c.VK_SUCCESS) {
                     break :label i;
                 }
             }
@@ -144,7 +240,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         //updateUniformBuffer();
 
         //std.debug.print("starting compute\n", .{});
-        _ = c.vkResetFences(common.device, 1, &common.compute_fences[comp_index]);
+        _ = c.vkResetFences(common.device, 1, &common.rendering_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
         recordRenderingCommandBuffer(
@@ -172,120 +268,79 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             .pSignalSemaphores = null,
         };
 
-        if (c.vkQueueSubmit(common.compute_queue, 1, &submit_info, common.compute_fences[comp_index]) != c.VK_SUCCESS) {
+        if (c.vkQueueSubmit(common.compute_queue, 1, &submit_info, common.rendering_fences[comp_index]) != c.VK_SUCCESS) {
             @panic("compute manager failed to submit queue!");
         }
     }
 
-    _ = c.vkWaitForFences(common.device, common.compute_fences.len, &common.compute_fences, c.VK_TRUE, std.math.maxInt(u64));
+    _ = c.vkWaitForFences(
+        common.device,
+        common.rendering_fences.len,
+        &common.rendering_fences,
+        c.VK_TRUE,
+        std.math.maxInt(u64),
+    );
 }
 
-fn drawFrame(alloc: Allocator) MainLoopError!void {
-    if (common.frame_buffer_just_resized) {
-        _ = c.vkWaitForFences(common.device, 1, &common.in_flight_fences[common.current_frame], c.VK_TRUE, 60_000_000);
-        common.frame_buffer_just_resized = false;
-    } else {
-        _ = c.vkWaitForFences(common.device, 1, &common.in_flight_fences[common.current_frame], c.VK_TRUE, std.math.maxInt(u64));
+fn placePatches() MainLoopError!void {
+    while (!common.compute_manager_should_close) {
+        _ = c.vkWaitForFences(
+            common.device,
+            1,
+            &common.patch_place_fence,
+            c.VK_TRUE,
+            std.math.maxInt(u64),
+        );
+
+        for (&common.render_patches_status) |*status| {
+            if (status.* == .placing) status.* = .empty;
+        }
+
+        while (completePatches() < common.rendering_command_buffers.len) {
+            std.Thread.sleep(500_000);
+            if (common.compute_manager_should_close) break;
+        }
+
+        _ = c.vkResetFences(common.device, 1, &common.patch_place_fence);
+
+        common.gpu_interface_semaphore.wait();
+        defer common.gpu_interface_semaphore.post();
+
+        _ = c.vkResetCommandBuffer(common.patch_place_command_buffer, 0);
+        try recordPatchPlaceCommandBuffer();
+
+        const compute_wait_stages: u32 = 0;
+        const compute_submit_info: c.VkSubmitInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = null,
+            .pWaitDstStageMask = &compute_wait_stages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &common.patch_place_command_buffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = null,
+        };
+
+        if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.patch_place_fence) != c.VK_SUCCESS) {
+            @panic("patch placement failed to submit queue!");
+        }
     }
 
-    _ = c.vkResetFences(common.device, 1, &common.in_flight_fences[common.current_frame]);
-
-    var delta_time: f64 = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
-    if (delta_time < 1.0 / common.target_frame_rate) {
-        std.Thread.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
-        delta_time = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
-    } else {
-        //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
-    }
-    //std.debug.print("time: {d:.3}\n", .{delta_time});
-    common.prev_time = common.time.read();
-
-    var image_index: u32 = undefined;
-    const result = c.vkAcquireNextImageKHR(
+    _ = c.vkWaitForFences(
         common.device,
-        common.swap_chain,
-        std.math.maxInt(u64),
-        common.image_availible_semaphores[common.current_frame],
-        @ptrCast(c.VK_NULL_HANDLE),
-        &image_index,
-    );
-
-    common.gpu_interface_semaphore.wait();
-    defer common.gpu_interface_semaphore.post();
-
-    if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
-        try vulkan_init.recreateSwapChain(alloc);
-        return;
-    } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
-    } else if (result == c.VK_SUBOPTIMAL_KHR) {}
-
-    // TODO: properly syncronize with semaphore
-    _ = c.vkResetCommandBuffer(common.patch_place_command_buffer, 0);
-    try recordPatchPlaceCommandBuffer();
-
-    const compute_wait_stages: u32 = 0;
-    const compute_submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = null,
-        .pWaitDstStageMask = &compute_wait_stages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &common.patch_place_command_buffer,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = null,
-    };
-
-    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, null) != c.VK_SUCCESS) {
-        @panic("patch placement failed to submit queue!");
-    }
-
-    _ = c.vkResetCommandBuffer(common.graphics_command_buffers[common.current_frame], 0);
-    try recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
-
-    const wait_semaphors = [_]c.VkSemaphore{common.image_availible_semaphores[common.current_frame]};
-    const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    const signal_semaphors = [_]c.VkSemaphore{common.render_finished_semaphores[image_index]};
-    const submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = @intCast(wait_semaphors.len),
-        .pWaitSemaphores = &wait_semaphors,
-        .pWaitDstStageMask = &wait_stages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &common.graphics_command_buffers[common.current_frame],
-        .signalSemaphoreCount = @intCast(signal_semaphors.len),
-        .pSignalSemaphores = &signal_semaphors,
-    };
-
-    if (c.vkQueueSubmit(
-        common.graphics_queue,
         1,
-        &submit_info,
-        common.in_flight_fences[common.current_frame],
-    ) != c.VK_SUCCESS) {
-        return MainLoopError.draw_command_buffer_submit_failed;
+        &common.patch_place_fence,
+        c.VK_TRUE,
+        std.math.maxInt(u64),
+    );
+}
+
+fn completePatches() u32 {
+    var count: u32 = 0;
+    for (common.render_patches_status) |status| {
+        if (status == .complete) count += 1;
     }
-
-    const swap_chains = [_]c.VkSwapchainKHR{common.swap_chain};
-    const present_info: c.VkPresentInfoKHR = .{
-        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = @intCast(signal_semaphors.len),
-        .pWaitSemaphores = &signal_semaphors,
-        .swapchainCount = @intCast(swap_chains.len),
-        .pSwapchains = &swap_chains,
-        .pImageIndices = &image_index,
-        .pResults = null,
-    };
-
-    _ = c.vkQueuePresentKHR(common.present_queue, &present_info);
-
-    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or common.frame_buffer_needs_resize) {
-        common.frame_buffer_needs_resize = false;
-        try vulkan_init.recreateSwapChain(alloc);
-        return;
-    } else if (result != c.VK_SUCCESS) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
-    }
+    return count;
 }
 
 fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scales][][]bool) void {
@@ -405,6 +460,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     };
 }
 
+// TODO: properly syncronize - should probably be blocking in some mannor as it should run very fast
 fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -424,7 +480,7 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
 
     for (0.., &common.render_patches_status, common.render_patches) |i, *status, patch| {
         if (status.* != .complete) continue;
-        status.* = .empty;
+        status.* = .placing;
 
         const descriptor_sets = [_]c.VkDescriptorSet{
             common.render_patch_descriptor_sets[i],

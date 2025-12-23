@@ -1229,9 +1229,13 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    for (&common.compute_fences) |*fence| {
+    if (c.vkCreateFence(common.device, &fence_info, null, &common.patch_place_fence) != c.VK_SUCCESS) {
+        return InitVulkanError.fence_creation_failed;
+    }
+
+    for (&common.rendering_fences) |*fence| {
         if (c.vkCreateFence(common.device, &fence_info, null, fence) != c.VK_SUCCESS) {
-            return InitVulkanError.semaphore_creation_failed;
+            return InitVulkanError.fence_creation_failed;
         }
     }
 

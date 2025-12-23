@@ -33,6 +33,7 @@ pub const device_extensions = [_][*:0]const u8{
 pub const target_frame_rate: f64 = 60;
 pub const max_frames_in_flight: u32 = 2;
 const num_active_render_patches = 6;
+const patch_buffer_factor = 4; // should be >= 3
 
 // ------------------- program defs ---------------------
 
@@ -69,6 +70,7 @@ pub const RenderPatchStatus = enum {
     empty,
     rendering,
     complete,
+    placing,
 };
 
 pub const InitWindowError = error{create_window_failed};
@@ -90,6 +92,7 @@ pub const InitVulkanError = error{
     command_pool_creation_failed,
     command_buffer_allocation_failed,
     semaphore_creation_failed,
+    fence_creation_failed,
     descriptor_set_layout_creation_failed,
     descriptor_pool_creation_failed,
     descriptor_sets_allocation_failed,
@@ -148,9 +151,11 @@ pub var frame_buffer_just_resized: bool = false;
 pub var image_availible_semaphores: []c.VkSemaphore = undefined;
 pub var render_finished_semaphores: []c.VkSemaphore = undefined;
 pub var in_flight_fences: []c.VkFence = undefined;
-pub var compute_fences: [num_active_render_patches]c.VkFence = undefined;
+pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
+pub var patch_place_fence: c.VkFence = undefined;
 
 pub var compute_manager_thread: std.Thread = undefined;
+pub var patch_placer_thread: std.Thread = undefined;
 pub var gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }; // needed when compute and graphics are in the same queue
 pub var compute_manager_should_close: bool = false;
 pub var compute_idle: bool = false;
@@ -177,7 +182,7 @@ pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
 
 pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var render_patch_descriptor_sets: [2 * num_active_render_patches]c.VkDescriptorSet = undefined;
+pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]c.VkDescriptorSet = undefined;
 
 pub var current_render_to_coloring_descriptor_index: usize = 0;
 pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -187,8 +192,9 @@ pub var current_cpu_to_render_descriptor_index: usize = 0;
 pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 
-pub var render_patches: [2 * num_active_render_patches]RenderPatch = undefined;
-pub var render_patches_status = [1]RenderPatchStatus{.empty} ** (2 * num_active_render_patches);
+pub var render_patches: [patch_buffer_factor * num_active_render_patches]RenderPatch = undefined;
+pub var render_patches_status = [1]RenderPatchStatus{.empty} **
+    (patch_buffer_factor * num_active_render_patches);
 pub var fence_to_patch_index = [1]?usize{null} ** num_active_render_patches;
 
 pub var zoom_exp: i32 = 1;
