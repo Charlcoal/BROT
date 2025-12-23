@@ -66,7 +66,8 @@ pub fn update() void {
 
     const next_index: usize = (common.current_cpu_to_render_descriptor_index + 1) % 2;
 
-    common.gpu_interface_semaphore.wait();
+    common.gpu_interface_lock.lock();
+    defer common.gpu_interface_lock.unlock();
     copyBuffer(
         common.perturbation_buffer,
         common.perturbation_staging_buffer,
@@ -74,7 +75,6 @@ pub fn update() void {
         .{ .dst_offset = next_index * 2 * @sizeOf(f32) * common.max_iterations },
     );
     common.current_cpu_to_render_descriptor_index = next_index;
-    common.gpu_interface_semaphore.post();
 }
 
 const CopyBufferOptions = struct {

@@ -32,9 +32,7 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
         try drawFrame(alloc);
     }
 
-    common.gpu_interface_semaphore.wait();
     _ = c.vkDeviceWaitIdle(common.device);
-    common.gpu_interface_semaphore.post();
 }
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
@@ -84,8 +82,8 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
         &image_index,
     );
 
-    common.gpu_interface_semaphore.wait();
-    defer common.gpu_interface_semaphore.post();
+    common.gpu_interface_lock.lock();
+    defer common.gpu_interface_lock.unlock();
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
         try vulkan_init.recreateSwapChain(alloc);
@@ -188,23 +186,16 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         }
 
         if (common.buffer_invalidated) {
-            common.compute_idle = false;
             common.buffer_invalidated = false;
             resetRenderPatchsResComps(resolutions_complete);
         }
 
         if (common.frame_updated) {
-            common.compute_idle = false;
             common.frame_updated = false;
         }
 
         // waiting on reference to be calculated
         if (common.reference_center_updated) {
-            std.Thread.sleep(1_000_000); // 1ms
-            continue;
-        }
-
-        if (common.compute_idle) {
             std.Thread.sleep(1_000_000); // 1ms
             continue;
         }
@@ -224,7 +215,8 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         if (patch_to_render_maybe) |patch| {
             patch_to_render = patch;
         } else {
-            common.compute_idle = true;
+            common.render_patches_saturated = true;
+            std.Thread.sleep(4_000_000); // 4ms
             continue;
         }
 
@@ -238,8 +230,8 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         render_patch_size *= common.sqrt_invocation_num;
         render_patch_size *= common.sqrt_workgroup_num;
 
-        common.gpu_interface_semaphore.wait();
-        defer common.gpu_interface_semaphore.post();
+        common.gpu_interface_lock.lock();
+        defer common.gpu_interface_lock.unlock();
 
         //updateUniformBuffer();
 
@@ -300,17 +292,20 @@ fn placePatches() MainLoopError!void {
             if (status.* == .placing) status.* = .empty;
         }
 
-        while (completePatches() < common.rendering_command_buffers.len) {
+        while (!common.render_patches_saturated and numCompletePatches() < common.rendering_command_buffers.len or
+            numCompletePatches() == 0)
+        {
             std.Thread.sleep(500_000);
             if (common.compute_manager_should_close) break;
         }
 
         _ = c.vkResetFences(common.device, 1, &common.patch_place_fence);
 
-        common.gpu_interface_semaphore.wait();
-        defer common.gpu_interface_semaphore.post();
+        common.gpu_interface_lock.lock();
+        defer common.gpu_interface_lock.unlock();
 
         _ = c.vkResetCommandBuffer(common.patch_place_command_buffer, 0);
+        common.render_patches_saturated = false;
         try recordPatchPlaceCommandBuffer();
 
         const compute_wait_stages: u32 = 0;
@@ -339,7 +334,7 @@ fn placePatches() MainLoopError!void {
     );
 }
 
-fn completePatches() u32 {
+fn numCompletePatches() u32 {
     var count: u32 = 0;
     for (common.render_patches_status) |status| {
         if (status == .complete) count += 1;
@@ -373,6 +368,35 @@ fn patchVisible(patch: RenderPatch) bool {
     if (patch_size * (patch.y_pos + 1) < screen_top_edge) return false;
 
     return true;
+}
+
+fn patch_overlap(patch: RenderPatch, resolutions_complete: [common.num_distinct_res_scales][][]bool) bool {
+    // ensures patches are "in order," i.e. lower resolutions never render after higher resolutions
+    for (1..(common.num_distinct_res_scales - patch.resolution_scale_exponent)) |exp_diff| {
+        const res_scale = patch.resolution_scale_exponent + exp_diff;
+        const x = patch.x_pos >> @intCast(exp_diff);
+        const y = patch.y_pos >> @intCast(exp_diff);
+        if (!resolutions_complete[res_scale][x][y]) return true;
+    }
+
+    // ensure overlapping patches are never simultaniusly rendered
+    for (common.render_patches_status, common.render_patches) |status, active_patch| {
+        if (status == .empty or status == .placing) continue;
+        const active_higher_exp = active_patch.resolution_scale_exponent > patch.resolution_scale_exponent;
+        const exp_diff = if (active_higher_exp)
+            active_patch.resolution_scale_exponent - patch.resolution_scale_exponent
+        else
+            patch.resolution_scale_exponent - active_patch.resolution_scale_exponent;
+
+        const a_x = if (active_higher_exp) active_patch.x_pos else active_patch.x_pos >> @intCast(exp_diff);
+        const a_y = if (active_higher_exp) active_patch.y_pos else active_patch.y_pos >> @intCast(exp_diff);
+        const p_x = if (active_higher_exp) patch.x_pos >> @intCast(exp_diff) else patch.x_pos;
+        const p_y = if (active_higher_exp) patch.y_pos >> @intCast(exp_diff) else patch.y_pos;
+
+        if (a_x == p_x and a_y == p_y) return true;
+    }
+
+    return false;
 }
 
 fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]bool) ?RenderPatch {
@@ -409,11 +433,14 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
         for (0.., resolutions_complete[res_scale_exp]) |i, max_res_col| {
             for (0.., max_res_col) |j, max_res_patch| {
                 if (!max_res_patch) {
-                    if (!patchVisible(.{
+                    const patch: RenderPatch = .{
                         .resolution_scale_exponent = @intCast(res_scale_exp),
                         .x_pos = @intCast(i),
                         .y_pos = @intCast(j),
-                    })) continue;
+                    };
+
+                    if (!patchVisible(patch)) continue;
+                    if (patch_overlap(patch, resolutions_complete)) continue;
 
                     res_incompletes[res_scale_exp] = true;
 

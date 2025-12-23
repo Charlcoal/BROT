@@ -156,9 +156,9 @@ pub var patch_place_fence: c.VkFence = undefined;
 
 pub var compute_manager_thread: std.Thread = undefined;
 pub var patch_placer_thread: std.Thread = undefined;
-pub var gpu_interface_semaphore: std.Thread.Semaphore = .{ .permits = 1 }; // needed when compute and graphics are in the same queue
+pub var gpu_interface_lock: std.Thread.Mutex = .{};
 pub var compute_manager_should_close: bool = false;
-pub var compute_idle: bool = false;
+pub var render_patches_saturated: bool = false;
 pub var frame_updated: bool = false;
 pub var buffer_invalidated: bool = true;
 pub var reference_center_updated: bool = false;
