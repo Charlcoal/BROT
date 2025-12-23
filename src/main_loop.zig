@@ -32,7 +32,9 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
         try drawFrame(alloc);
     }
 
+    common.gpu_interface_lock.lock();
     _ = c.vkDeviceWaitIdle(common.device);
+    common.gpu_interface_lock.unlock();
 }
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
