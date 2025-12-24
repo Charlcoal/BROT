@@ -29,6 +29,9 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
+        updateFractalPosition();
+        try renderedBufferManage();
+
         try drawFrame(alloc);
     }
 
@@ -39,7 +42,6 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
     common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{alloc});
-    common.patch_placer_thread = try std.Thread.spawn(.{ .allocator = alloc }, renderedBufferManage, .{});
 }
 
 fn drawFrame(alloc: Allocator) MainLoopError!void {
@@ -287,51 +289,51 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
     );
 }
 
-fn renderedBufferManage() MainLoopError!void {
-    var just_placed: bool = false;
-    var just_remapped: bool = false;
+fn fractalToBlockScale() f64 {
+    const block_size = common.renderPatchSize(common.max_res_scale_exponent);
+    return @as(f64, @floatFromInt(common.height)) / @as(f64, @floatFromInt(block_size));
+}
 
-    while (!common.compute_manager_should_close) {
-        _ = c.vkWaitForFences(
-            common.device,
-            1,
-            &common.render_buffer_write_fence,
-            c.VK_TRUE,
-            std.math.maxInt(u64),
-        );
+fn updateFractalPosition() void {
+    const block_x_diff = common.fractal_x_diff * fractalToBlockScale();
+    const block_y_diff = common.fractal_y_diff * fractalToBlockScale();
 
-        if (just_placed) {
-            just_placed = false;
-            for (&common.render_patches_status) |*status| {
-                if (status.* == .placing) status.* = .empty;
-            }
-        }
+    var updated_state: bool = false;
 
-        if (just_remapped) {
-            just_remapped = false;
-            var next_index = (common.current_render_to_coloring_descriptor_index + 1);
-            next_index %= common.render_to_coloring_descriptor_sets.len;
-            common.current_render_to_coloring_descriptor_index = next_index;
-        }
+    var remap_x: i32 = 0;
+    var remap_y: i32 = 0;
+    var remap_exp: i32 = 0;
 
-        if (common.render_patches_saturated and numCompletePatches() != 0 or
-            numCompletePatches() >= common.rendering_command_buffers.len)
-        {
-            try place_patches();
-            just_placed = true;
-            continue;
-        }
-
-        if (common.remap_needed) {
-            common.remap_needed = false;
-            try remap_buffer();
-            just_remapped = true;
-            continue;
-        }
-
-        std.Thread.sleep(500_000);
+    if (common.zoom_diff >= 2.0) {
+        remap_exp = 1;
+        updated_state = true;
+    }
+    if (common.zoom_diff < 1.0) {
+        remap_exp = -1;
+        updated_state = true;
     }
 
+    if (@abs(block_x_diff) > 0.5 or @abs(block_y_diff) > 0.5) {
+        updated_state = true;
+        //std.debug.print("moving buffer...\n", .{});
+        remap_x = @intFromFloat(@round(block_x_diff));
+        remap_y = @intFromFloat(@round(block_y_diff));
+    }
+
+    if (updated_state and !common.remapping_buffer) {
+        common.remap_x = remap_x;
+        common.remap_y = remap_y;
+        common.remap_exp = remap_exp;
+
+        //common.buffer_invalidated = true;
+        common.remap_needed = true;
+        common.internal_remap_needed = true;
+    }
+
+    //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
+}
+
+fn renderedBufferManage() MainLoopError!void {
     _ = c.vkWaitForFences(
         common.device,
         1,
@@ -339,6 +341,86 @@ fn renderedBufferManage() MainLoopError!void {
         c.VK_TRUE,
         std.math.maxInt(u64),
     );
+
+    if (common.placing_patches) {
+        common.placing_patches = false;
+        for (&common.render_patches_status) |*status| {
+            if (status.* == .placing) status.* = .empty;
+        }
+    }
+
+    if (common.remapping_buffer) {
+        if (common.remap_exp == 1) {
+            common.zoom_exp += 1;
+            common.zoom_diff *= 0.5;
+            common.fractal_x_diff *= 0.5;
+            common.fractal_y_diff *= 0.5;
+        } else if (common.remap_exp == -1) {
+            common.zoom_exp -= 1;
+            common.zoom_diff *= 2.0;
+            common.fractal_x_diff *= 2.0;
+            common.fractal_y_diff *= 2.0;
+        }
+        const adjustment_x: f64 = @as(f64, @floatFromInt(common.remap_x)) / fractalToBlockScale();
+        const adjustment_y: f64 = @as(f64, @floatFromInt(common.remap_y)) / fractalToBlockScale();
+
+        common.fractal_x_diff -= @floatCast(adjustment_x);
+        common.fractal_y_diff -= @floatCast(adjustment_y);
+
+        var tmp: c.mpf_t = undefined;
+        c.mpf_init2(&tmp, 32);
+        defer c.mpf_clear(&tmp);
+
+        const needed_prec: usize = 32 + @abs(common.zoom_exp);
+        if (needed_prec > c.mpf_get_prec(&common.mpf_intermediates[0])) {
+            for (&common.mpf_intermediates) |*intermediate| {
+                c.mpf_set_prec(intermediate, needed_prec);
+            }
+            c.mpf_set_prec(&common.fractal_pos_x, needed_prec);
+            c.mpf_set_prec(&common.fractal_pos_y, needed_prec);
+            c.mpf_set_prec(&common.ref_calc_x, needed_prec);
+            c.mpf_set_prec(&common.ref_calc_y, needed_prec);
+            std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
+        }
+
+        c.mpf_set_d(&tmp, adjustment_x);
+        if (common.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+        }
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
+
+        c.mpf_set_d(&tmp, adjustment_y);
+        if (common.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+        }
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
+
+        common.reference_center_stale = true;
+        reference_calc.update();
+        common.reference_center_stale = false;
+
+        var next_index = (common.current_render_to_coloring_descriptor_index + 1);
+        next_index %= common.render_to_coloring_descriptor_sets.len;
+        common.current_render_to_coloring_descriptor_index = next_index;
+        common.remapping_buffer = false;
+    }
+
+    if (common.remap_needed) {
+        common.remap_needed = false;
+        try remap_buffer();
+        common.remapping_buffer = true;
+    } else if (common.render_patches_saturated and numCompletePatches() != 0 or
+        numCompletePatches() >= common.rendering_command_buffers.len)
+    {
+        try place_patches();
+        common.placing_patches = true;
+    }
 }
 
 fn remap_buffer() MainLoopError!void {

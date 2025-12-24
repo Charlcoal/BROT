@@ -60,18 +60,6 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     mouse_pos_x = mouse_pos_x * common.zoom_diff / @as(f64, @floatFromInt(common.height));
     mouse_pos_y = mouse_pos_y * common.zoom_diff / @as(f64, @floatFromInt(common.height));
 
-    const needed_prec: usize = 32 + @abs(common.zoom_exp);
-    if (needed_prec > c.mpf_get_prec(&common.mpf_intermediates[0])) {
-        for (&common.mpf_intermediates) |*intermediate| {
-            c.mpf_set_prec(intermediate, needed_prec);
-        }
-        c.mpf_set_prec(&common.fractal_pos_x, needed_prec);
-        c.mpf_set_prec(&common.fractal_pos_y, needed_prec);
-        c.mpf_set_prec(&common.ref_calc_x, needed_prec);
-        c.mpf_set_prec(&common.ref_calc_y, needed_prec);
-        std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
-    }
-
     const diff_x: f64 = (1.0 - scroll_factor) * mouse_pos_x;
     const diff_y: f64 = (1.0 - scroll_factor) * mouse_pos_y;
 
@@ -79,85 +67,6 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     common.fractal_y_diff += @floatCast(diff_y);
 
     common.zoom_diff *= @as(f32, @floatCast(scroll_factor));
-
-    const block_size = common.renderPatchSize(common.max_res_scale_exponent);
-    const fractal_to_block_scale: f64 = @as(f64, @floatFromInt(common.height)) / @as(f64, @floatFromInt(block_size));
-    const block_x_diff = common.fractal_x_diff * fractal_to_block_scale;
-    const block_y_diff = common.fractal_y_diff * fractal_to_block_scale;
-
-    var updated_state: bool = false;
-
-    var remap_x: i32 = 0;
-    var remap_y: i32 = 0;
-    var remap_exp: i32 = 0;
-
-    if (common.zoom_diff >= 2.0) {
-        common.zoom_diff /= 2.0;
-        common.zoom_exp += 1;
-        common.fractal_x_diff *= 0.5;
-        common.fractal_y_diff *= 0.5;
-        remap_exp = 1;
-        updated_state = true;
-    }
-    if (common.zoom_diff < 1.0) {
-        common.zoom_diff *= 2.0;
-        common.zoom_exp -= 1;
-        common.fractal_x_diff *= 2.0;
-        common.fractal_y_diff *= 2.0;
-        remap_exp = -1;
-        updated_state = true;
-    }
-
-    if (@abs(block_x_diff) > 0.5 or @abs(block_y_diff) > 0.5) {
-        updated_state = true;
-        //std.debug.print("moving buffer...\n", .{});
-        const adjustment_x: f64 = @round(block_x_diff) / fractal_to_block_scale;
-        const adjustment_y: f64 = @round(block_y_diff) / fractal_to_block_scale;
-
-        remap_x = @intFromFloat(@round(block_x_diff));
-        remap_y = @intFromFloat(@round(block_y_diff));
-
-        common.fractal_x_diff -= @floatCast(adjustment_x);
-        common.fractal_y_diff -= @floatCast(adjustment_y);
-
-        var tmp: c.mpf_t = undefined;
-        c.mpf_init2(&tmp, 32);
-        defer c.mpf_clear(&tmp);
-
-        c.mpf_set_d(&tmp, adjustment_x);
-        if (common.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
-        } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
-        }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
-
-        c.mpf_set_d(&tmp, adjustment_y);
-        if (common.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
-        } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
-        }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
-    }
-
-    if (updated_state) {
-        common.remap_x = remap_x;
-        common.remap_y = remap_y;
-        common.remap_exp = remap_exp;
-
-        //common.buffer_invalidated = true;
-        common.remap_needed = true;
-        common.internal_remap_needed = true;
-
-        common.reference_center_stale = true;
-        reference_calc.update();
-        common.reference_center_stale = false;
-    }
-
-    //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {

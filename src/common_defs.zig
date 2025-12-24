@@ -178,7 +178,6 @@ pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
 pub var render_buffer_write_fence: c.VkFence = undefined;
 
 pub var compute_manager_thread: std.Thread = undefined;
-pub var patch_placer_thread: std.Thread = undefined;
 pub var gpu_interface_lock: std.Thread.Mutex = .{};
 pub var compute_manager_should_close: bool = false;
 
@@ -197,6 +196,9 @@ pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
 
 pub var render_patch_buffer: c.VkBuffer = undefined;
 pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var placing_patches: bool = false;
+pub var remapping_buffer: bool = false;
 
 pub var perturbation_vals: []@Vector(2, f32) = undefined;
 pub var max_iterations: u32 = 20000;
