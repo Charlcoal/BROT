@@ -18,5 +18,6 @@
         "triangle.vert",
         "mandelbrot.comp",
         "patch_place.comp",
+        "buffer_remap.comp",
     },
 }

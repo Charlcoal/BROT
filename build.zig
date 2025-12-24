@@ -16,7 +16,7 @@
 const std = @import("std");
 const cimgui = @import("cimgui_zig");
 const Resources = struct {
-    shaders: [4][]const u8,
+    shaders: [5][]const u8,
 };
 const resources: Resources = @import("resources.zon");
 

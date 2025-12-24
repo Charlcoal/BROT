@@ -46,7 +46,7 @@ pub fn cleanup(alloc: Allocator) void {
     for (common.rendering_fences) |fence| {
         c.vkDestroyFence(common.device, fence, null);
     }
-    c.vkDestroyFence(common.device, common.patch_place_fence, null);
+    c.vkDestroyFence(common.device, common.render_buffer_write_fence, null);
 
     for (common.render_finished_semaphores) |sem| {
         c.vkDestroySemaphore(common.device, sem, null);
@@ -81,9 +81,11 @@ pub fn cleanup(alloc: Allocator) void {
     c.vkDestroyPipeline(common.device, common.coloring_pipeline, null);
     c.vkDestroyPipeline(common.device, common.rendering_pipeline, null);
     c.vkDestroyPipeline(common.device, common.patch_place_pipeline, null);
+    c.vkDestroyPipeline(common.device, common.buffer_remap_pipeline, null);
     c.vkDestroyPipelineLayout(common.device, common.coloring_pipeline_layout, null);
     c.vkDestroyPipelineLayout(common.device, common.rendering_pipeline_layout, null);
     c.vkDestroyPipelineLayout(common.device, common.patch_place_pipeline_layout, null);
+    c.vkDestroyPipelineLayout(common.device, common.buffer_remap_pipeline_layout, null);
 
     c.vkDestroyRenderPass(common.device, common.render_pass, null);
 

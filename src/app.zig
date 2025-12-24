@@ -50,6 +50,7 @@ pub fn run(alloc: Allocator) Error!void {
     try window_init.initWindow();
     try vulkan_init.initVulkan(alloc);
     try ref_calc.init(alloc);
+    ref_calc.update();
     try main_loop.startComputeManager(alloc);
     try main_loop.mainLoop(alloc);
     clean_up.cleanup(alloc);

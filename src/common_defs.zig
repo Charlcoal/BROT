@@ -60,6 +60,13 @@ pub const PatchPlaceConstants = extern struct {
     resolution_scale_exponent: i32,
 };
 
+pub const BufferRemapConstants = extern struct {
+    src_offset: u32,
+    dst_offset: u32,
+    buf_width: u32,
+    scale_diff: i32,
+};
+
 pub const RenderPatch = struct {
     resolution_scale_exponent: u32,
     x_pos: u32,
@@ -128,15 +135,17 @@ pub var render_pass: c.VkRenderPass = undefined;
 pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var buffer_remap_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var coloring_pipeline: c.VkPipeline = undefined;
 pub var rendering_pipeline: c.VkPipeline = undefined;
 pub var patch_place_pipeline: c.VkPipeline = undefined;
+pub var buffer_remap_pipeline: c.VkPipeline = undefined;
 
 pub var graphics_command_pool: c.VkCommandPool = undefined;
 pub var compute_command_pool: c.VkCommandPool = undefined;
 pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
 pub var rendering_command_buffers: [num_active_render_patches]c.VkCommandBuffer = undefined;
-pub var patch_place_command_buffer: c.VkCommandBuffer = undefined;
+pub var rnd_buffer_write_command_buffer: c.VkCommandBuffer = undefined;
 
 pub var swap_chain: c.VkSwapchainKHR = null;
 pub var swap_chain_images: []c.VkImage = undefined;
@@ -152,16 +161,17 @@ pub var image_availible_semaphores: []c.VkSemaphore = undefined;
 pub var render_finished_semaphores: []c.VkSemaphore = undefined;
 pub var in_flight_fences: []c.VkFence = undefined;
 pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
-pub var patch_place_fence: c.VkFence = undefined;
+pub var render_buffer_write_fence: c.VkFence = undefined;
 
 pub var compute_manager_thread: std.Thread = undefined;
 pub var patch_placer_thread: std.Thread = undefined;
 pub var gpu_interface_lock: std.Thread.Mutex = .{};
 pub var compute_manager_should_close: bool = false;
+
 pub var render_patches_saturated: bool = false;
-pub var frame_updated: bool = false;
 pub var buffer_invalidated: bool = true;
-pub var reference_center_updated: bool = false;
+pub var reference_center_stale: bool = false;
+pub var remap_needed: bool = false;
 
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;
@@ -198,6 +208,10 @@ pub var render_patches_status = [1]RenderPatchStatus{.empty} **
     (patch_buffer_factor * num_active_render_patches);
 pub var fence_to_patch_index = [1]?usize{null} ** num_active_render_patches;
 
+pub var remap_x: i32 = 0;
+pub var remap_y: i32 = 0;
+pub var remap_exp: i32 = 0;
+
 pub var zoom_exp: i32 = 1;
 pub var zoom_diff: f32 = 1.0;
 pub var fractal_x_diff: f32 = 0.0;
@@ -225,7 +239,7 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
 }
 
 // in terms of buffer coordinates
-pub fn get_screen_center() struct { x: f32, y: f32 } {
+pub fn getScreenCenter() struct { x: f32, y: f32 } {
     return .{
         .x = @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_x) / 2)) +

@@ -1,0 +1,54 @@
+// BROT - A fast mandelbrot set explorer
+// Copyright (C) 2025  Charles Reischer
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+// 
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#version 450
+
+layout(set = 0, std430, binding = 0) readonly buffer buffer_src {
+    float buff_potential_vals_src[];
+};
+
+layout(set = 1, std430, binding = 0) writeonly buffer buffer_dst {
+    float buff_potential_vals_dst[];
+};
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout( push_constant ) uniform UniformBufferObject {
+    uint src_offset;
+    uint dst_offset;
+    uint buffer_width;
+    int scale_diff;
+} ubo;
+
+uvec2 shift(uvec2 vec, int shft) {
+    uint x, y;
+    if (shft < 0) { // multiple dst pixel read from same src, i.e. scale up
+        x = vec.x >> -shft;
+        y = vec.y >> -shft;
+    } else { // src pixels are skiped, i.e. scale down
+        x = vec.x << shft;
+        y = vec.y << shft;
+    }
+    return uvec2(x, y);
+}
+
+void main() {
+    uvec2 src_loc = shift(gl_GlobalInvocationID.xy, ubo.scale_diff);
+    uvec2 dst_loc = gl_GlobalInvocationID.xy;
+
+    float potential = buff_potential_vals_src[ubo.src_offset + src_loc.x + src_loc.y * ubo.buffer_width];
+    buff_potential_vals_dst[ubo.dst_offset + dst_loc.x + dst_loc.y * ubo.buffer_width] = potential;
+}

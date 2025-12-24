@@ -39,7 +39,7 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
 
 pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
     common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{alloc});
-    common.patch_placer_thread = try std.Thread.spawn(.{ .allocator = alloc }, placePatches, .{});
+    common.patch_placer_thread = try std.Thread.spawn(.{ .allocator = alloc }, renderedBufferManage, .{});
 }
 
 fn drawFrame(alloc: Allocator) MainLoopError!void {
@@ -192,12 +192,8 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             resetRenderPatchsResComps(resolutions_complete);
         }
 
-        if (common.frame_updated) {
-            common.frame_updated = false;
-        }
-
         // waiting on reference to be calculated
-        if (common.reference_center_updated) {
+        if (common.reference_center_stale) {
             std.Thread.sleep(1_000_000); // 1ms
             continue;
         }
@@ -280,60 +276,111 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
     );
 }
 
-fn placePatches() MainLoopError!void {
+fn renderedBufferManage() MainLoopError!void {
+    var just_placed: bool = false;
+    var just_remapped: bool = false;
+
     while (!common.compute_manager_should_close) {
         _ = c.vkWaitForFences(
             common.device,
             1,
-            &common.patch_place_fence,
+            &common.render_buffer_write_fence,
             c.VK_TRUE,
             std.math.maxInt(u64),
         );
 
-        for (&common.render_patches_status) |*status| {
-            if (status.* == .placing) status.* = .empty;
+        if (just_placed) {
+            just_placed = false;
+            for (&common.render_patches_status) |*status| {
+                if (status.* == .placing) status.* = .empty;
+            }
         }
 
-        while (!common.render_patches_saturated and numCompletePatches() < common.rendering_command_buffers.len or
-            numCompletePatches() == 0)
+        if (just_remapped) {
+            just_remapped = false;
+            var next_index = (common.current_render_to_coloring_descriptor_index + 1);
+            next_index %= common.render_to_coloring_descriptor_sets.len;
+            common.current_render_to_coloring_descriptor_index = next_index;
+        }
+
+        if (common.render_patches_saturated and numCompletePatches() != 0 or
+            numCompletePatches() >= common.rendering_command_buffers.len)
         {
-            std.Thread.sleep(500_000);
-            if (common.compute_manager_should_close) break;
+            try place_patches();
+            just_placed = true;
+            continue;
         }
 
-        _ = c.vkResetFences(common.device, 1, &common.patch_place_fence);
-
-        common.gpu_interface_lock.lock();
-        defer common.gpu_interface_lock.unlock();
-
-        _ = c.vkResetCommandBuffer(common.patch_place_command_buffer, 0);
-        common.render_patches_saturated = false;
-        try recordPatchPlaceCommandBuffer();
-
-        const compute_wait_stages: u32 = 0;
-        const compute_submit_info: c.VkSubmitInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 0,
-            .pWaitSemaphores = null,
-            .pWaitDstStageMask = &compute_wait_stages,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &common.patch_place_command_buffer,
-            .signalSemaphoreCount = 0,
-            .pSignalSemaphores = null,
-        };
-
-        if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.patch_place_fence) != c.VK_SUCCESS) {
-            @panic("patch placement failed to submit queue!");
+        if (common.remap_needed) {
+            common.remap_needed = false;
+            try remap_buffer();
+            just_remapped = true;
+            continue;
         }
+
+        std.Thread.sleep(500_000);
     }
 
     _ = c.vkWaitForFences(
         common.device,
         1,
-        &common.patch_place_fence,
+        &common.render_buffer_write_fence,
         c.VK_TRUE,
         std.math.maxInt(u64),
     );
+}
+
+fn remap_buffer() MainLoopError!void {
+    _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
+
+    common.gpu_interface_lock.lock();
+    defer common.gpu_interface_lock.unlock();
+
+    _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
+    try recordBufferRemapCommandBuffer();
+
+    const compute_wait_stages: u32 = 0;
+    const compute_submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = null,
+        .pWaitDstStageMask = &compute_wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &common.rnd_buffer_write_command_buffer,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = null,
+    };
+
+    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
+        @panic("patch placement failed to submit queue!");
+    }
+}
+
+fn place_patches() MainLoopError!void {
+    _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
+
+    common.gpu_interface_lock.lock();
+    defer common.gpu_interface_lock.unlock();
+
+    _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
+    common.render_patches_saturated = false;
+    try recordPatchPlaceCommandBuffer();
+
+    const compute_wait_stages: u32 = 0;
+    const compute_submit_info: c.VkSubmitInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = null,
+        .pWaitDstStageMask = &compute_wait_stages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &common.rnd_buffer_write_command_buffer,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = null,
+    };
+
+    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
+        @panic("patch placement failed to submit queue!");
+    }
 }
 
 fn numCompletePatches() u32 {
@@ -357,7 +404,7 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
 fn patchVisible(patch: RenderPatch) bool {
     const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
 
-    const screen_center = common.get_screen_center();
+    const screen_center = common.getScreenCenter();
 
     const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
     const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
@@ -402,7 +449,7 @@ fn patch_overlap(patch: RenderPatch, resolutions_complete: [common.num_distinct_
 }
 
 fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]bool) ?RenderPatch {
-    const screen_center = common.get_screen_center();
+    const screen_center = common.getScreenCenter();
 
     var mouse_x_flt: f64 = undefined;
     var mouse_y_flt: f64 = undefined;
@@ -493,7 +540,114 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     };
 }
 
-// TODO: properly syncronize - should probably be blocking in some mannor as it should run very fast
+fn recordBufferRemapCommandBuffer() MainLoopError!void {
+    const begin_info: c.VkCommandBufferBeginInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = 0,
+        .pInheritanceInfo = null,
+    };
+
+    if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
+        return MainLoopError.command_buffer_recording_begin_failed;
+    }
+
+    c.vkCmdBindPipeline(
+        common.rnd_buffer_write_command_buffer,
+        c.VK_PIPELINE_BIND_POINT_COMPUTE,
+        common.buffer_remap_pipeline,
+    );
+
+    const next_index = (common.current_render_to_coloring_descriptor_index + 1) % common.render_to_coloring_descriptor_sets.len;
+
+    const descriptor_sets = [_]c.VkDescriptorSet{
+        common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        common.render_to_coloring_descriptor_sets[next_index],
+    };
+
+    c.vkCmdBindDescriptorSets(
+        common.rnd_buffer_write_command_buffer,
+        c.VK_PIPELINE_BIND_POINT_COMPUTE,
+        common.buffer_remap_pipeline_layout,
+        0,
+        descriptor_sets.len,
+        &descriptor_sets,
+        0,
+        0,
+    );
+
+    // in half "blocks;" half largest render patchs as units
+    // to be potentially scaled by exp_diff
+    const Pos = struct { x: u32 = 0, y: u32 = 0 };
+    var buffer_src_start: Pos = .{};
+    var buffer_dst_start: Pos = .{};
+
+    //std.debug.print("remapping by ({}, {}) x {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
+
+    if (common.remap_x < 0) {
+        buffer_dst_start.x = @intCast(2 * -common.remap_x);
+    } else {
+        buffer_src_start.x = @intCast(2 * common.remap_x);
+    }
+    if (common.remap_y < 0) {
+        buffer_dst_start.y = @intCast(2 * -common.remap_y);
+    } else {
+        buffer_src_start.y = @intCast(2 * common.remap_y);
+    }
+
+    if (common.remap_exp == -1) {
+        buffer_dst_start.x <<= 1;
+        buffer_dst_start.y <<= 1;
+        buffer_src_start.x += common.escape_potential_buffer_block_num_x / 2;
+        buffer_src_start.y += common.escape_potential_buffer_block_num_y / 2;
+    }
+
+    if (common.remap_exp == 1) {
+        buffer_dst_start.x >>= 1;
+        buffer_dst_start.y >>= 1;
+        buffer_dst_start.x += common.escape_potential_buffer_block_num_x / 2;
+        buffer_dst_start.y += common.escape_potential_buffer_block_num_y / 2;
+    }
+
+    const buffer_dst_range: Pos = .{
+        .x = @intCast(2 * (common.escape_potential_buffer_block_num_x - @abs(common.remap_x))),
+        .y = @intCast(2 * (common.escape_potential_buffer_block_num_y - @abs(common.remap_y))),
+    };
+
+    const buffer_x_stride: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
+    const buffer_y_stride: u32 = buffer_x_stride * common.renderPatchSize(common.max_res_scale_exponent) *
+        common.escape_potential_buffer_block_num_x;
+
+    const buffer_src_offset: u32 = buffer_src_start.x * buffer_x_stride + buffer_src_start.y * buffer_y_stride;
+    const buffer_dst_offset: u32 = buffer_dst_start.x * buffer_x_stride + buffer_dst_start.y * buffer_y_stride;
+
+    c.vkCmdPushConstants(
+        common.rnd_buffer_write_command_buffer,
+        common.buffer_remap_pipeline_layout,
+        c.VK_SHADER_STAGE_COMPUTE_BIT,
+        0,
+        @sizeOf(common.BufferRemapConstants),
+        &common.BufferRemapConstants{
+            .src_offset = buffer_src_offset,
+            .dst_offset = buffer_dst_offset,
+            .buf_width = common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
+            .scale_diff = common.remap_exp,
+        },
+    );
+
+    const sqrt_workgroups_per_patch: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1) / common.sqrt_invocation_num;
+
+    c.vkCmdDispatch(
+        common.rnd_buffer_write_command_buffer,
+        (sqrt_workgroups_per_patch * buffer_dst_range.x) / @as(u32, if (common.remap_exp == 1) 2 else 1),
+        (sqrt_workgroups_per_patch * buffer_dst_range.y) / @as(u32, if (common.remap_exp == 1) 2 else 1),
+        1,
+    );
+
+    if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
+        return MainLoopError.command_buffer_record_failed;
+    }
+}
+
 fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -501,12 +655,12 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
         .pInheritanceInfo = null,
     };
 
-    if (c.vkBeginCommandBuffer(common.patch_place_command_buffer, &begin_info) != c.VK_SUCCESS) {
+    if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_recording_begin_failed;
     }
 
     c.vkCmdBindPipeline(
-        common.patch_place_command_buffer,
+        common.rnd_buffer_write_command_buffer,
         c.VK_PIPELINE_BIND_POINT_COMPUTE,
         common.patch_place_pipeline,
     );
@@ -521,7 +675,7 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
         };
 
         c.vkCmdBindDescriptorSets(
-            common.patch_place_command_buffer,
+            common.rnd_buffer_write_command_buffer,
             c.VK_PIPELINE_BIND_POINT_COMPUTE,
             common.patch_place_pipeline_layout,
             0,
@@ -537,7 +691,7 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
                 common.renderPatchSize(common.max_res_scale_exponent));
 
         c.vkCmdPushConstants(
-            common.patch_place_command_buffer,
+            common.rnd_buffer_write_command_buffer,
             common.patch_place_pipeline_layout,
             c.VK_SHADER_STAGE_COMPUTE_BIT,
             0,
@@ -551,14 +705,14 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
         );
 
         c.vkCmdDispatch(
-            common.patch_place_command_buffer,
+            common.rnd_buffer_write_command_buffer,
             common.sqrt_workgroup_num,
             common.sqrt_workgroup_num,
             1,
         );
     }
 
-    if (c.vkEndCommandBuffer(common.patch_place_command_buffer) != c.VK_SUCCESS) {
+    if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
 }
@@ -680,7 +834,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         null,
     );
 
-    const screen_center = common.get_screen_center();
+    const screen_center = common.getScreenCenter();
 
     c.vkCmdPushConstants(
         command_buffer,
