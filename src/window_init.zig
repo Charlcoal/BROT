@@ -91,6 +91,23 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     var remap_y: i32 = 0;
     var remap_exp: i32 = 0;
 
+    if (common.zoom_diff >= 2.0) {
+        common.zoom_diff /= 2.0;
+        common.zoom_exp += 1;
+        common.fractal_x_diff *= 0.5;
+        common.fractal_y_diff *= 0.5;
+        remap_exp = 1;
+        updated_state = true;
+    }
+    if (common.zoom_diff < 1.0) {
+        common.zoom_diff *= 2.0;
+        common.zoom_exp -= 1;
+        common.fractal_x_diff *= 2.0;
+        common.fractal_y_diff *= 2.0;
+        remap_exp = -1;
+        updated_state = true;
+    }
+
     if (@abs(block_x_diff) > 0.5 or @abs(block_y_diff) > 0.5) {
         updated_state = true;
         //std.debug.print("moving buffer...\n", .{});
@@ -126,23 +143,6 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
         c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
     }
 
-    if (common.zoom_diff >= 2.0) {
-        common.zoom_diff /= 2.0;
-        common.zoom_exp += 1;
-        common.fractal_x_diff *= 0.5;
-        common.fractal_y_diff *= 0.5;
-        remap_exp = 1;
-        updated_state = true;
-    }
-    if (common.zoom_diff < 1.0) {
-        common.zoom_diff *= 2.0;
-        common.zoom_exp -= 1;
-        common.fractal_x_diff *= 2.0;
-        common.fractal_y_diff *= 2.0;
-        remap_exp = -1;
-        updated_state = true;
-    }
-
     if (updated_state) {
         common.remap_x = remap_x;
         common.remap_y = remap_y;
@@ -155,6 +155,8 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
         reference_calc.update();
         common.reference_center_stale = false;
     }
+
+    //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {

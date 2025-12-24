@@ -595,22 +595,22 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
     }
 
     if (common.remap_exp == -1) {
-        buffer_dst_start.x <<= 1;
-        buffer_dst_start.y <<= 1;
+        buffer_src_start.x >>= 1;
+        buffer_src_start.y >>= 1;
         buffer_src_start.x += common.escape_potential_buffer_block_num_x / 2;
         buffer_src_start.y += common.escape_potential_buffer_block_num_y / 2;
     }
 
     if (common.remap_exp == 1) {
-        buffer_dst_start.x >>= 1;
-        buffer_dst_start.y >>= 1;
+        buffer_src_start.x <<= 1;
+        buffer_src_start.y <<= 1;
         buffer_dst_start.x += common.escape_potential_buffer_block_num_x / 2;
         buffer_dst_start.y += common.escape_potential_buffer_block_num_y / 2;
     }
 
     const buffer_dst_range: Pos = .{
-        .x = @intCast(2 * (common.escape_potential_buffer_block_num_x - @abs(common.remap_x))),
-        .y = @intCast(2 * (common.escape_potential_buffer_block_num_y - @abs(common.remap_y))),
+        .x = @intCast(2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x),
+        .y = @intCast(2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y),
     };
 
     const buffer_x_stride: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
@@ -634,12 +634,12 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
         },
     );
 
-    const sqrt_workgroups_per_patch: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1) / common.sqrt_invocation_num;
+    const sqrt_workgroups_per_half_patch: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1) / common.sqrt_invocation_num;
 
     c.vkCmdDispatch(
         common.rnd_buffer_write_command_buffer,
-        (sqrt_workgroups_per_patch * buffer_dst_range.x) / @as(u32, if (common.remap_exp == 1) 2 else 1),
-        (sqrt_workgroups_per_patch * buffer_dst_range.y) / @as(u32, if (common.remap_exp == 1) 2 else 1),
+        (sqrt_workgroups_per_half_patch * buffer_dst_range.x) / @as(u32, if (common.remap_exp == 1) 2 else 1),
+        (sqrt_workgroups_per_half_patch * buffer_dst_range.y) / @as(u32, if (common.remap_exp == 1) 2 else 1),
         1,
     );
 
