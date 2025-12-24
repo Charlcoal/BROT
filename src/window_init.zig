@@ -150,6 +150,7 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
 
         //common.buffer_invalidated = true;
         common.remap_needed = true;
+        common.internal_remap_needed = true;
 
         common.reference_center_stale = true;
         reference_calc.update();

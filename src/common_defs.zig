@@ -73,6 +73,20 @@ pub const RenderPatch = struct {
     y_pos: u32,
 };
 
+pub const Pos = struct {
+    x: u32 = 0,
+    y: u32 = 0,
+    pub fn shft(pos: @This(), arg: i6) @This() {
+        return if (arg < 0) .{
+            .x = pos.x >> @intCast(-arg),
+            .y = pos.y >> @intCast(-arg),
+        } else .{
+            .x = pos.x << @intCast(arg),
+            .y = pos.y << @intCast(arg),
+        };
+    }
+};
+
 pub const RenderPatchStatus = enum {
     empty,
     rendering,
@@ -172,6 +186,7 @@ pub var render_patches_saturated: bool = false;
 pub var buffer_invalidated: bool = true;
 pub var reference_center_stale: bool = false;
 pub var remap_needed: bool = false;
+pub var internal_remap_needed: bool = false;
 
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;

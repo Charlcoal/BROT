@@ -144,22 +144,27 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
 
 fn computeManage(alloc: Allocator) Allocator.Error!void {
     var resolutions_complete: [common.num_distinct_res_scales][][]bool = undefined;
+    var res_complete_tmp: [common.num_distinct_res_scales][][]bool = undefined;
 
-    for (0.., &resolutions_complete) |i, *res| {
+    for (0.., &resolutions_complete, &res_complete_tmp) |i, *res, *res_tmp| {
         const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         res.* = try alloc.alloc([]bool, width);
-        for (res.*) |*col| {
+        res_tmp.* = try alloc.alloc([]bool, width);
+        for (res.*, res_tmp.*) |*col, *col_tmp| {
             col.* = try alloc.alloc(bool, height);
+            col_tmp.* = try alloc.alloc(bool, height);
         }
     }
 
     defer {
-        for (resolutions_complete) |res| {
-            for (res) |col| {
+        for (resolutions_complete, res_complete_tmp) |res, res_tmp| {
+            for (res, res_tmp) |col, col_tmp| {
                 alloc.free(col);
+                alloc.free(col_tmp);
             }
             alloc.free(res);
+            alloc.free(res_tmp);
         }
     }
 
@@ -190,6 +195,12 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         if (common.buffer_invalidated) {
             common.buffer_invalidated = false;
             resetRenderPatchsResComps(resolutions_complete);
+        }
+
+        if (common.internal_remap_needed) {
+            common.internal_remap_needed = false;
+            moveRenderPatches(resolutions_complete, res_complete_tmp);
+            std.mem.swap([common.num_distinct_res_scales][][]bool, &resolutions_complete, &res_complete_tmp);
         }
 
         // waiting on reference to be calculated
@@ -401,6 +412,50 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
     }
 }
 
+fn moveRenderPatches(
+    resolutions_complete_src: [common.num_distinct_res_scales][]const []const bool,
+    resolutions_complete_dst: [common.num_distinct_res_scales][][]bool,
+) void {
+    const remap_dims = calculateRemapDimensions();
+
+    const dst_exp_start: usize = if (common.remap_exp < 0) @intCast(-common.remap_exp) else 0;
+    const src_exp_start: usize = if (common.remap_exp > 0) @intCast(common.remap_exp) else 0;
+
+    for (resolutions_complete_dst) |res| {
+        for (res) |col| {
+            for (col) |*elem| {
+                elem.* = false;
+            }
+        }
+    }
+    for (
+        dst_exp_start..,
+        src_exp_start..,
+        resolutions_complete_dst[dst_exp_start .. common.num_distinct_res_scales - src_exp_start],
+    ) |dst_exp, src_exp, res| {
+        const src_start: common.Pos = remap_dims.src_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(src_exp)) - 1));
+        const dst_start: common.Pos = remap_dims.dst_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(dst_exp)) - 1));
+        const range: common.Pos = remap_dims.dst_range.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(dst_exp)) - 1));
+        //std.debug.print("({}) {any}   ->   ({}) {any}  x  {any}\n", .{ src_exp, src_start, dst_exp, dst_start, range });
+        for (src_start.x.., res[dst_start.x..(range.x + dst_start.x)]) |i, col| {
+            for (src_start.y.., col[dst_start.y..(range.y + dst_start.y)]) |j, *elem| {
+                elem.* = resolutions_complete_src[src_exp][i][j];
+            }
+        }
+    }
+    if (common.remap_exp == 1) {
+        for (resolutions_complete_dst[common.max_res_scale_exponent], 0..) |col, i| {
+            for (col, 0..) |*elem, j| {
+                elem.* =
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j] or
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j + 1] or
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i + 1][2 * j] or
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i + 1][2 * j + 1];
+            }
+        }
+    }
+}
+
 fn patchVisible(patch: RenderPatch) bool {
     const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
 
@@ -472,10 +527,8 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
 
     //std.debug.print("target render pos: {}, {}\n", .{ buffer_target_pos_x, buffer_target_pos_y });
 
-    const Pos = struct { x: u32 = 0, y: u32 = 0 };
-
     var running_dists: [common.num_distinct_res_scales]f32 = [1]f32{std.math.floatMax(f32)} ** common.num_distinct_res_scales;
-    var min_dist_poss: [common.num_distinct_res_scales]Pos = [1]Pos{.{}} ** common.num_distinct_res_scales;
+    var min_dist_poss: [common.num_distinct_res_scales]common.Pos = [1]common.Pos{.{}} ** common.num_distinct_res_scales;
     var res_incompletes: [common.num_distinct_res_scales]bool = [1]bool{false} ** common.num_distinct_res_scales;
     for (0..common.num_distinct_res_scales) |res_scale_exp| {
         const patch_size: u32 = common.renderPatchSize(@intCast(res_scale_exp));
@@ -509,7 +562,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     }
 
     if (res_incompletes[common.max_res_scale_exponent]) {
-        const pos: Pos = min_dist_poss[common.max_res_scale_exponent];
+        const pos: common.Pos = min_dist_poss[common.max_res_scale_exponent];
         resolutions_complete[common.max_res_scale_exponent][pos.x][pos.y] = true;
         return RenderPatch{
             .resolution_scale_exponent = common.max_res_scale_exponent,
@@ -531,7 +584,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     // all complete
     if (min_dist == std.math.floatMax(f32)) return null;
 
-    const pos: Pos = min_dist_poss[min_dist_exp];
+    const pos: common.Pos = min_dist_poss[min_dist_exp];
     resolutions_complete[min_dist_exp][pos.x][pos.y] = true;
     return RenderPatch{
         .resolution_scale_exponent = min_dist_exp,
@@ -575,50 +628,14 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
         0,
     );
 
-    // in half "blocks;" half largest render patchs as units
-    // to be potentially scaled by exp_diff
-    const Pos = struct { x: u32 = 0, y: u32 = 0 };
-    var buffer_src_start: Pos = .{};
-    var buffer_dst_start: Pos = .{};
-
-    //std.debug.print("remapping by ({}, {}) x {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
-
-    if (common.remap_x < 0) {
-        buffer_dst_start.x = @intCast(2 * -common.remap_x);
-    } else {
-        buffer_src_start.x = @intCast(2 * common.remap_x);
-    }
-    if (common.remap_y < 0) {
-        buffer_dst_start.y = @intCast(2 * -common.remap_y);
-    } else {
-        buffer_src_start.y = @intCast(2 * common.remap_y);
-    }
-
-    if (common.remap_exp == -1) {
-        buffer_src_start.x >>= 1;
-        buffer_src_start.y >>= 1;
-        buffer_src_start.x += common.escape_potential_buffer_block_num_x / 2;
-        buffer_src_start.y += common.escape_potential_buffer_block_num_y / 2;
-    }
-
-    if (common.remap_exp == 1) {
-        buffer_src_start.x <<= 1;
-        buffer_src_start.y <<= 1;
-        buffer_dst_start.x += common.escape_potential_buffer_block_num_x / 2;
-        buffer_dst_start.y += common.escape_potential_buffer_block_num_y / 2;
-    }
-
-    const buffer_dst_range: Pos = .{
-        .x = @intCast(2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x),
-        .y = @intCast(2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y),
-    };
+    const remap_dims = calculateRemapDimensions();
 
     const buffer_x_stride: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
     const buffer_y_stride: u32 = buffer_x_stride * common.renderPatchSize(common.max_res_scale_exponent) *
         common.escape_potential_buffer_block_num_x;
 
-    const buffer_src_offset: u32 = buffer_src_start.x * buffer_x_stride + buffer_src_start.y * buffer_y_stride;
-    const buffer_dst_offset: u32 = buffer_dst_start.x * buffer_x_stride + buffer_dst_start.y * buffer_y_stride;
+    const buffer_src_offset: u32 = remap_dims.src_start.x * buffer_x_stride + remap_dims.src_start.y * buffer_y_stride;
+    const buffer_dst_offset: u32 = remap_dims.dst_start.x * buffer_x_stride + remap_dims.dst_start.y * buffer_y_stride;
 
     c.vkCmdPushConstants(
         common.rnd_buffer_write_command_buffer,
@@ -638,14 +655,80 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
 
     c.vkCmdDispatch(
         common.rnd_buffer_write_command_buffer,
-        (sqrt_workgroups_per_half_patch * buffer_dst_range.x) / @as(u32, if (common.remap_exp == 1) 2 else 1),
-        (sqrt_workgroups_per_half_patch * buffer_dst_range.y) / @as(u32, if (common.remap_exp == 1) 2 else 1),
+        sqrt_workgroups_per_half_patch * remap_dims.dst_range.x,
+        sqrt_workgroups_per_half_patch * remap_dims.dst_range.y,
         1,
     );
 
     if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
+}
+
+fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.Pos, dst_range: common.Pos } {
+    // in half "blocks;" half largest render patchs as units
+    // to be potentially scaled by exp_diff
+    var buffer_src_start: common.Pos = .{};
+    var buffer_dst_start: common.Pos = .{};
+
+    //std.debug.print("remapping by ({}, {}) x {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
+
+    if (common.remap_x < 0) {
+        buffer_dst_start.x = @intCast(2 * -common.remap_x);
+    } else {
+        buffer_src_start.x = @intCast(2 * common.remap_x);
+    }
+    if (common.remap_y < 0) {
+        buffer_dst_start.y = @intCast(2 * -common.remap_y);
+    } else {
+        buffer_src_start.y = @intCast(2 * common.remap_y);
+    }
+
+    var buffer_dst_range: common.Pos = undefined;
+    if (common.remap_exp == 0) {
+        buffer_dst_range = .{
+            .x = @intCast(2 * common.escape_potential_buffer_block_num_x - @max(buffer_dst_start.x, buffer_src_start.x)),
+            .y = @intCast(2 * common.escape_potential_buffer_block_num_y - @max(buffer_dst_start.y, buffer_src_start.y)),
+        };
+    } else if (common.remap_exp == 1) {
+        buffer_src_start.x <<= 1;
+        buffer_src_start.y <<= 1;
+        buffer_dst_start.x += common.escape_potential_buffer_block_num_x / 2;
+        buffer_dst_start.y += common.escape_potential_buffer_block_num_y / 2;
+
+        buffer_dst_range = .{
+            .x = @intCast(@min(
+                2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x,
+                common.escape_potential_buffer_block_num_x - buffer_src_start.x,
+            )),
+            .y = @intCast(@min(
+                2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y,
+                common.escape_potential_buffer_block_num_y - buffer_src_start.y,
+            )),
+        };
+    } else if (common.remap_exp == -1) {
+        buffer_src_start.x >>= 1;
+        buffer_src_start.y >>= 1;
+        buffer_src_start.x += common.escape_potential_buffer_block_num_x / 2;
+        buffer_src_start.y += common.escape_potential_buffer_block_num_y / 2;
+
+        buffer_dst_range = .{
+            .x = @intCast(@min(
+                2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x,
+                4 * common.escape_potential_buffer_block_num_x - buffer_src_start.x,
+            )),
+            .y = @intCast(@min(
+                2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y,
+                4 * common.escape_potential_buffer_block_num_y - buffer_src_start.y,
+            )),
+        };
+    }
+
+    return .{
+        .src_start = buffer_src_start,
+        .dst_start = buffer_dst_start,
+        .dst_range = buffer_dst_range,
+    };
 }
 
 fn recordPatchPlaceCommandBuffer() MainLoopError!void {
