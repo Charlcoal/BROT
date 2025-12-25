@@ -90,6 +90,7 @@ pub const Pos = struct {
 pub const RenderPatchStatus = enum {
     empty,
     rendering,
+    cancelled,
     complete,
     placing,
 };
@@ -181,11 +182,13 @@ pub var compute_manager_thread: std.Thread = undefined;
 pub var gpu_interface_lock: std.Thread.Mutex = .{};
 pub var compute_manager_should_close: bool = false;
 
+pub var render_patch_mutex: std.Thread.Mutex = .{};
+pub var resolutions_complete: [num_distinct_res_scales][][]bool = undefined;
+pub var res_complete_tmp: [num_distinct_res_scales][][]bool = undefined;
 pub var render_patches_saturated: bool = false;
 pub var buffer_invalidated: bool = true;
 pub var reference_center_stale: bool = false;
 pub var remap_needed: bool = false;
-pub var internal_remap_needed: bool = false;
 
 pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;

@@ -145,10 +145,7 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
 }
 
 fn computeManage(alloc: Allocator) Allocator.Error!void {
-    var resolutions_complete: [common.num_distinct_res_scales][][]bool = undefined;
-    var res_complete_tmp: [common.num_distinct_res_scales][][]bool = undefined;
-
-    for (0.., &resolutions_complete, &res_complete_tmp) |i, *res, *res_tmp| {
+    for (0.., &common.resolutions_complete, &common.res_complete_tmp) |i, *res, *res_tmp| {
         const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         res.* = try alloc.alloc([]bool, width);
@@ -160,7 +157,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
     }
 
     defer {
-        for (resolutions_complete, res_complete_tmp) |res, res_tmp| {
+        for (common.resolutions_complete, common.res_complete_tmp) |res, res_tmp| {
             for (res, res_tmp) |col, col_tmp| {
                 alloc.free(col);
                 alloc.free(col_tmp);
@@ -190,19 +187,19 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         };
 
         if (common.fence_to_patch_index[comp_index]) |index| {
-            common.render_patches_status[index] = .complete;
+            if (common.render_patches_status[index] == .cancelled) {
+                common.render_patches_status[index] = .empty;
+            } else {
+                common.render_patches_status[index] = .complete;
+            }
             common.fence_to_patch_index[comp_index] = null;
         }
 
         if (common.buffer_invalidated) {
             common.buffer_invalidated = false;
-            resetRenderPatchsResComps(resolutions_complete);
-        }
-
-        if (common.internal_remap_needed) {
-            common.internal_remap_needed = false;
-            moveRenderPatches(resolutions_complete, res_complete_tmp);
-            std.mem.swap([common.num_distinct_res_scales][][]bool, &resolutions_complete, &res_complete_tmp);
+            common.render_patch_mutex.lock();
+            resetRenderPatchsResComps(common.resolutions_complete);
+            common.render_patch_mutex.unlock();
         }
 
         // waiting on reference to be calculated
@@ -221,7 +218,9 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             continue;
         }
 
-        const patch_to_render_maybe = chooseRenderPatch(resolutions_complete);
+        common.render_patch_mutex.lock();
+        const patch_to_render_maybe = chooseRenderPatch(common.resolutions_complete);
+        common.render_patch_mutex.unlock();
         var patch_to_render: RenderPatch = undefined;
         if (patch_to_render_maybe) |patch| {
             patch_to_render = patch;
@@ -327,7 +326,6 @@ fn updateFractalPosition() void {
 
         //common.buffer_invalidated = true;
         common.remap_needed = true;
-        common.internal_remap_needed = true;
     }
 
     //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
@@ -350,6 +348,15 @@ fn renderedBufferManage() MainLoopError!void {
     }
 
     if (common.remapping_buffer) {
+        common.remapping_buffer = false;
+
+        common.render_patch_mutex.lock();
+        defer common.render_patch_mutex.unlock();
+
+        moveUnplacedPatches();
+        moveRenderPatches(common.resolutions_complete, common.res_complete_tmp);
+        std.mem.swap([common.num_distinct_res_scales][][]bool, &common.resolutions_complete, &common.res_complete_tmp);
+
         if (common.remap_exp == 1) {
             common.zoom_exp += 1;
             common.zoom_diff *= 0.5;
@@ -408,7 +415,6 @@ fn renderedBufferManage() MainLoopError!void {
         var next_index = (common.current_render_to_coloring_descriptor_index + 1);
         next_index %= common.render_to_coloring_descriptor_sets.len;
         common.current_render_to_coloring_descriptor_index = next_index;
-        common.remapping_buffer = false;
     }
 
     if (common.remap_needed) {
@@ -494,6 +500,68 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
     }
 }
 
+fn moveUnplacedPatches() void {
+    //std.debug.print("remapping by: ({}, {}) - {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
+    const remap = calculateRemapDimensions();
+
+    for (&common.render_patches_status, &common.render_patches) |*status, *patch| {
+        if (status.* == .rendering or status.* == .complete) {
+            //std.debug.print("({}, {}) - {}  -->", .{ patch.x_pos, patch.y_pos, patch.resolution_scale_exponent });
+
+            const new_exp = @as(i64, patch.resolution_scale_exponent) - common.remap_exp;
+            if (new_exp > common.max_res_scale_exponent or new_exp < 0) {
+                if (status.* == .rendering) status.* = .cancelled;
+                if (status.* == .complete) status.* = .empty;
+                //std.debug.print("  CANCELLED (exp: {})\n", .{new_exp});
+                continue;
+            }
+
+            const src_start: common.Pos = remap.src_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(patch.resolution_scale_exponent)) - 1));
+            const dst_start: common.Pos = remap.dst_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(new_exp)) - 1));
+
+            const diff_x: i64 = @as(i64, patch.x_pos) - src_start.x;
+            const diff_y: i64 = @as(i64, patch.y_pos) - src_start.y;
+
+            const new_x: i64 = dst_start.x + diff_x;
+            const new_y: i64 = dst_start.y + diff_y;
+            const new_shft: u5 = @intCast(common.max_res_scale_exponent - new_exp);
+
+            //const old_shft: u5 = @intCast(common.max_res_scale_exponent - patch.resolution_scale_exponent);
+
+            //if (common.remap_exp == 1) {
+            //    new_x <<= 1;
+            //    new_y <<= 1;
+            //    new_x -= (common.escape_potential_buffer_block_num_x << new_shft) / 4;
+            //    new_y -= (common.escape_potential_buffer_block_num_y << new_shft) / 4;
+            //} else if (common.remap_exp == -1) {
+            //    new_x >>= 1;
+            //    new_y >>= 1;
+            //    new_x += (common.escape_potential_buffer_block_num_x << new_shft) / 4;
+            //    new_y += (common.escape_potential_buffer_block_num_y << new_shft) / 4;
+            //}
+
+            //new_x -= common.remap_x << old_shft;
+            //new_y -= common.remap_y << old_shft;
+
+            if (new_x < 0 or
+                new_x >= common.escape_potential_buffer_block_num_x << new_shft or
+                new_y < 0 or
+                new_y >= common.escape_potential_buffer_block_num_y << new_shft)
+            {
+                if (status.* == .rendering) status.* = .cancelled;
+                if (status.* == .complete) status.* = .empty;
+                //std.debug.print("  CANCELLED (pos: ({}, {}))\n", .{ new_x, new_y });
+                continue;
+            }
+
+            //std.debug.print("  ({}, {}) - {}\n", .{ new_x, new_y, new_exp });
+            patch.resolution_scale_exponent = @intCast(new_exp);
+            patch.x_pos = @intCast(new_x);
+            patch.y_pos = @intCast(new_y);
+        }
+    }
+}
+
 fn moveRenderPatches(
     resolutions_complete_src: [common.num_distinct_res_scales][]const []const bool,
     resolutions_complete_dst: [common.num_distinct_res_scales][][]bool,
@@ -567,7 +635,7 @@ fn patch_overlap(patch: RenderPatch, resolutions_complete: [common.num_distinct_
 
     // ensure overlapping patches are never simultaniusly rendered
     for (common.render_patches_status, common.render_patches) |status, active_patch| {
-        if (status == .empty or status == .placing) continue;
+        if (status == .empty or status == .placing or status == .cancelled) continue;
         const active_higher_exp = active_patch.resolution_scale_exponent > patch.resolution_scale_exponent;
         const exp_diff = if (active_higher_exp)
             active_patch.resolution_scale_exponent - patch.resolution_scale_exponent
@@ -604,8 +672,8 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     mouse_x_from_screen_center = mouse_x_from_screen_center * common.zoom_diff;
     mouse_y_from_screen_center = mouse_y_from_screen_center * common.zoom_diff;
 
-    const buffer_target_pos_x: u32 = @intFromFloat(mouse_x_from_screen_center + screen_center.x);
-    const buffer_target_pos_y: u32 = @intFromFloat(mouse_y_from_screen_center + screen_center.y);
+    const buffer_target_pos_x: u32 = @intFromFloat(@max(0, mouse_x_from_screen_center + screen_center.x));
+    const buffer_target_pos_y: u32 = @intFromFloat(@max(0, mouse_y_from_screen_center + screen_center.y));
 
     //std.debug.print("target render pos: {}, {}\n", .{ buffer_target_pos_x, buffer_target_pos_y });
 
@@ -747,6 +815,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
     }
 }
 
+/// in units of half blocks (half of largest render patch size)
 fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.Pos, dst_range: common.Pos } {
     // in half "blocks;" half largest render patchs as units
     // to be potentially scaled by exp_diff
