@@ -597,9 +597,9 @@ fn moveRenderPatches(
         for (resolutions_complete_dst[common.max_res_scale_exponent], 0..) |col, i| {
             for (col, 0..) |*elem, j| {
                 elem.* =
-                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j] or
-                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j + 1] or
-                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i + 1][2 * j] or
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j] and
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i][2 * j + 1] and
+                    resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i + 1][2 * j] and
                     resolutions_complete_dst[common.max_res_scale_exponent - 1][2 * i + 1][2 * j + 1];
             }
         }
@@ -714,6 +714,10 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     if (res_incompletes[common.max_res_scale_exponent]) {
         const pos: common.Pos = min_dist_poss[common.max_res_scale_exponent];
         resolutions_complete[common.max_res_scale_exponent][pos.x][pos.y] = true;
+        resolutions_complete[common.max_res_scale_exponent - 1][2 * pos.x][2 * pos.y] = false;
+        resolutions_complete[common.max_res_scale_exponent - 1][2 * pos.x][2 * pos.y + 1] = false;
+        resolutions_complete[common.max_res_scale_exponent - 1][2 * pos.x + 1][2 * pos.y] = false;
+        resolutions_complete[common.max_res_scale_exponent - 1][2 * pos.x + 1][2 * pos.y + 1] = false;
         return RenderPatch{
             .resolution_scale_exponent = common.max_res_scale_exponent,
             .x_pos = pos.x,
@@ -736,6 +740,12 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
 
     const pos: common.Pos = min_dist_poss[min_dist_exp];
     resolutions_complete[min_dist_exp][pos.x][pos.y] = true;
+    if (min_dist_exp > 0) {
+        resolutions_complete[min_dist_exp - 1][2 * pos.x][2 * pos.y] = false;
+        resolutions_complete[min_dist_exp - 1][2 * pos.x][2 * pos.y + 1] = false;
+        resolutions_complete[min_dist_exp - 1][2 * pos.x + 1][2 * pos.y] = false;
+        resolutions_complete[min_dist_exp - 1][2 * pos.x + 1][2 * pos.y + 1] = false;
+    }
     return RenderPatch{
         .resolution_scale_exponent = min_dist_exp,
         .x_pos = pos.x,
