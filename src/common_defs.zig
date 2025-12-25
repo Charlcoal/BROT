@@ -261,12 +261,12 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
 // in terms of buffer coordinates
 pub fn getScreenCenter() struct { x: f32, y: f32 } {
     return .{
-        .x = @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+        .x = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_x) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_x_diff,
-        .y = @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            @as(f32, @floatFromInt(height)) * fractal_x_diff),
+        .y = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_y) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_y_diff,
+            @as(f32, @floatFromInt(height)) * fractal_y_diff),
     };
 }
 

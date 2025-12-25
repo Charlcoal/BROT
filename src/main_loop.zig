@@ -29,8 +29,9 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
+        renderedBufferResolve();
         updateFractalPosition();
-        try renderedBufferManage();
+        try renderedBufferDispatch();
 
         try drawFrame(alloc);
     }
@@ -319,7 +320,7 @@ fn updateFractalPosition() void {
         remap_y = @intFromFloat(@round(block_y_diff));
     }
 
-    if (updated_state and !common.remapping_buffer) {
+    if (updated_state) {
         common.remap_x = remap_x;
         common.remap_y = remap_y;
         common.remap_exp = remap_exp;
@@ -331,7 +332,7 @@ fn updateFractalPosition() void {
     //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
 }
 
-fn renderedBufferManage() MainLoopError!void {
+fn renderedBufferResolve() void {
     _ = c.vkWaitForFences(
         common.device,
         1,
@@ -416,7 +417,9 @@ fn renderedBufferManage() MainLoopError!void {
         next_index %= common.render_to_coloring_descriptor_sets.len;
         common.current_render_to_coloring_descriptor_index = next_index;
     }
+}
 
+fn renderedBufferDispatch() MainLoopError!void {
     if (common.remap_needed) {
         common.remap_needed = false;
         try remap_buffer();
@@ -848,8 +851,8 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
     var buffer_dst_range: common.Pos = undefined;
     if (common.remap_exp == 0) {
         buffer_dst_range = .{
-            .x = @intCast(2 * common.escape_potential_buffer_block_num_x - @max(buffer_dst_start.x, buffer_src_start.x)),
-            .y = @intCast(2 * common.escape_potential_buffer_block_num_y - @max(buffer_dst_start.y, buffer_src_start.y)),
+            .x = @intCast(@max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, @max(buffer_dst_start.x, buffer_src_start.x)))),
+            .y = @intCast(@max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, @max(buffer_dst_start.y, buffer_src_start.y)))),
         };
     } else if (common.remap_exp == 1) {
         buffer_src_start.x <<= 1;
@@ -859,12 +862,12 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
 
         buffer_dst_range = .{
             .x = @intCast(@min(
-                2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x,
-                common.escape_potential_buffer_block_num_x - buffer_src_start.x,
+                @max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_dst_start.x)),
+                @max(0, common.escape_potential_buffer_block_num_x - @as(i64, buffer_src_start.x)),
             )),
             .y = @intCast(@min(
-                2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y,
-                common.escape_potential_buffer_block_num_y - buffer_src_start.y,
+                @max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_dst_start.y)),
+                @max(0, common.escape_potential_buffer_block_num_y - @as(i64, buffer_src_start.y)),
             )),
         };
     } else if (common.remap_exp == -1) {
@@ -875,15 +878,20 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
 
         buffer_dst_range = .{
             .x = @intCast(@min(
-                2 * common.escape_potential_buffer_block_num_x - buffer_dst_start.x,
-                4 * common.escape_potential_buffer_block_num_x - buffer_src_start.x,
+                @max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_dst_start.x)),
+                @max(0, 4 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_src_start.x)),
             )),
             .y = @intCast(@min(
-                2 * common.escape_potential_buffer_block_num_y - buffer_dst_start.y,
-                4 * common.escape_potential_buffer_block_num_y - buffer_src_start.y,
+                @max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_dst_start.y)),
+                @max(0, 4 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_src_start.y)),
             )),
         };
     }
+
+    buffer_src_start.x = @min(2 * common.escape_potential_buffer_block_num_x, buffer_src_start.x);
+    buffer_src_start.y = @min(2 * common.escape_potential_buffer_block_num_y, buffer_src_start.y);
+    buffer_dst_start.x = @min(2 * common.escape_potential_buffer_block_num_x, buffer_dst_start.x);
+    buffer_dst_start.y = @min(2 * common.escape_potential_buffer_block_num_y, buffer_dst_start.y);
 
     return .{
         .src_start = buffer_src_start,
