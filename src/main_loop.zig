@@ -221,11 +221,11 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
 
         common.render_patch_mutex.lock();
         const patch_to_render_maybe = chooseRenderPatch(common.resolutions_complete);
-        common.render_patch_mutex.unlock();
         var patch_to_render: RenderPatch = undefined;
         if (patch_to_render_maybe) |patch| {
             patch_to_render = patch;
         } else {
+            common.render_patch_mutex.unlock();
             common.render_patches_saturated = true;
             std.Thread.sleep(4_000_000); // 4ms
             continue;
@@ -241,6 +241,19 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         render_patch_size *= common.sqrt_invocation_num;
         render_patch_size *= common.sqrt_workgroup_num;
 
+        const render_params: RenderingParams = .{
+            .pos = @Vector(2, u32){
+                render_patch_size * patch_to_render.x_pos,
+                render_patch_size * patch_to_render.y_pos,
+            },
+            .res_exp = @intCast(patch_to_render.resolution_scale_exponent),
+            .zoom_exp = common.zoom_exp,
+            .patch_index = buffer_to_render_to.?,
+            .active_ref = common.current_cpu_to_render_descriptor_index,
+        };
+
+        common.render_patch_mutex.unlock();
+
         common.gpu_interface_lock.lock();
         defer common.gpu_interface_lock.unlock();
 
@@ -250,16 +263,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         _ = c.vkResetFences(common.device, 1, &common.rendering_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
-        recordRenderingCommandBuffer(
-            common.rendering_command_buffers[comp_index],
-            buffer_to_render_to.?,
-            common.sqrt_workgroup_num,
-            @Vector(2, u32){
-                render_patch_size * patch_to_render.x_pos,
-                render_patch_size * patch_to_render.y_pos,
-            }, //spiral_result.pos,
-            @intCast(resolution_scale_exponent),
-        ) catch {
+        recordRenderingCommandBuffer(common.rendering_command_buffers[comp_index], render_params) catch {
             @panic("compute manager failed to record buffer!");
         };
 
@@ -946,13 +950,15 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     }
 }
 
-fn recordRenderingCommandBuffer(
-    rendering_command_buffer: c.VkCommandBuffer,
-    patch_buffer_index: usize,
-    render_patch_size: u32,
+const RenderingParams = struct {
     pos: @Vector(2, u32),
-    resolution_scale_exponent: i32,
-) MainLoopError!void {
+    res_exp: i32,
+    zoom_exp: i32,
+    patch_index: usize,
+    active_ref: usize,
+};
+
+fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, params: RenderingParams) MainLoopError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -964,8 +970,8 @@ fn recordRenderingCommandBuffer(
     }
 
     const descriptor_sets = [_]c.VkDescriptorSet{
-        common.render_patch_descriptor_sets[patch_buffer_index],
-        common.cpu_to_render_descriptor_sets[common.current_cpu_to_render_descriptor_index],
+        common.render_patch_descriptor_sets[params.patch_index],
+        common.cpu_to_render_descriptor_sets[params.active_ref],
     };
 
     c.vkCmdBindPipeline(
@@ -995,14 +1001,19 @@ fn recordRenderingCommandBuffer(
                 @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
                 @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
             },
-            .screen_offset = pos,
-            .height_scale_exp = common.zoom_exp,
-            .resolution_scale_exponent = resolution_scale_exponent,
+            .screen_offset = params.pos,
+            .height_scale_exp = params.zoom_exp,
+            .resolution_scale_exponent = params.res_exp,
             .cur_height = @intCast(common.height),
         },
     );
 
-    c.vkCmdDispatch(rendering_command_buffer, render_patch_size, render_patch_size, 1);
+    c.vkCmdDispatch(
+        rendering_command_buffer,
+        common.sqrt_workgroup_num,
+        common.sqrt_workgroup_num,
+        1,
+    );
 
     if (c.vkEndCommandBuffer(rendering_command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
