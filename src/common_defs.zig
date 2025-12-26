@@ -50,7 +50,7 @@ pub const RenderingConstants = extern struct {
 pub const ColoringConstants = extern struct {
     cur_resolution: @Vector(2, u32),
     center_position: @Vector(2, u32),
-    max_width: u32,
+    buffer_size: @Vector(2, u32),
     zoom_diff: f32,
 };
 

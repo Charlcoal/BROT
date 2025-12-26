@@ -21,7 +21,7 @@ layout(location = 0) out vec4 outColor;
 layout(push_constant) uniform UniformBufferObject {
     uvec2 cur_res;
     uvec2 center_pos;
-    uint max_width;
+    uvec2 buffer_size;
     float zoom_diff;
 } ubo;
 layout(std430, binding = 0) readonly buffer storage {
@@ -30,15 +30,20 @@ layout(std430, binding = 0) readonly buffer storage {
 
 void main() {
     uvec2 true_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) + ubo.center_pos;
-    float potential_val = potential_vals[true_loc.x + true_loc.y * ubo.max_width.x];
+    float potential_val;
+    if (true_loc.x >= ubo.buffer_size.x || true_loc.y >= ubo.buffer_size.y) {
+        potential_val = -1;
+    } else {
+        potential_val = potential_vals[true_loc.x + true_loc.y * ubo.buffer_size.x];
+    }
     
     //ivec2 zoom_out_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) * 2 + ivec2(ubo.center_pos);
 
     //float potential_val;
-    //if (zoom_out_loc.x >= ubo.max_width || zoom_out_loc.x < 0 || zoom_out_loc.y >= 2 * ubo.center_pos.y || zoom_out_loc.y < 0) {
+    //if (zoom_out_loc.x >= ubo.buffer_size || zoom_out_loc.x < 0 || zoom_out_loc.y >= 2 * ubo.center_pos.y || zoom_out_loc.y < 0) {
     //    potential_val = -1;
     //} else {
-    //    potential_val = potential_vals[zoom_out_loc.x + zoom_out_loc.y * ubo.max_width.x];
+    //    potential_val = potential_vals[zoom_out_loc.x + zoom_out_loc.y * ubo.buffer_size.x];
     //}
 
     //if (uint(gl_FragCoord.x) == ubo.cur_res.x/4 || uint(gl_FragCoord.x) == 3 * ubo.cur_res.x/4 || uint(gl_FragCoord.y) == ubo.cur_res.y/4 || uint(gl_FragCoord.y) == 3 * ubo.cur_res.y/4) {

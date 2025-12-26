@@ -1077,7 +1077,10 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
                 @intFromFloat(screen_center.x),
                 @intFromFloat(screen_center.y),
             },
-            .max_width = common.renderPatchSize(@intCast(common.max_res_scale_exponent)) * common.escape_potential_buffer_block_num_x,
+            .buffer_size = @Vector(2, u32){
+                common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
+                common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
+            },
             .zoom_diff = common.zoom_diff,
         },
     );
