@@ -47,7 +47,7 @@ void main() {
 
     uvec2 screen_loc = pixel_scale * gl_GlobalInvocationID.xy + ubo.screen_offset;
     // center within render patch
-    ivec2 center_screen_loc = ivec2(screen_loc + uvec2(pixel_scale/2, pixel_scale/2));
+    ivec2 center_screen_loc = ivec2(screen_loc);//ivec2(screen_loc + uvec2(pixel_scale/2, pixel_scale/2));
 
     center_screen_loc = ivec2(center_screen_loc - ubo.center_screen_pos);
     vec2 delta_c = center_screen_loc * height_scale;

@@ -27,14 +27,14 @@ layout(set = 1, std430, binding = 0) writeonly buffer buffer_dst {
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout( push_constant ) uniform UniformBufferObject {
-    uint src_offset;
-    uint dst_offset;
-    uint buffer_width;
+    uvec2 dst_pos_offset;
+    uvec2 src_offset;
+    uvec2 buffer_size;
     int scale_diff;
 } ubo;
 
-uvec2 shift(uvec2 vec, int shft) {
-    uint x, y;
+ivec2 shift(ivec2 vec, int shft) {
+    int x, y;
     if (shft < 0) { // multiple dst pixel read from same src, i.e. scale up
         x = vec.x >> -shft;
         y = vec.y >> -shft;
@@ -42,13 +42,20 @@ uvec2 shift(uvec2 vec, int shft) {
         x = vec.x << shft;
         y = vec.y << shft;
     }
-    return uvec2(x, y);
+    return ivec2(x, y);
 }
 
 void main() {
-    uvec2 src_loc = shift(gl_GlobalInvocationID.xy, ubo.scale_diff);
+    ivec2 true_loc = ivec2(gl_GlobalInvocationID.xy) - ivec2(ubo.dst_pos_offset);
+    ivec2 src_loc = ivec2(ubo.src_offset) + shift(true_loc, ubo.scale_diff);
     uvec2 dst_loc = gl_GlobalInvocationID.xy;
 
-    float potential = buff_potential_vals_src[ubo.src_offset + src_loc.x + src_loc.y * ubo.buffer_width];
-    buff_potential_vals_dst[ubo.dst_offset + dst_loc.x + dst_loc.y * ubo.buffer_width] = potential;
+    float potential;
+    if (src_loc.x < 0 || src_loc.x >= ubo.buffer_size.x || src_loc.y < 0 || src_loc.y >= ubo.buffer_size.y) {
+        potential = -1.0;
+    } else {
+        potential = buff_potential_vals_src[src_loc.x + src_loc.y * ubo.buffer_size.x];
+    }
+
+    buff_potential_vals_dst[dst_loc.x + dst_loc.y * ubo.buffer_size.x] = potential;
 }

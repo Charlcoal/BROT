@@ -588,7 +588,10 @@ fn moveRenderPatches(
     ) |dst_exp, src_exp, res| {
         const src_start: common.Pos = remap_dims.src_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(src_exp)) - 1));
         const dst_start: common.Pos = remap_dims.dst_start.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(dst_exp)) - 1));
-        const range: common.Pos = remap_dims.dst_range.shft(@intCast(common.max_res_scale_exponent - @as(i32, @intCast(dst_exp)) - 1));
+        const range: common.Pos = .{
+            .x = @intCast(@min(res.len - dst_start.x, resolutions_complete_src[src_exp].len - src_start.x)),
+            .y = @intCast(@min(res[0].len - dst_start.y, resolutions_complete_src[src_exp][0].len - src_start.y)),
+        };
         //std.debug.print("({}) {any}   ->   ({}) {any}  x  {any}\n", .{ src_exp, src_start, dst_exp, dst_start, range });
         for (src_start.x.., res[dst_start.x..(range.x + dst_start.x)]) |i, col| {
             for (src_start.y.., col[dst_start.y..(range.y + dst_start.y)]) |j, *elem| {
@@ -793,12 +796,12 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
 
     const remap_dims = calculateRemapDimensions();
 
-    const buffer_x_stride: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
-    const buffer_y_stride: u32 = buffer_x_stride * common.renderPatchSize(common.max_res_scale_exponent) *
-        common.escape_potential_buffer_block_num_x;
+    const half_patch_size: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
 
-    const buffer_src_offset: u32 = remap_dims.src_start.x * buffer_x_stride + remap_dims.src_start.y * buffer_y_stride;
-    const buffer_dst_offset: u32 = remap_dims.dst_start.x * buffer_x_stride + remap_dims.dst_start.y * buffer_y_stride;
+    const buffer_src_offset_x: u32 = remap_dims.src_start.x * half_patch_size;
+    const buffer_src_offset_y: u32 = remap_dims.src_start.y * half_patch_size;
+    const buffer_dst_offset_x: u32 = remap_dims.dst_start.x * half_patch_size;
+    const buffer_dst_offset_y: u32 = remap_dims.dst_start.y * half_patch_size;
 
     c.vkCmdPushConstants(
         common.rnd_buffer_write_command_buffer,
@@ -807,19 +810,22 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
         0,
         @sizeOf(common.BufferRemapConstants),
         &common.BufferRemapConstants{
-            .src_offset = buffer_src_offset,
-            .dst_offset = buffer_dst_offset,
-            .buf_width = common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
+            .dst_offset = @Vector(2, u32){ buffer_dst_offset_x, buffer_dst_offset_y },
+            .src_offset = @Vector(2, u32){ buffer_src_offset_x, buffer_src_offset_y },
+            .buf_size = @Vector(2, u32){
+                common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
+                common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
+            },
             .scale_diff = common.remap_exp,
         },
     );
 
-    const sqrt_workgroups_per_half_patch: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1) / common.sqrt_invocation_num;
+    const sqrt_workgroups_per_patch: u32 = common.sqrt_workgroup_num << common.max_res_scale_exponent;
 
     c.vkCmdDispatch(
         common.rnd_buffer_write_command_buffer,
-        sqrt_workgroups_per_half_patch * remap_dims.dst_range.x,
-        sqrt_workgroups_per_half_patch * remap_dims.dst_range.y,
+        sqrt_workgroups_per_patch * common.escape_potential_buffer_block_num_x,
+        sqrt_workgroups_per_patch * common.escape_potential_buffer_block_num_y,
         1,
     );
 
@@ -829,7 +835,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
 }
 
 /// in units of half blocks (half of largest render patch size)
-fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.Pos, dst_range: common.Pos } {
+fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.Pos } {
     // in half "blocks;" half largest render patchs as units
     // to be potentially scaled by exp_diff
     var buffer_src_start: common.Pos = .{};
@@ -848,44 +854,16 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
         buffer_src_start.y = @intCast(2 * common.remap_y);
     }
 
-    var buffer_dst_range: common.Pos = undefined;
-    if (common.remap_exp == 0) {
-        buffer_dst_range = .{
-            .x = @intCast(@max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, @max(buffer_dst_start.x, buffer_src_start.x)))),
-            .y = @intCast(@max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, @max(buffer_dst_start.y, buffer_src_start.y)))),
-        };
-    } else if (common.remap_exp == 1) {
+    if (common.remap_exp == 1) {
         buffer_src_start.x <<= 1;
         buffer_src_start.y <<= 1;
         buffer_dst_start.x += common.escape_potential_buffer_block_num_x / 2;
         buffer_dst_start.y += common.escape_potential_buffer_block_num_y / 2;
-
-        buffer_dst_range = .{
-            .x = @intCast(@min(
-                @max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_dst_start.x)),
-                @max(0, common.escape_potential_buffer_block_num_x - @as(i64, buffer_src_start.x)),
-            )),
-            .y = @intCast(@min(
-                @max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_dst_start.y)),
-                @max(0, common.escape_potential_buffer_block_num_y - @as(i64, buffer_src_start.y)),
-            )),
-        };
     } else if (common.remap_exp == -1) {
         buffer_src_start.x >>= 1;
         buffer_src_start.y >>= 1;
         buffer_src_start.x += common.escape_potential_buffer_block_num_x / 2;
         buffer_src_start.y += common.escape_potential_buffer_block_num_y / 2;
-
-        buffer_dst_range = .{
-            .x = @intCast(@min(
-                @max(0, 2 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_dst_start.x)),
-                @max(0, 4 * common.escape_potential_buffer_block_num_x - @as(i64, buffer_src_start.x)),
-            )),
-            .y = @intCast(@min(
-                @max(0, 2 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_dst_start.y)),
-                @max(0, 4 * common.escape_potential_buffer_block_num_y - @as(i64, buffer_src_start.y)),
-            )),
-        };
     }
 
     buffer_src_start.x = @min(2 * common.escape_potential_buffer_block_num_x, buffer_src_start.x);
@@ -896,7 +874,6 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
     return .{
         .src_start = buffer_src_start,
         .dst_start = buffer_dst_start,
-        .dst_range = buffer_dst_range,
     };
 }
 

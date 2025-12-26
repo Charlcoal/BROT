@@ -61,9 +61,9 @@ pub const PatchPlaceConstants = extern struct {
 };
 
 pub const BufferRemapConstants = extern struct {
-    src_offset: u32,
-    dst_offset: u32,
-    buf_width: u32,
+    dst_offset: @Vector(2, u32),
+    src_offset: @Vector(2, u32),
+    buf_size: @Vector(2, u32),
     scale_diff: i32,
 };
 
