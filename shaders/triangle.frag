@@ -40,7 +40,7 @@ void main() {
     //ivec2 zoom_out_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) * 2 + ivec2(ubo.center_pos);
 
     //float potential_val;
-    //if (zoom_out_loc.x >= ubo.buffer_size || zoom_out_loc.x < 0 || zoom_out_loc.y >= 2 * ubo.center_pos.y || zoom_out_loc.y < 0) {
+    //if (zoom_out_loc.x >= ubo.buffer_size.x || zoom_out_loc.x < 0 || zoom_out_loc.y >= ubo.buffer_size.y || zoom_out_loc.y < 0) {
     //    potential_val = -1;
     //} else {
     //    potential_val = potential_vals[zoom_out_loc.x + zoom_out_loc.y * ubo.buffer_size.x];

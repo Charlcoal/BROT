@@ -168,6 +168,8 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         }
     }
 
+    var round_robin_index: usize = 0;
+
     while (!common.compute_manager_should_close) {
         // wait for a rendering task to complete
         _ = c.vkWaitForFences(
@@ -179,9 +181,11 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
         );
 
         const comp_index: usize = label: {
-            for (0..common.rendering_fences.len) |i| {
-                if (c.vkGetFenceStatus(common.device, common.rendering_fences[i]) == c.VK_SUCCESS) {
-                    break :label i;
+            for (common.rendering_fences) |_| {
+                round_robin_index += 1;
+                round_robin_index %= common.rendering_fences.len;
+                if (c.vkGetFenceStatus(common.device, common.rendering_fences[round_robin_index]) == c.VK_SUCCESS) {
+                    break :label round_robin_index;
                 }
             }
             unreachable;
@@ -299,8 +303,8 @@ fn fractalToBlockScale() f64 {
 }
 
 fn updateFractalPosition() void {
-    const block_x_diff = common.fractal_x_diff * fractalToBlockScale();
-    const block_y_diff = common.fractal_y_diff * fractalToBlockScale();
+    var block_x_diff = common.fractal_x_diff * fractalToBlockScale();
+    var block_y_diff = common.fractal_y_diff * fractalToBlockScale();
 
     var updated_state: bool = false;
 
@@ -311,10 +315,14 @@ fn updateFractalPosition() void {
     if (common.zoom_diff >= 2.0) {
         remap_exp = 1;
         updated_state = true;
+        block_x_diff *= 0.5;
+        block_y_diff *= 0.5;
     }
     if (common.zoom_diff < 1.0) {
         remap_exp = -1;
         updated_state = true;
+        block_x_diff *= 2.0;
+        block_y_diff *= 2.0;
     }
 
     if (@abs(block_x_diff) > 0.5 or @abs(block_y_diff) > 0.5) {
