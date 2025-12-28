@@ -31,6 +31,7 @@ layout( push_constant ) uniform UniformBufferObject {
     uvec2 src_offset;
     uvec2 buffer_size;
     int scale_diff;
+    int scale_parity;
 } ubo;
 
 ivec2 shift(ivec2 vec, int shft) {
@@ -48,6 +49,9 @@ ivec2 shift(ivec2 vec, int shft) {
 void main() {
     ivec2 true_loc = ivec2(gl_GlobalInvocationID.xy) - ivec2(ubo.dst_pos_offset);
     ivec2 src_loc = ivec2(ubo.src_offset) + shift(true_loc, ubo.scale_diff);
+    if (ubo.scale_diff > 0) {
+        src_loc += ubo.scale_parity;
+    }
     uvec2 dst_loc = gl_GlobalInvocationID.xy;
 
     float potential;

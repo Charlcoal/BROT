@@ -65,6 +65,7 @@ pub const BufferRemapConstants = extern struct {
     src_offset: @Vector(2, u32),
     buf_size: @Vector(2, u32),
     scale_diff: i32,
+    scale_parity: i32,
 };
 
 pub const RenderPatch = struct {

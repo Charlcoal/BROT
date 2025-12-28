@@ -829,6 +829,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
             },
             .scale_diff = common.remap_exp,
+            .scale_parity = @intCast(@abs(common.zoom_exp) % 2),
         },
     );
 
