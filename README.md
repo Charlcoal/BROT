@@ -2,8 +2,8 @@
 
 A mandelbrot set renderer, which ultimately aims to provide
 responsive thumbnail exploration at deep zooms, to the
-fullest extent possible. BROT currently supports basic 32 bit
-float precision, with basic foveated rendering around the cursor.
+fullest extent possible. BROT currently supports basic
+perturbation, with foveated rendering around the cursor.
 
 ## Building
 
