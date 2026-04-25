@@ -46,8 +46,8 @@ pub fn update() void {
         c.mpf_sub(&common.ref_calc_x, &common.mpf_intermediates[1], &common.mpf_intermediates[2]); // a^2-b^2
 
         // ------ add c -------
-        c.mpf_add(&common.mpf_intermediates[0], &common.ref_calc_x, &common.fractal_pos_x);
-        c.mpf_add(&common.mpf_intermediates[1], &common.ref_calc_y, &common.fractal_pos_y);
+        c.mpf_add(&common.mpf_intermediates[0], &common.ref_calc_x, &common.fractal_pos.x);
+        c.mpf_add(&common.mpf_intermediates[1], &common.ref_calc_y, &common.fractal_pos.y);
         c.mpf_swap(&common.mpf_intermediates[0], &common.ref_calc_x);
         c.mpf_swap(&common.mpf_intermediates[1], &common.ref_calc_y);
     }

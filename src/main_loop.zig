@@ -251,7 +251,7 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
                 render_patch_size * patch_to_render.y_pos,
             },
             .res_exp = @intCast(patch_to_render.resolution_scale_exponent),
-            .zoom_exp = common.zoom_exp,
+            .zoom_exp = common.fractal_pos.zoom_exp,
             .patch_index = buffer_to_render_to.?,
             .active_ref = common.current_cpu_to_render_descriptor_index,
         };
@@ -303,26 +303,10 @@ fn fractalToBlockScale() f64 {
 }
 
 fn updateFractalPosition(delta_time: f64) void {
-    common.interpolate_progress += @floatCast(delta_time);
-    const normalized_interp_prog = common.interpolate_progress / common.interpolate_length;
-    common.fractal_x_diff = common.interpolate_val(
-        common.last_fractal_x_diff,
-        common.target_fractal_x_diff,
-        normalized_interp_prog,
-    );
-    common.fractal_y_diff = common.interpolate_val(
-        common.last_fractal_y_diff,
-        common.target_fractal_y_diff,
-        normalized_interp_prog,
-    );
-    common.zoom_diff = common.interpolate_val(
-        (common.last_zoom_diff),
-        (common.target_zoom_diff),
-        normalized_interp_prog,
-    );
+    common.fractal_pos.interp_prog += @floatCast(delta_time);
 
-    var block_x_diff = common.fractal_x_diff * fractalToBlockScale();
-    var block_y_diff = common.fractal_y_diff * fractalToBlockScale();
+    var block_x_diff = common.fractal_pos.x_diff() * fractalToBlockScale();
+    var block_y_diff = common.fractal_pos.y_diff() * fractalToBlockScale();
 
     var updated_state: bool = false;
 
@@ -330,13 +314,13 @@ fn updateFractalPosition(delta_time: f64) void {
     var remap_y: i32 = 0;
     var remap_exp: i32 = 0;
 
-    if (common.zoom_diff >= 2.0) {
+    if (common.fractal_pos.zoom_diff() >= 2.0) {
         remap_exp = 1;
         updated_state = true;
         block_x_diff *= 0.5;
         block_y_diff *= 0.5;
     }
-    if (common.zoom_diff < 1.0) {
+    if (common.fractal_pos.zoom_diff() < 1.0) {
         remap_exp = -1;
         updated_state = true;
         block_x_diff *= 2.0;
@@ -358,8 +342,6 @@ fn updateFractalPosition(delta_time: f64) void {
         //common.buffer_invalidated = true;
         common.remap_needed = true;
     }
-
-    //std.debug.print("moved to: ({}, {}) x {}\n", .{ common.fractal_x_diff, common.fractal_y_diff, common.zoom_diff });
 }
 
 fn renderedBufferResolve() void {
@@ -389,27 +371,21 @@ fn renderedBufferResolve() void {
         std.mem.swap([common.num_distinct_res_scales][][]bool, &common.resolutions_complete, &common.res_complete_tmp);
 
         if (common.remap_exp == 1) {
-            common.zoom_exp += 1;
-            common.zoom_diff *= 0.5;
-            common.last_zoom_diff *= 0.5;
-            common.target_zoom_diff *= 0.5;
-            common.fractal_x_diff *= 0.5;
-            common.fractal_y_diff *= 0.5;
-            common.last_fractal_x_diff *= 0.5;
-            common.last_fractal_y_diff *= 0.5;
-            common.target_fractal_x_diff *= 0.5;
-            common.target_fractal_y_diff *= 0.5;
+            common.fractal_pos.zoom_exp += 1;
+            common.fractal_pos.last_zoom_diff *= 0.5;
+            common.fractal_pos.target_zoom_diff *= 0.5;
+            common.fractal_pos.last_x_diff *= 0.5;
+            common.fractal_pos.last_y_diff *= 0.5;
+            common.fractal_pos.target_x_diff *= 0.5;
+            common.fractal_pos.target_y_diff *= 0.5;
         } else if (common.remap_exp == -1) {
-            common.zoom_exp -= 1;
-            common.zoom_diff *= 2.0;
-            common.last_zoom_diff *= 2.0;
-            common.target_zoom_diff *= 2.0;
-            common.fractal_x_diff *= 2.0;
-            common.fractal_y_diff *= 2.0;
-            common.last_fractal_x_diff *= 2.0;
-            common.last_fractal_y_diff *= 2.0;
-            common.target_fractal_x_diff *= 2.0;
-            common.target_fractal_y_diff *= 2.0;
+            common.fractal_pos.zoom_exp -= 1;
+            common.fractal_pos.last_zoom_diff *= 2.0;
+            common.fractal_pos.target_zoom_diff *= 2.0;
+            common.fractal_pos.last_x_diff *= 2.0;
+            common.fractal_pos.last_y_diff *= 2.0;
+            common.fractal_pos.target_x_diff *= 2.0;
+            common.fractal_pos.target_y_diff *= 2.0;
         }
         const adjustment_x: f64 = @as(f64, @floatFromInt(common.remap_x)) / fractalToBlockScale();
         const adjustment_y: f64 = @as(f64, @floatFromInt(common.remap_y)) / fractalToBlockScale();
@@ -417,46 +393,44 @@ fn renderedBufferResolve() void {
         const adjustment_x_32: f32 = @floatCast(adjustment_x);
         const adjustment_y_32: f32 = @floatCast(adjustment_y);
 
-        common.fractal_x_diff -= adjustment_x_32;
-        common.fractal_y_diff -= adjustment_y_32;
-        common.last_fractal_x_diff -= adjustment_x_32;
-        common.last_fractal_y_diff -= adjustment_y_32;
-        common.target_fractal_x_diff -= adjustment_x_32;
-        common.target_fractal_y_diff -= adjustment_y_32;
+        common.fractal_pos.last_x_diff -= adjustment_x_32;
+        common.fractal_pos.last_y_diff -= adjustment_y_32;
+        common.fractal_pos.target_x_diff -= adjustment_x_32;
+        common.fractal_pos.target_y_diff -= adjustment_y_32;
 
         var tmp: c.mpf_t = undefined;
         c.mpf_init2(&tmp, 32);
         defer c.mpf_clear(&tmp);
 
-        const needed_prec: usize = 32 + @abs(common.zoom_exp);
+        const needed_prec: usize = 32 + @abs(common.fractal_pos.zoom_exp);
         if (needed_prec > c.mpf_get_prec(&common.mpf_intermediates[0])) {
             for (&common.mpf_intermediates) |*intermediate| {
                 c.mpf_set_prec(intermediate, needed_prec);
             }
-            c.mpf_set_prec(&common.fractal_pos_x, needed_prec);
-            c.mpf_set_prec(&common.fractal_pos_y, needed_prec);
+            c.mpf_set_prec(&common.fractal_pos.x, needed_prec);
+            c.mpf_set_prec(&common.fractal_pos.y, needed_prec);
             c.mpf_set_prec(&common.ref_calc_x, needed_prec);
             c.mpf_set_prec(&common.ref_calc_y, needed_prec);
             std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
         }
 
         c.mpf_set_d(&tmp, adjustment_x);
-        if (common.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        if (common.fractal_pos.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.fractal_pos.zoom_exp));
         } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.fractal_pos.zoom_exp));
         }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_x, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_x);
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos.x, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos.x);
 
         c.mpf_set_d(&tmp, adjustment_y);
-        if (common.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.zoom_exp));
+        if (common.fractal_pos.zoom_exp < 0) {
+            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.fractal_pos.zoom_exp));
         } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.zoom_exp));
+            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.fractal_pos.zoom_exp));
         }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos_y, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos_y);
+        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos.y, &common.mpf_intermediates[1]);
+        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos.y);
 
         common.reference_center_stale = true;
         reference_calc.update();
@@ -666,10 +640,10 @@ fn patchVisible(patch: RenderPatch) bool {
 
     const screen_center = common.getScreenCenter();
 
-    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
-    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(common.width)) * common.zoom_diff / 2, 0.0));
-    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
-    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(common.height)) * common.zoom_diff / 2, 0.0));
+    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(common.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(common.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(common.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(common.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
 
     if (patch_size * patch.x_pos > screen_right_edge) return false;
     if (patch_size * (patch.x_pos + 1) < screen_left_edge) return false;
@@ -724,8 +698,8 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     var mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.height)) / 2.0);
 
     // to buffer coordinates
-    mouse_x_from_screen_center = mouse_x_from_screen_center * common.zoom_diff;
-    mouse_y_from_screen_center = mouse_y_from_screen_center * common.zoom_diff;
+    mouse_x_from_screen_center = mouse_x_from_screen_center * common.fractal_pos.zoom_diff();
+    mouse_y_from_screen_center = mouse_y_from_screen_center * common.fractal_pos.zoom_diff();
 
     const buffer_target_pos_x: u32 = @intFromFloat(@max(0, mouse_x_from_screen_center + screen_center.x));
     const buffer_target_pos_y: u32 = @intFromFloat(@max(0, mouse_y_from_screen_center + screen_center.y));
@@ -866,7 +840,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
             },
             .scale_diff = common.remap_exp,
-            .scale_parity = @intCast(@abs(common.zoom_exp) % 2),
+            .scale_parity = @intCast(@abs(common.fractal_pos.zoom_exp) % 2),
         },
     );
 
@@ -1138,7 +1112,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
             },
-            .zoom_diff = common.zoom_diff,
+            .zoom_diff = common.fractal_pos.zoom_diff(),
         },
     );
 

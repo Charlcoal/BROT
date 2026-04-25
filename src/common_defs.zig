@@ -74,6 +74,37 @@ pub const RenderPatch = struct {
     y_pos: u32,
 };
 
+pub const FractalPosition = struct {
+    // where the center of the render buffer is in the fractal
+    zoom_exp: i32 = 1,
+    x: c.mpf_t = undefined,
+    y: c.mpf_t = undefined,
+
+    // the position of the screen relative to the render buffer
+    target_zoom_diff: f32 = 1.0,
+    target_x_diff: f32 = 0.0,
+    target_y_diff: f32 = 0.0,
+    last_zoom_diff: f32 = 1.0,
+    last_x_diff: f32 = 0.0,
+    last_y_diff: f32 = 0.0,
+
+    interp_prog: f32 = 1.0,
+    interp_len: f32 = 0.5,
+
+    pub fn x_diff(self: @This()) f32 {
+        const prog = self.interp_prog / self.interp_len;
+        return interpolate_val(self.last_x_diff, self.target_x_diff, prog);
+    }
+    pub fn y_diff(self: @This()) f32 {
+        const prog = self.interp_prog / self.interp_len;
+        return interpolate_val(self.last_y_diff, self.target_y_diff, prog);
+    }
+    pub fn zoom_diff(self: @This()) f32 {
+        const prog = self.interp_prog / self.interp_len;
+        return interpolate_val(self.last_zoom_diff, self.target_zoom_diff, prog);
+    }
+};
+
 pub const Pos = struct {
     x: u32 = 0,
     y: u32 = 0,
@@ -233,24 +264,7 @@ pub var remap_x: i32 = 0;
 pub var remap_y: i32 = 0;
 pub var remap_exp: i32 = 0;
 
-pub var zoom_exp: i32 = 1;
-pub var zoom_diff: f32 = 1.0;
-pub var fractal_x_diff: f32 = 0.0;
-pub var fractal_y_diff: f32 = 0.0;
-pub var target_zoom_diff: f32 = 1.0;
-pub var target_fractal_x_diff: f32 = 0.0;
-pub var target_fractal_y_diff: f32 = 0.0;
-pub var interpolate_progress: f32 = 1.0;
-pub var interpolate_length: f32 = 0.8;
-pub var last_zoom_diff: f32 = 1.0;
-pub var last_fractal_x_diff: f32 = 0.0;
-pub var last_fractal_y_diff: f32 = 0.0;
-// where the center of the screen is in the fractal
-pub var fractal_pos_x: c.mpf_t = undefined;
-pub var fractal_pos_y: c.mpf_t = undefined;
-pub var max_resolution: @Vector(2, u32) = undefined;
-pub var render_start_screen_x: u32 = 0;
-pub var render_start_screen_y: u32 = 0;
+pub var fractal_pos: FractalPosition = .{};
 
 pub var ref_calc_x: c.mpf_t = undefined;
 pub var ref_calc_y: c.mpf_t = undefined;
@@ -283,10 +297,10 @@ pub fn getScreenCenter() struct { x: f32, y: f32 } {
     return .{
         .x = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_x) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_x_diff),
+            @as(f32, @floatFromInt(height)) * fractal_pos.x_diff()),
         .y = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_y) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_y_diff),
+            @as(f32, @floatFromInt(height)) * fractal_pos.y_diff()),
     };
 }
 
