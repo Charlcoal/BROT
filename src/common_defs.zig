@@ -237,6 +237,14 @@ pub var zoom_exp: i32 = 1;
 pub var zoom_diff: f32 = 1.0;
 pub var fractal_x_diff: f32 = 0.0;
 pub var fractal_y_diff: f32 = 0.0;
+pub var target_zoom_diff: f32 = 1.0;
+pub var target_fractal_x_diff: f32 = 0.0;
+pub var target_fractal_y_diff: f32 = 0.0;
+pub var interpolate_progress: f32 = 1.0;
+pub var interpolate_length: f32 = 0.8;
+pub var last_zoom_diff: f32 = 1.0;
+pub var last_fractal_x_diff: f32 = 0.0;
+pub var last_fractal_y_diff: f32 = 0.0;
 // where the center of the screen is in the fractal
 pub var fractal_pos_x: c.mpf_t = undefined;
 pub var fractal_pos_y: c.mpf_t = undefined;
@@ -249,7 +257,8 @@ pub var ref_calc_y: c.mpf_t = undefined;
 pub var mpf_intermediates: [3]c.mpf_t = undefined;
 
 pub var time: std.time.Timer = undefined;
-pub var prev_time: u64 = 0;
+pub var prev_frame_time: u64 = 0;
+pub var prev_update_time: u64 = 0;
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
     var i: usize = 0;
@@ -257,6 +266,16 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
         if (a[i] == 0) return true;
     }
     return false;
+}
+
+pub fn interpolate_val(start: f32, target: f32, progress: f32) f32 {
+    if (progress > 1.0) {
+        return target;
+    }
+
+    const delta = target - start;
+    const travel = 1.0 - std.math.pow(f32, (1.0 - progress), 3);
+    return start + travel * delta;
 }
 
 // in terms of buffer coordinates

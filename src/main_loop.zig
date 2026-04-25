@@ -29,8 +29,9 @@ pub fn mainLoop(alloc: Allocator) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
+        const delta = get_update_delta_time();
         renderedBufferResolve();
-        updateFractalPosition();
+        updateFractalPosition(delta);
         try renderedBufferDispatch();
 
         try drawFrame(alloc);
@@ -64,18 +65,17 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
             std.math.maxInt(u64),
         );
     }
-
     _ = c.vkResetFences(common.device, 1, &common.in_flight_fences[common.current_frame]);
 
-    var delta_time: f64 = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
+    var delta_time: f64 = @as(f64, @floatFromInt(common.time.read() - common.prev_frame_time)) / 1_000_000_000;
     if (delta_time < 1.0 / common.target_frame_rate) {
         std.Thread.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
-        delta_time = @as(f64, @floatFromInt(common.time.read() - common.prev_time)) / 1_000_000_000;
+        delta_time = @as(f64, @floatFromInt(common.time.read() - common.prev_frame_time)) / 1_000_000_000;
     } else {
         //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
     }
     //std.debug.print("time: {d:.3}\n", .{delta_time});
-    common.prev_time = common.time.read();
+    common.prev_frame_time = common.time.read();
 
     var image_index: u32 = undefined;
     const result = c.vkAcquireNextImageKHR(
@@ -302,7 +302,25 @@ fn fractalToBlockScale() f64 {
     return @as(f64, @floatFromInt(common.height)) / @as(f64, @floatFromInt(block_size));
 }
 
-fn updateFractalPosition() void {
+fn updateFractalPosition(delta_time: f64) void {
+    common.interpolate_progress += @floatCast(delta_time);
+    const normalized_interp_prog = common.interpolate_progress / common.interpolate_length;
+    common.fractal_x_diff = common.interpolate_val(
+        common.last_fractal_x_diff,
+        common.target_fractal_x_diff,
+        normalized_interp_prog,
+    );
+    common.fractal_y_diff = common.interpolate_val(
+        common.last_fractal_y_diff,
+        common.target_fractal_y_diff,
+        normalized_interp_prog,
+    );
+    common.zoom_diff = common.interpolate_val(
+        (common.last_zoom_diff),
+        (common.target_zoom_diff),
+        normalized_interp_prog,
+    );
+
     var block_x_diff = common.fractal_x_diff * fractalToBlockScale();
     var block_y_diff = common.fractal_y_diff * fractalToBlockScale();
 
@@ -373,19 +391,38 @@ fn renderedBufferResolve() void {
         if (common.remap_exp == 1) {
             common.zoom_exp += 1;
             common.zoom_diff *= 0.5;
+            common.last_zoom_diff *= 0.5;
+            common.target_zoom_diff *= 0.5;
             common.fractal_x_diff *= 0.5;
             common.fractal_y_diff *= 0.5;
+            common.last_fractal_x_diff *= 0.5;
+            common.last_fractal_y_diff *= 0.5;
+            common.target_fractal_x_diff *= 0.5;
+            common.target_fractal_y_diff *= 0.5;
         } else if (common.remap_exp == -1) {
             common.zoom_exp -= 1;
             common.zoom_diff *= 2.0;
+            common.last_zoom_diff *= 2.0;
+            common.target_zoom_diff *= 2.0;
             common.fractal_x_diff *= 2.0;
             common.fractal_y_diff *= 2.0;
+            common.last_fractal_x_diff *= 2.0;
+            common.last_fractal_y_diff *= 2.0;
+            common.target_fractal_x_diff *= 2.0;
+            common.target_fractal_y_diff *= 2.0;
         }
         const adjustment_x: f64 = @as(f64, @floatFromInt(common.remap_x)) / fractalToBlockScale();
         const adjustment_y: f64 = @as(f64, @floatFromInt(common.remap_y)) / fractalToBlockScale();
 
-        common.fractal_x_diff -= @floatCast(adjustment_x);
-        common.fractal_y_diff -= @floatCast(adjustment_y);
+        const adjustment_x_32: f32 = @floatCast(adjustment_x);
+        const adjustment_y_32: f32 = @floatCast(adjustment_y);
+
+        common.fractal_x_diff -= adjustment_x_32;
+        common.fractal_y_diff -= adjustment_y_32;
+        common.last_fractal_x_diff -= adjustment_x_32;
+        common.last_fractal_y_diff -= adjustment_y_32;
+        common.target_fractal_x_diff -= adjustment_x_32;
+        common.target_fractal_y_diff -= adjustment_y_32;
 
         var tmp: c.mpf_t = undefined;
         c.mpf_init2(&tmp, 32);
@@ -1117,6 +1154,13 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
         return MainLoopError.command_buffer_record_failed;
     }
+}
+
+fn get_update_delta_time() f64 {
+    const current_time = common.time.read();
+    const delta_time: f64 = @as(f64, @floatFromInt(current_time - common.prev_update_time)) / 1_000_000_000;
+    common.prev_update_time = current_time;
+    return delta_time;
 }
 
 //fn updateUniformBuffer(current_image: u32) void {

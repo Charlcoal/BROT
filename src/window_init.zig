@@ -60,13 +60,18 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     mouse_pos_x = mouse_pos_x * common.zoom_diff / @as(f64, @floatFromInt(common.height));
     mouse_pos_y = mouse_pos_y * common.zoom_diff / @as(f64, @floatFromInt(common.height));
 
-    const diff_x: f64 = (1.0 - scroll_factor) * mouse_pos_x;
-    const diff_y: f64 = (1.0 - scroll_factor) * mouse_pos_y;
+    const scale_diff_factor = scroll_factor * common.target_zoom_diff / common.zoom_diff;
+    const diff_x: f64 = (1.0 - scale_diff_factor) * mouse_pos_x;
+    const diff_y: f64 = (1.0 - scale_diff_factor) * mouse_pos_y;
 
-    common.fractal_x_diff += @floatCast(diff_x);
-    common.fractal_y_diff += @floatCast(diff_y);
+    common.target_fractal_x_diff = common.fractal_x_diff + @as(f32, @floatCast(diff_x));
+    common.target_fractal_y_diff = common.fractal_y_diff + @as(f32, @floatCast(diff_y));
+    common.target_zoom_diff *= @as(f32, @floatCast(scroll_factor));
 
-    common.zoom_diff *= @as(f32, @floatCast(scroll_factor));
+    common.last_fractal_x_diff = common.fractal_x_diff;
+    common.last_fractal_y_diff = common.fractal_y_diff;
+    common.last_zoom_diff = common.zoom_diff;
+    common.interpolate_progress = 0.0;
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {

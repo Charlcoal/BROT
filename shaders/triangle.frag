@@ -29,7 +29,10 @@ layout(std430, binding = 0) readonly buffer storage {
 };
 
 void main() {
-    uvec2 true_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) + ubo.center_pos;
+    vec2 true_loc_f = (gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0));
+    true_loc_f *= ubo.zoom_diff;
+    true_loc_f += vec2(ubo.center_pos);
+    uvec2 true_loc = uvec2(true_loc_f);
     float potential_val;
     if (true_loc.x >= ubo.buffer_size.x || true_loc.y >= ubo.buffer_size.y) {
         potential_val = -1;

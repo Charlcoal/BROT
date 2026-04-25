@@ -45,7 +45,6 @@ pub fn run(alloc: Allocator) Error!void {
     c.mpf_init2(&common.ref_calc_x, 32);
     c.mpf_init2(&common.ref_calc_y, 32);
     common.time = try std.time.Timer.start();
-    common.prev_time = 0;
 
     try window_init.initWindow();
     try vulkan_init.initVulkan(alloc);
