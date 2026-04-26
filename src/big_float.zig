@@ -30,6 +30,16 @@ pub fn string_init(str: [:0]const u8) c.mpf_t {
     return out;
 }
 
+/// Ensures val has at least prec_bits of precision, increasing its precision if not.
+/// Returns true if val's precision was increased
+pub fn ensure_precision(val: *c.mpf_t, prec_bits: usize) bool {
+    if (prec_bits > c.mpf_get_prec(val)) {
+        c.mpf_set_prec(val, prec_bits);
+        return true;
+    }
+    return false;
+}
+
 /// returned string (likely) has null-termination before allocated end
 pub fn to_string(allocator: Allocator, digits: usize, val: *const c.mpf_t) Allocator.Error![:0]u8 {
     const str_blank: []u8 = try allocator.alloc(u8, digits + 24);

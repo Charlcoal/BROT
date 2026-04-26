@@ -16,6 +16,7 @@
 
 const std = @import("std");
 pub const c = @import("imports.zig").c;
+const big_float = @import("big_float.zig");
 const builtin = @import("builtin");
 
 // ------------------- settings -------------------------
@@ -102,6 +103,98 @@ pub const FractalPosition = struct {
     pub fn zoom_diff(self: @This()) f32 {
         const prog = self.interp_prog / self.interp_len;
         return interpolate_val(self.last_zoom_diff, self.target_zoom_diff, prog);
+    }
+
+    /// Updates the position being interpolated to, effectivly
+    /// zooming to a point on the screen. screen_x and screen_y should
+    /// be normalized such that screen_y ranges from -0.5 (top of screen)
+    /// to 0.5 (bottom of screen). zoom_delta is a multiplicitave factor
+    /// indicated how much to zoom in (greater than 1) or out (less than 1).
+    pub fn update_target(self: *@This(), screen_x: f64, screen_y: f64, zoom_delta: f64) void {
+        const x_diff_v = self.x_diff();
+        const y_diff_v = self.y_diff();
+        const zoom_diff_v = self.zoom_diff();
+
+        // change to mandelbrot coords
+        const mandel_screen_x = screen_x * zoom_diff_v;
+        const mandel_screen_y = screen_y * zoom_diff_v;
+
+        const scale_diff_factor = zoom_delta * self.target_zoom_diff / zoom_diff_v;
+        const diff_x: f64 = (1.0 - scale_diff_factor) * mandel_screen_x;
+        const diff_y: f64 = (1.0 - scale_diff_factor) * mandel_screen_y;
+
+        self.target_x_diff = x_diff_v + @as(f32, @floatCast(diff_x));
+        self.target_y_diff = y_diff_v + @as(f32, @floatCast(diff_y));
+        self.target_zoom_diff *= @as(f32, @floatCast(zoom_delta));
+
+        self.last_x_diff = x_diff_v;
+        self.last_y_diff = y_diff_v;
+        self.last_zoom_diff = zoom_diff_v;
+        self.interp_prog = 0.0;
+    }
+
+    /// Moves the internal x and y coordinates to a new mipmap grid point,
+    /// and adjusts the internal difference values accordingly. exp indicates
+    /// the change in integer zoom level (positive means zooming in), while
+    /// x and y indicate the integer change in grid coordinates AFTER the change
+    /// in zoom level.
+    pub fn remap(
+        self: *@This(),
+        exp: i32,
+        x: i32,
+        y: i32,
+        fractal_to_block_scale: f64,
+        mpf_intermediate_1: *c.mpf_t,
+        mpf_intermediate_2: *c.mpf_t,
+    ) void {
+        self.zoom_exp += exp;
+        const factor = std.math.exp2(@as(f32, @floatFromInt(-exp)));
+        self.last_zoom_diff *= factor;
+        self.target_zoom_diff *= factor;
+        self.last_x_diff *= factor;
+        self.last_y_diff *= factor;
+        self.target_x_diff *= factor;
+        self.target_y_diff *= factor;
+
+        const adjustment_x: f64 = @as(f64, @floatFromInt(x)) / fractal_to_block_scale;
+        const adjustment_y: f64 = @as(f64, @floatFromInt(y)) / fractal_to_block_scale;
+
+        const adjustment_x_32: f32 = @floatCast(adjustment_x);
+        const adjustment_y_32: f32 = @floatCast(adjustment_y);
+
+        self.last_x_diff -= adjustment_x_32;
+        self.last_y_diff -= adjustment_y_32;
+        self.target_x_diff -= adjustment_x_32;
+        self.target_y_diff -= adjustment_y_32;
+
+        var tmp: c.mpf_t = undefined;
+        c.mpf_init2(&tmp, 32);
+        defer c.mpf_clear(&tmp);
+
+        const needed_prec: usize = 32 + @abs(self.zoom_exp);
+        var resized: bool = false;
+        resized |= big_float.ensure_precision(&self.x, needed_prec);
+        resized |= big_float.ensure_precision(&self.y, needed_prec);
+        _ = big_float.ensure_precision(mpf_intermediate_1, needed_prec);
+        _ = big_float.ensure_precision(mpf_intermediate_2, needed_prec);
+
+        c.mpf_set_d(&tmp, adjustment_x);
+        if (self.zoom_exp < 0) {
+            c.mpf_div_2exp(mpf_intermediate_1, &tmp, @intCast(-self.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(mpf_intermediate_1, &tmp, @intCast(self.zoom_exp));
+        }
+        c.mpf_add(mpf_intermediate_2, &self.x, mpf_intermediate_1);
+        c.mpf_swap(mpf_intermediate_2, &self.x);
+
+        c.mpf_set_d(&tmp, adjustment_y);
+        if (self.zoom_exp < 0) {
+            c.mpf_div_2exp(mpf_intermediate_1, &tmp, @intCast(-self.zoom_exp));
+        } else {
+            c.mpf_mul_2exp(mpf_intermediate_1, &tmp, @intCast(self.zoom_exp));
+        }
+        c.mpf_add(mpf_intermediate_2, &self.y, mpf_intermediate_1);
+        c.mpf_swap(mpf_intermediate_2, &self.y);
     }
 };
 

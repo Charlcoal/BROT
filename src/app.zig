@@ -35,8 +35,12 @@ const AppData = common.AppData;
 pub fn run(alloc: Allocator) Error!void {
     common.width = 800;
     common.height = 600;
+
     common.fractal_pos.x = big_float.string_init("-0.5");
     common.fractal_pos.y = big_float.string_init("-0.0");
+    defer c.mpf_clear(&common.fractal_pos.x);
+    defer c.mpf_clear(&common.fractal_pos.y);
+
     for (&common.mpf_intermediates) |*intermediate| {
         c.mpf_init2(intermediate, 32);
     }

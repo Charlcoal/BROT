@@ -367,71 +367,37 @@ fn renderedBufferResolve() void {
         defer common.render_patch_mutex.unlock();
 
         moveUnplacedPatches();
-        moveRenderPatches(common.resolutions_complete, common.res_complete_tmp);
-        std.mem.swap([common.num_distinct_res_scales][][]bool, &common.resolutions_complete, &common.res_complete_tmp);
+        moveRenderPatches(
+            common.resolutions_complete,
+            common.res_complete_tmp,
+        );
+        std.mem.swap(
+            [common.num_distinct_res_scales][][]bool,
+            &common.resolutions_complete,
+            &common.res_complete_tmp,
+        );
 
-        if (common.remap_exp == 1) {
-            common.fractal_pos.zoom_exp += 1;
-            common.fractal_pos.last_zoom_diff *= 0.5;
-            common.fractal_pos.target_zoom_diff *= 0.5;
-            common.fractal_pos.last_x_diff *= 0.5;
-            common.fractal_pos.last_y_diff *= 0.5;
-            common.fractal_pos.target_x_diff *= 0.5;
-            common.fractal_pos.target_y_diff *= 0.5;
-        } else if (common.remap_exp == -1) {
-            common.fractal_pos.zoom_exp -= 1;
-            common.fractal_pos.last_zoom_diff *= 2.0;
-            common.fractal_pos.target_zoom_diff *= 2.0;
-            common.fractal_pos.last_x_diff *= 2.0;
-            common.fractal_pos.last_y_diff *= 2.0;
-            common.fractal_pos.target_x_diff *= 2.0;
-            common.fractal_pos.target_y_diff *= 2.0;
-        }
-        const adjustment_x: f64 = @as(f64, @floatFromInt(common.remap_x)) / fractalToBlockScale();
-        const adjustment_y: f64 = @as(f64, @floatFromInt(common.remap_y)) / fractalToBlockScale();
+        common.fractal_pos.remap(
+            common.remap_exp,
+            common.remap_x,
+            common.remap_y,
+            fractalToBlockScale(),
+            &common.mpf_intermediates[0],
+            &common.mpf_intermediates[1],
+        );
 
-        const adjustment_x_32: f32 = @floatCast(adjustment_x);
-        const adjustment_y_32: f32 = @floatCast(adjustment_y);
-
-        common.fractal_pos.last_x_diff -= adjustment_x_32;
-        common.fractal_pos.last_y_diff -= adjustment_y_32;
-        common.fractal_pos.target_x_diff -= adjustment_x_32;
-        common.fractal_pos.target_y_diff -= adjustment_y_32;
-
-        var tmp: c.mpf_t = undefined;
-        c.mpf_init2(&tmp, 32);
-        defer c.mpf_clear(&tmp);
-
-        const needed_prec: usize = 32 + @abs(common.fractal_pos.zoom_exp);
-        if (needed_prec > c.mpf_get_prec(&common.mpf_intermediates[0])) {
-            for (&common.mpf_intermediates) |*intermediate| {
+        const needed_prec = c.mpf_get_prec(&common.fractal_pos.x);
+        if (needed_prec > c.mpf_get_prec(&common.ref_calc_x)) {
+            for (common.mpf_intermediates[2 .. common.mpf_intermediates.len - 1]) |*intermediate| {
                 c.mpf_set_prec(intermediate, needed_prec);
             }
-            c.mpf_set_prec(&common.fractal_pos.x, needed_prec);
-            c.mpf_set_prec(&common.fractal_pos.y, needed_prec);
             c.mpf_set_prec(&common.ref_calc_x, needed_prec);
             c.mpf_set_prec(&common.ref_calc_y, needed_prec);
-            std.debug.print("set precision to: {}\n", .{c.mpf_get_prec(&common.mpf_intermediates[0])});
+            std.debug.print(
+                "set precision to: {}\n",
+                .{needed_prec},
+            );
         }
-
-        c.mpf_set_d(&tmp, adjustment_x);
-        if (common.fractal_pos.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.fractal_pos.zoom_exp));
-        } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.fractal_pos.zoom_exp));
-        }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos.x, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos.x);
-
-        c.mpf_set_d(&tmp, adjustment_y);
-        if (common.fractal_pos.zoom_exp < 0) {
-            c.mpf_div_2exp(&common.mpf_intermediates[1], &tmp, @intCast(-common.fractal_pos.zoom_exp));
-        } else {
-            c.mpf_mul_2exp(&common.mpf_intermediates[1], &tmp, @intCast(common.fractal_pos.zoom_exp));
-        }
-        c.mpf_add(&common.mpf_intermediates[0], &common.fractal_pos.y, &common.mpf_intermediates[1]);
-        c.mpf_swap(&common.mpf_intermediates[0], &common.fractal_pos.y);
-
         common.reference_center_stale = true;
         reference_calc.update();
         common.reference_center_stale = false;

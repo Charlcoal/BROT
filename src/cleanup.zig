@@ -104,8 +104,6 @@ pub fn cleanup(alloc: Allocator) void {
     c.glfwTerminate();
 
     // gmp
-    c.mpf_clear(&common.fractal_pos.x);
-    c.mpf_clear(&common.fractal_pos.y);
     c.mpf_clear(&common.ref_calc_x);
     c.mpf_clear(&common.ref_calc_y);
     for (&common.mpf_intermediates) |*intermediate| {

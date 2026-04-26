@@ -51,26 +51,11 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
     mouse_pos_x -= @as(f64, @floatFromInt(common.width)) / 2.0;
     mouse_pos_y -= @as(f64, @floatFromInt(common.height)) / 2.0;
 
-    // change mouse_pos to mandelbrot coords
-    mouse_pos_x = mouse_pos_x * common.fractal_pos.zoom_diff() / @as(f64, @floatFromInt(common.height));
-    mouse_pos_y = mouse_pos_y * common.fractal_pos.zoom_diff() / @as(f64, @floatFromInt(common.height));
+    // normalize mouse_pos
+    mouse_pos_x = mouse_pos_x / @as(f64, @floatFromInt(common.height));
+    mouse_pos_y = mouse_pos_y / @as(f64, @floatFromInt(common.height));
 
-    const scale_diff_factor = scroll_factor * common.fractal_pos.target_zoom_diff / common.fractal_pos.zoom_diff();
-    const diff_x: f64 = (1.0 - scale_diff_factor) * mouse_pos_x;
-    const diff_y: f64 = (1.0 - scale_diff_factor) * mouse_pos_y;
-
-    const x_diff = common.fractal_pos.x_diff();
-    const y_diff = common.fractal_pos.y_diff();
-    const zoom_diff = common.fractal_pos.zoom_diff();
-
-    common.fractal_pos.target_x_diff = x_diff + @as(f32, @floatCast(diff_x));
-    common.fractal_pos.target_y_diff = y_diff + @as(f32, @floatCast(diff_y));
-    common.fractal_pos.target_zoom_diff *= @as(f32, @floatCast(scroll_factor));
-
-    common.fractal_pos.last_x_diff = x_diff;
-    common.fractal_pos.last_y_diff = y_diff;
-    common.fractal_pos.last_zoom_diff = zoom_diff;
-    common.fractal_pos.interp_prog = 0.0;
+    common.fractal_pos.update_target(mouse_pos_x, mouse_pos_y, scroll_factor);
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {
