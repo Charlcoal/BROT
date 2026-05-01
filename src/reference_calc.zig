@@ -18,12 +18,16 @@ const std = @import("std");
 const c = @import("imports.zig").c;
 const common = @import("common_defs.zig");
 const Allocator = std.mem.Allocator;
+const big_float = @import("big_float.zig");
 
 pub fn init(alloc: Allocator) Allocator.Error!void {
     common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.max_iterations);
 }
 
 pub fn update() void {
+    _ = big_float.ensure_precision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
+    _ = big_float.ensure_precision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
+
     c.mpf_set_d(&common.ref_calc_x, 0.0);
     c.mpf_set_d(&common.ref_calc_y, 0.0);
 
