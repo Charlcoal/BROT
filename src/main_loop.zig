@@ -25,28 +25,24 @@ const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
 const RenderPatch = common.RenderPatch;
 
-pub fn mainLoop(alloc: Allocator) MainLoopError!void {
+pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
-        const delta = get_update_delta_time();
-        renderedBufferResolve();
+        const delta = get_update_delta_time(io);
+        renderedBufferResolve(io);
         updateFractalPosition(delta);
-        try renderedBufferDispatch();
+        try renderedBufferDispatch(io);
 
-        try drawFrame(alloc);
+        try drawFrame(alloc, io);
     }
 
-    common.gpu_interface_lock.lock();
+    common.gpu_interface_lock.lockUncancelable(io);
     _ = c.vkDeviceWaitIdle(common.device);
-    common.gpu_interface_lock.unlock();
+    common.gpu_interface_lock.unlock(io);
 }
 
-pub fn startComputeManager(alloc: Allocator) std.Thread.SpawnError!void {
-    common.compute_manager_thread = try std.Thread.spawn(.{ .allocator = alloc }, computeManage, .{alloc});
-}
-
-fn drawFrame(alloc: Allocator) MainLoopError!void {
+fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
     if (common.frame_buffer_just_resized) {
         _ = c.vkWaitForFences(
             common.device,
@@ -65,17 +61,23 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
             std.math.maxInt(u64),
         );
     }
-    _ = c.vkResetFences(common.device, 1, &common.in_flight_fences[common.current_frame]);
+    _ = c.vkResetFences(
+        common.device,
+        1,
+        &common.in_flight_fences[common.current_frame],
+    );
 
-    var delta_time: f64 = @as(f64, @floatFromInt(common.time.read() - common.prev_frame_time)) / 1_000_000_000;
-    if (delta_time < 1.0 / common.target_frame_rate) {
-        std.Thread.sleep(@intFromFloat((1.0 / common.target_frame_rate - delta_time) * 1_000_000_000));
-        delta_time = @as(f64, @floatFromInt(common.time.read() - common.prev_frame_time)) / 1_000_000_000;
+    var delta_dur = common.prev_frame_time.untilNow(io, common.time);
+    const target_delta: i96 = @intFromFloat(1e9 / common.target_frame_rate);
+    if (delta_dur.nanoseconds < target_delta) {
+        const sleep_nanosecs = target_delta - delta_dur.nanoseconds;
+        try io.sleep(.fromNanoseconds(sleep_nanosecs), common.time);
+        delta_dur = common.prev_frame_time.untilNow(io, common.time);
     } else {
         //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
     }
     //std.debug.print("time: {d:.3}\n", .{delta_time});
-    common.prev_frame_time = common.time.read();
+    common.prev_frame_time = common.time.now(io);
 
     var image_index: u32 = undefined;
     const result = c.vkAcquireNextImageKHR(
@@ -87,8 +89,8 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
         &image_index,
     );
 
-    common.gpu_interface_lock.lock();
-    defer common.gpu_interface_lock.unlock();
+    common.gpu_interface_lock.lockUncancelable(io);
+    defer common.gpu_interface_lock.unlock(io);
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
         try vulkan_init.recreateSwapChain(alloc);
@@ -145,7 +147,7 @@ fn drawFrame(alloc: Allocator) MainLoopError!void {
     }
 }
 
-fn computeManage(alloc: Allocator) Allocator.Error!void {
+pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
     for (0.., &common.resolutions_complete, &common.res_complete_tmp) |i, *res, *res_tmp| {
         const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
@@ -202,14 +204,14 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
 
         if (common.buffer_invalidated) {
             common.buffer_invalidated = false;
-            common.render_patch_mutex.lock();
+            try common.render_patch_mutex.lock(io);
             resetRenderPatchsResComps(common.resolutions_complete);
-            common.render_patch_mutex.unlock();
+            common.render_patch_mutex.unlock(io);
         }
 
         // waiting on reference to be calculated
         if (common.reference_center_stale) {
-            std.Thread.sleep(1_000_000); // 1ms
+            try io.sleep(.fromMilliseconds(1), common.time);
             continue;
         }
 
@@ -219,19 +221,19 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
 
         // waiting on render queue to empty patch buffers
         if (buffer_to_render_to == null) {
-            std.Thread.sleep(1_000_000); // 1ms
+            try io.sleep(.fromMilliseconds(1), common.time);
             continue;
         }
 
-        common.render_patch_mutex.lock();
+        try common.render_patch_mutex.lock(io);
         const patch_to_render_maybe = chooseRenderPatch(common.resolutions_complete);
         var patch_to_render: RenderPatch = undefined;
         if (patch_to_render_maybe) |patch| {
             patch_to_render = patch;
         } else {
-            common.render_patch_mutex.unlock();
+            common.render_patch_mutex.unlock(io);
             common.render_patches_saturated = true;
-            std.Thread.sleep(4_000_000); // 4ms
+            try io.sleep(.fromMilliseconds(4), common.time);
             continue;
         }
 
@@ -256,10 +258,10 @@ fn computeManage(alloc: Allocator) Allocator.Error!void {
             .active_ref = common.current_cpu_to_render_descriptor_index,
         };
 
-        common.render_patch_mutex.unlock();
+        common.render_patch_mutex.unlock(io);
 
-        common.gpu_interface_lock.lock();
-        defer common.gpu_interface_lock.unlock();
+        try common.gpu_interface_lock.lock(io);
+        defer common.gpu_interface_lock.unlock(io);
 
         //updateUniformBuffer();
 
@@ -344,7 +346,7 @@ fn updateFractalPosition(delta_time: f64) void {
     }
 }
 
-fn renderedBufferResolve() void {
+fn renderedBufferResolve(io: std.Io) void {
     _ = c.vkWaitForFences(
         common.device,
         1,
@@ -363,8 +365,8 @@ fn renderedBufferResolve() void {
     if (common.remapping_buffer) {
         common.remapping_buffer = false;
 
-        common.render_patch_mutex.lock();
-        defer common.render_patch_mutex.unlock();
+        common.render_patch_mutex.lockUncancelable(io);
+        defer common.render_patch_mutex.unlock(io);
 
         moveUnplacedPatches();
         moveRenderPatches(
@@ -399,7 +401,7 @@ fn renderedBufferResolve() void {
             );
         }
         common.reference_center_stale = true;
-        reference_calc.update();
+        reference_calc.update(io);
         common.reference_center_stale = false;
 
         var next_index = (common.current_render_to_coloring_descriptor_index + 1);
@@ -408,24 +410,24 @@ fn renderedBufferResolve() void {
     }
 }
 
-fn renderedBufferDispatch() MainLoopError!void {
+fn renderedBufferDispatch(io: std.Io) MainLoopError!void {
     if (common.remap_needed) {
         common.remap_needed = false;
-        try remap_buffer();
+        try remap_buffer(io);
         common.remapping_buffer = true;
     } else if (common.render_patches_saturated and numCompletePatches() != 0 or
         numCompletePatches() >= common.rendering_command_buffers.len)
     {
-        try place_patches();
+        try place_patches(io);
         common.placing_patches = true;
     }
 }
 
-fn remap_buffer() MainLoopError!void {
+fn remap_buffer(io: std.Io) MainLoopError!void {
     _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
 
-    common.gpu_interface_lock.lock();
-    defer common.gpu_interface_lock.unlock();
+    common.gpu_interface_lock.lockUncancelable(io);
+    defer common.gpu_interface_lock.unlock(io);
 
     _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
     try recordBufferRemapCommandBuffer();
@@ -447,11 +449,11 @@ fn remap_buffer() MainLoopError!void {
     }
 }
 
-fn place_patches() MainLoopError!void {
+fn place_patches(io: std.Io) MainLoopError!void {
     _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
 
-    common.gpu_interface_lock.lock();
-    defer common.gpu_interface_lock.unlock();
+    common.gpu_interface_lock.lockUncancelable(io);
+    defer common.gpu_interface_lock.unlock(io);
 
     _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
     common.render_patches_saturated = false;
@@ -1096,9 +1098,10 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     }
 }
 
-fn get_update_delta_time() f64 {
-    const current_time = common.time.read();
-    const delta_time: f64 = @as(f64, @floatFromInt(current_time - common.prev_update_time)) / 1_000_000_000;
+fn get_update_delta_time(io: std.Io) f64 {
+    const current_time = common.time.now(io);
+    const delta_dur = common.prev_update_time.durationTo(current_time);
+    const delta_time: f64 = @as(f64, @floatFromInt(delta_dur.toMicroseconds())) / 1_000_000;
     common.prev_update_time = current_time;
     return delta_time;
 }

@@ -39,8 +39,8 @@ pub fn build(b: *std.Build) !void {
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
         .optimize = optimize,
-        .platform = cimgui.Platform.GLFW,
-        .renderer = cimgui.Renderer.Vulkan,
+        .platforms = &[_]cimgui.Platform{.GLFW},
+        .renderers = &[_]cimgui.Renderer{.Vulkan},
     });
 
     const gmp = b.dependency("gmp", .{});
@@ -57,30 +57,28 @@ pub fn build(b: *std.Build) !void {
     // (e.g.  "triangle.frag" -> "triangle_frag_shader" (internally "triangle_frag.spv"))
     var spv_buffer: [256]u8 = undefined;
     var fullpath_buffer: [256]u8 = undefined;
-    var spv_stream = std.io.fixedBufferStream(&spv_buffer);
-    var fullpath_stream = std.io.fixedBufferStream(&fullpath_buffer);
     var final_name_buf: [resources.shaders.len][256]u8 = undefined;
     for (resources.shaders, &final_name_buf) |shader_name, *final_name| {
         // create "___.spv" file name
-        spv_stream.reset();
-        _ = try spv_stream.write(shader_name);
-        for (spv_stream.getWritten()) |*char| {
+        const spv_extension = ".spv";
+        @memcpy(spv_buffer[0..shader_name.len], shader_name);
+        for (spv_buffer[0..shader_name.len]) |*char| {
             if (char.* == '.') char.* = '_';
         }
-        _ = try spv_stream.write(".spv");
+        @memcpy(spv_buffer[shader_name.len .. shader_name.len + spv_extension.len], spv_extension);
 
         const glslc_cmd = b.addSystemCommand(&.{
             "glslc",
             "--target-env=vulkan1.3",
             "-o",
         });
-        const shader_spv = glslc_cmd.addOutputFileArg(spv_stream.getWritten());
+        const shader_spv = glslc_cmd.addOutputFileArg(spv_buffer[0 .. shader_name.len + spv_extension.len]);
 
         // create "shaders/___" name
-        fullpath_stream.reset();
-        _ = try fullpath_stream.write("shaders/");
-        _ = try fullpath_stream.write(shader_name);
-        glslc_cmd.addFileArg(b.path(fullpath_stream.getWritten()));
+        const shader_path = "shaders/";
+        @memcpy(fullpath_buffer[0..shader_path.len], shader_path);
+        @memcpy(fullpath_buffer[shader_path.len .. shader_path.len + shader_name.len], shader_name);
+        glslc_cmd.addFileArg(b.path(fullpath_buffer[0 .. shader_path.len + shader_name.len]));
 
         std.mem.copyForwards(u8, final_name, shader_name);
         for (final_name[0..shader_name.len]) |*char| {

@@ -26,9 +26,6 @@ comptime {
     _ = @import("big_float.zig");
 }
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
-
-    try app.run(if (common.dbg) gpa.allocator() else std.heap.c_allocator);
+pub fn main(init: std.process.Init) !void {
+    try app.run(init.gpa, init.io);
 }

@@ -24,7 +24,7 @@ pub fn init(alloc: Allocator) Allocator.Error!void {
     common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.max_iterations);
 }
 
-pub fn update() void {
+pub fn update(io: std.Io) void {
     _ = big_float.ensure_precision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
     _ = big_float.ensure_precision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
 
@@ -70,8 +70,8 @@ pub fn update() void {
 
     const next_index: usize = (common.current_cpu_to_render_descriptor_index + 1) % 2;
 
-    common.gpu_interface_lock.lock();
-    defer common.gpu_interface_lock.unlock();
+    common.gpu_interface_lock.lockUncancelable(io);
+    defer common.gpu_interface_lock.unlock(io);
     copyBuffer(
         common.perturbation_buffer,
         common.perturbation_staging_buffer,

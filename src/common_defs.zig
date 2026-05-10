@@ -220,6 +220,7 @@ pub const RenderPatchStatus = enum {
     placing,
 };
 
+pub const ComputeError = Allocator.Error || std.Io.Cancelable;
 pub const InitWindowError = error{create_window_failed};
 pub const InitVulkanError = error{
     instance_creation_failed,
@@ -246,13 +247,13 @@ pub const InitVulkanError = error{
     buffer_creation_failed,
     buffer_memory_allocation_failed,
     suitable_memory_type_not_found,
-} || ReadFileError;
+} || std.mem.Allocator.Error;
 pub const MainLoopError = error{
     command_buffer_recording_begin_failed,
     command_buffer_record_failed,
     draw_command_buffer_submit_failed,
     swap_chain_image_acquisition_failed,
-} || InitVulkanError || std.time.Timer.Error;
+} || InitVulkanError || std.Io.Cancelable;
 
 const Allocator = std.mem.Allocator;
 //result of following OOP-based tutorial, maybe change in future
@@ -303,11 +304,11 @@ pub var in_flight_fences: []c.VkFence = undefined;
 pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
 pub var render_buffer_write_fence: c.VkFence = undefined;
 
-pub var compute_manager_thread: std.Thread = undefined;
-pub var gpu_interface_lock: std.Thread.Mutex = .{};
+pub var compute_manager_future: std.Io.Future(ComputeError!void) = undefined;
+pub var gpu_interface_lock: std.Io.Mutex = .init;
 pub var compute_manager_should_close: bool = false;
 
-pub var render_patch_mutex: std.Thread.Mutex = .{};
+pub var render_patch_mutex: std.Io.Mutex = .init;
 pub var resolutions_complete: [num_distinct_res_scales][][]bool = undefined;
 pub var res_complete_tmp: [num_distinct_res_scales][][]bool = undefined;
 pub var render_patches_saturated: bool = false;
@@ -363,9 +364,9 @@ pub var ref_calc_x: c.mpf_t = undefined;
 pub var ref_calc_y: c.mpf_t = undefined;
 pub var mpf_intermediates: [3]c.mpf_t = undefined;
 
-pub var time: std.time.Timer = undefined;
-pub var prev_frame_time: u64 = 0;
-pub var prev_update_time: u64 = 0;
+pub var time: std.Io.Clock = .awake;
+pub var prev_frame_time: std.Io.Timestamp = .zero;
+pub var prev_update_time: std.Io.Timestamp = .zero;
 
 pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
     var i: usize = 0;
@@ -397,17 +398,17 @@ pub fn getScreenCenter() struct { x: f32, y: f32 } {
     };
 }
 
-// readToEndAlloc doesn't provide error type :/
-pub const ReadFileError = Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.GetSeekPosError;
-
-/// caller owns slice, slice contains entire file exactly. File limited to 100kB
-pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29) ReadFileError![]align(alignment) u8 {
-    const file = try std.fs.cwd().openFile(file_name, .{});
-    const num: u64 = try file.getEndPos();
-    const out = try alloc.alignedAlloc(u8, alignment, @intCast(num));
-    _ = try file.readAll(out);
-    return out;
-}
+//// readToEndAlloc doesn't provide error type :/
+//pub const ReadFileError = Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.GetSeekPosError;
+//
+///// caller owns slice, slice contains entire file exactly. File limited to 100kB
+//pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29) ReadFileError![]align(alignment) u8 {
+//    const file = try std.fs.cwd().openFile(file_name, .{});
+//    const num: u64 = try file.getEndPos();
+//    const out = try alloc.alignedAlloc(u8, alignment, @intCast(num));
+//    _ = try file.readAll(out);
+//    return out;
+//}
 
 pub const max_res_scale_exponent = 3;
 pub const num_distinct_res_scales = max_res_scale_exponent + 1;

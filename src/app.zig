@@ -26,13 +26,15 @@ const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
 const big_float = @import("big_float.zig");
 
-pub const Error = common.InitWindowError || common.InitVulkanError || common.MainLoopError || std.Thread.SpawnError;
+pub const Error = std.Io.ConcurrentError || common.InitWindowError ||
+    common.InitVulkanError || common.MainLoopError || std.Thread.SpawnError;
+
 const Allocator = std.mem.Allocator;
 
 //result of following OOP-based tutorial, change in future
 const AppData = common.AppData;
 
-pub fn run(alloc: Allocator) Error!void {
+pub fn run(alloc: Allocator, io: std.Io) Error!void {
     common.width = 800;
     common.height = 600;
 
@@ -46,13 +48,15 @@ pub fn run(alloc: Allocator) Error!void {
     }
     c.mpf_init2(&common.ref_calc_x, 32);
     c.mpf_init2(&common.ref_calc_y, 32);
-    common.time = try std.time.Timer.start();
 
     try window_init.initWindow();
     try vulkan_init.initVulkan(alloc);
     try ref_calc.init(alloc);
-    ref_calc.update();
-    try main_loop.startComputeManager(alloc);
-    try main_loop.mainLoop(alloc);
-    clean_up.cleanup(alloc);
+    ref_calc.update(io);
+    common.compute_manager_future = try io.concurrent(
+        main_loop.computeManage,
+        .{ alloc, io },
+    );
+    try main_loop.mainLoop(alloc, io);
+    try clean_up.cleanup(alloc, io);
 }
