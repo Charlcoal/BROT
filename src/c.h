@@ -14,12 +14,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub const c = @cImport({
-    @cDefine("GLFW_INCLUDE_NONE", {});
-    @cDefine("GLFW_INCLUDE_VULKAN", {});
-    @cInclude("GLFW/glfw3.h");
-    @cInclude("dcimgui.h");
-    @cInclude("backends/dcimgui_impl_glfw.h");
-    @cInclude("backends/dcimgui_impl_vulkan.h");
-    @cInclude("gmp.h");
-});
+#define GLFW_INCLUDE_NONE 1
+#define GLFW_INCLUDE_VULKAN 1
+#include "GLFW/glfw3.h"
+#include "dcimgui.h"
+#include "backends/dcimgui_impl_glfw.h"
+#include "backends/dcimgui_impl_vulkan.h"
+#include "gmp.h"

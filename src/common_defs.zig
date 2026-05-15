@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
-pub const c = @import("imports.zig").c;
+pub const c = @import("c");
 const big_float = @import("big_float.zig");
 const builtin = @import("builtin");
 

@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const c = @import("imports.zig").c;
+const c = @import("c");
 const common = @import("common_defs.zig");
 const Allocator = std.mem.Allocator;
 const big_float = @import("big_float.zig");

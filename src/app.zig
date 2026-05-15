@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const c = @import("imports.zig").c;
+const c = @import("c");
 const std = @import("std");
 const builtin = @import("builtin");
 const common = @import("common_defs.zig");

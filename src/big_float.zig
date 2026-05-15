@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
-const c = @import("imports.zig").c;
+const c = @import("c");
 const Allocator = std.mem.Allocator;
 
 pub fn string_init(str: [:0]const u8) c.mpf_t {

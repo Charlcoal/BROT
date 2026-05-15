@@ -20,41 +20,21 @@ const Resources = struct {
 };
 const resources: Resources = @import("resources.zon");
 
-pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+fn addIncludePathsToTranslateC(translate_c: *std.Build.Step.TranslateC, lib: *std.Build.Step.Compile) void {
+    for (lib.root_module.include_dirs.items) |*included| {
+        switch (included.*) {
+            .path => translate_c.addIncludePath(included.path),
+            .config_header_step => translate_c.addConfigHeader(included.config_header_step),
+            .path_system => translate_c.addSystemIncludePath(included.path_system),
+            .other_step => addIncludePathsToTranslateC(translate_c, included.other_step),
+            else => unreachable,
+        }
+    }
+}
 
-    const root_module = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const exe = b.addExecutable(.{
-        .name = "BROT",
-        .root_module = root_module,
-        .use_llvm = true,
-    });
-
-    const cimgui_dep = b.dependency("cimgui_zig", .{
-        .target = target,
-        .optimize = optimize,
-        .platforms = &[_]cimgui.Platform{.GLFW},
-        .renderers = &[_]cimgui.Renderer{.Vulkan},
-    });
-
-    const gmp = b.dependency("gmp", .{});
-
-    exe.root_module.link_libc = true;
-    exe.root_module.linkLibrary(cimgui_dep.artifact("cimgui"));
-    exe.root_module.linkSystemLibrary("vulkan", .{});
-    exe.root_module.linkSystemLibrary("gmp", .{});
-    exe.root_module.addIncludePath(gmp.path("."));
-
-    b.installArtifact(exe);
-
-    // compile shaders at build time
-    // (e.g.  "triangle.frag" -> "triangle_frag_shader" (internally "triangle_frag.spv"))
+/// compile shaders at build time
+/// (e.g.  "triangle.frag" -> "triangle_frag_shader" (internally "triangle_frag.spv"))
+fn compile_shaders(b: *std.Build, exe: *std.Build.Step.Compile) void {
     var spv_buffer: [256]u8 = undefined;
     var fullpath_buffer: [256]u8 = undefined;
     var final_name_buf: [resources.shaders.len][256]u8 = undefined;
@@ -87,6 +67,57 @@ pub fn build(b: *std.Build) !void {
         std.mem.copyForwards(u8, final_name[shader_name.len..256], "_shader");
         exe.root_module.addAnonymousImport(final_name[0..(shader_name.len + 7)], .{ .root_source_file = shader_spv });
     }
+}
+
+pub fn build(b: *std.Build) !void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const cimgui_dep = b.dependency("cimgui_zig", .{
+        .target = target,
+        .optimize = optimize,
+        .platforms = &[_]cimgui.Platform{.GLFW},
+        .renderers = &[_]cimgui.Renderer{.Vulkan},
+    });
+
+    const gmp = b.dependency("gmp", .{});
+
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    translate_c.linkSystemLibrary("vulkan", .{});
+    translate_c.linkSystemLibrary("gmp", .{});
+    translate_c.link_libc = true;
+    translate_c.addIncludePath(gmp.path("."));
+
+    const cimgui_lib = cimgui_dep.artifact("cimgui");
+    addIncludePathsToTranslateC(translate_c, cimgui_lib);
+    const c_module = translate_c.createModule();
+    c_module.linkLibrary(cimgui_lib);
+
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "c",
+                .module = c_module,
+            },
+        },
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "BROT",
+        .root_module = root_module,
+        .use_llvm = true,
+    });
+
+    b.installArtifact(exe);
+
+    compile_shaders(b, exe);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -102,7 +133,6 @@ pub fn build(b: *std.Build) !void {
         .name = "top level tests",
         .root_module = root_module,
     });
-    //exe_unit_tests.root_module.linkSystemLibrary("vulkan", .{});
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
