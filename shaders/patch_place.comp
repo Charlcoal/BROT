@@ -1,5 +1,5 @@
 // BROT - A fast mandelbrot set explorer
-// Copyright (C) 2025  Charles Reischer
+// Copyright (C) 2025 - 2026 Charles Reischer
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
