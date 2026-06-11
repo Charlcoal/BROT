@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const common = @import("common_defs.zig");
+const imgui = @import("imgui.zig");
 const c = common.c;
 const Allocator = std.mem.Allocator;
 
@@ -34,10 +35,14 @@ pub fn cleanupSwapChain(alloc: Allocator) void {
     alloc.free(common.swap_chain_images);
 }
 
-pub fn cleanup(alloc: Allocator, io: std.Io) common.ComputeError!void {
+pub fn cleanup(alloc: Allocator, io: std.Io) void {
     common.compute_manager_should_close = true;
-    try common.compute_manager_future.await(io);
-    //vulkan
+    common.compute_manager_future.await(io) catch {};
+
+    // cimgui
+    imgui.deinit();
+
+    // vulkan
     for (0..common.max_frames_in_flight) |i| {
         c.vkDestroySemaphore(common.device, common.image_availible_semaphores[i], null);
         c.vkDestroyFence(common.device, common.in_flight_fences[i], null);

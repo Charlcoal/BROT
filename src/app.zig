@@ -21,6 +21,7 @@ const common = @import("common_defs.zig");
 
 const window_init = @import("window_init.zig");
 const vulkan_init = @import("vulkan_init.zig");
+const imgui = @import("imgui.zig");
 const ref_calc = @import("reference_calc.zig");
 const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
@@ -51,6 +52,7 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
 
     try window_init.initWindow();
     try vulkan_init.initVulkan(alloc);
+    imgui.init();
     try ref_calc.init(alloc);
     ref_calc.update(io);
     common.compute_manager_future = try io.concurrent(
@@ -58,5 +60,5 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
         .{ alloc, io },
     );
     try main_loop.mainLoop(alloc, io);
-    try clean_up.cleanup(alloc, io);
+    clean_up.cleanup(alloc, io);
 }
