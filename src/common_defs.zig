@@ -21,6 +21,7 @@ const builtin = @import("builtin");
 
 // ------------------- settings -------------------------
 
+pub const vk_version = c.VK_API_VERSION_1_3;
 pub const enable_validation_layers = dbg;
 
 pub const validation_layers = [_][*:0]const u8{
@@ -73,6 +74,19 @@ pub const RenderPatch = struct {
     resolution_scale_exponent: u32,
     x_pos: u32,
     y_pos: u32,
+};
+
+pub const QueueFamilyIndices = struct {
+    graphics_family: ?u32,
+    graphics_max_queues: u32,
+    compute_family: ?u32,
+    compute_max_queues: u32,
+    present_family: ?u32,
+    present_max_queues: u32,
+
+    pub fn isComplete(self: QueueFamilyIndices) bool {
+        return self.graphics_family != null and self.present_family != null and self.compute_family != null;
+    }
 };
 
 pub const FractalPosition = struct {
@@ -256,18 +270,23 @@ pub const MainLoopError = error{
 } || InitVulkanError || std.Io.Cancelable;
 
 const Allocator = std.mem.Allocator;
-//result of following OOP-based tutorial, maybe change in future
-//globals...
+// result of following OOP-based tutorial, maybe change in future.
+// globals...
 pub var window: *c.GLFWwindow = undefined;
 pub var height: i32 = 600;
 pub var width: i32 = 800;
 pub var surface: c.VkSurfaceKHR = null;
 
+pub const CimguiData = struct {
+    context: *c.ImGuiContext,
+};
+pub var cimgui: CimguiData = undefined;
 pub var instance: c.VkInstance = null;
 pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
 pub var physical_device: c.VkPhysicalDevice = null;
 pub var device: c.VkDevice = null;
 
+pub var queue_families: QueueFamilyIndices = undefined;
 pub var graphics_queue: c.VkQueue = null;
 pub var compute_queue: c.VkQueue = null;
 pub var present_queue: c.VkQueue = null;

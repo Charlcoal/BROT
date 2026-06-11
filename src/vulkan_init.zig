@@ -37,6 +37,7 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     }
 
     try pickPhysicalDevice(alloc);
+    common.queue_families = try findQueueFamilies(common.physical_device, alloc);
     try createLogicalDevice(alloc);
     try createSwapChain(alloc);
     try createImageViews(alloc);
@@ -49,8 +50,8 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createColoringPipeline();
     try createRendingPipeline();
     try createFrameBuffers(alloc);
-    try createGraphicsCommandPool(alloc);
-    try createComputeCommandPool(alloc);
+    try createGraphicsCommandPool();
+    try createComputeCommandPool();
     try createBuffers();
     try createDescriptorPool();
     try createRenderPatchDescriptorSets();
@@ -99,21 +100,8 @@ fn populateDebugMessengerCreateInfo(create_info: *c.VkDebugUtilsMessengerCreateI
     };
 }
 
-const QueueFamilyIndices = struct {
-    graphics_family: ?u32,
-    graphics_max_queues: u32,
-    compute_family: ?u32,
-    compute_max_queues: u32,
-    present_family: ?u32,
-    present_max_queues: u32,
-
-    pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_family != null and self.present_family != null and self.compute_family != null;
-    }
-};
-
-fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
-    var indices = QueueFamilyIndices{
+fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!common.QueueFamilyIndices {
+    var indices = common.QueueFamilyIndices{
         .graphics_family = null,
         .compute_family = null,
         .present_family = null,
@@ -293,13 +281,11 @@ fn createRenderCommandBuffers() InitVulkanError!void {
     }
 }
 
-fn createGraphicsCommandPool(alloc: Allocator) InitVulkanError!void {
-    const queue_family_indices = try findQueueFamilies(common.physical_device, alloc);
-
+fn createGraphicsCommandPool() InitVulkanError!void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family_indices.graphics_family.?,
+        .queueFamilyIndex = common.queue_families.graphics_family.?,
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
@@ -307,13 +293,11 @@ fn createGraphicsCommandPool(alloc: Allocator) InitVulkanError!void {
     }
 }
 
-fn createComputeCommandPool(alloc: Allocator) InitVulkanError!void {
-    const queue_family_indices = try findQueueFamilies(common.physical_device, alloc);
-
+fn createComputeCommandPool() InitVulkanError!void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = queue_family_indices.compute_family.?,
+        .queueFamilyIndex = common.queue_families.compute_family.?,
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
@@ -918,10 +902,10 @@ fn createInstance(alloc: Allocator) InitVulkanError!void {
     const app_info = c.VkApplicationInfo{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "Hello Triangle",
-        .applicationVersion = c.VK_MAKE_API_VERSION(0, 1, 3, 0),
+        .applicationVersion = c.VK_MAKE_API_VERSION(0, 0, 0, 0),
         .pEngineName = "No Engine",
-        .engineVersion = c.VK_MAKE_API_VERSION(0, 1, 0, 0),
-        .apiVersion = c.VK_API_VERSION_1_3,
+        .engineVersion = c.VK_MAKE_API_VERSION(0, 0, 0, 0),
+        .apiVersion = common.vk_version,
     };
 
     var create_info = c.VkInstanceCreateInfo{
@@ -994,10 +978,16 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
 }
 
 fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
-    const indicies = try findQueueFamilies(common.physical_device, alloc);
-
-    var unique_queue_families = [_]u32{ indicies.graphics_family.?, indicies.compute_family.?, indicies.present_family.? };
-    const max_queues = [unique_queue_families.len]u32{ indicies.graphics_max_queues, indicies.compute_max_queues, indicies.present_max_queues };
+    var unique_queue_families = [_]u32{
+        common.queue_families.graphics_family.?,
+        common.queue_families.compute_family.?,
+        common.queue_families.present_family.?,
+    };
+    const max_queues = [unique_queue_families.len]u32{
+        common.queue_families.graphics_max_queues,
+        common.queue_families.compute_max_queues,
+        common.queue_families.present_max_queues,
+    };
     var num_required_queues = [unique_queue_families.len]u32{ 1, 1, 1 };
     var unique_queue_num: u32 = 0;
 
@@ -1006,10 +996,22 @@ fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
 
     const queue_family_properties = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_property_count);
     defer alloc.free(queue_family_properties);
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(common.physical_device, &queue_family_property_count, queue_family_properties.ptr);
 
-    outer: for (unique_queue_families, &num_required_queues, max_queues) |queue_family, *num_req_queues, max_queue| {
-        for (unique_queue_families[0..unique_queue_num], num_required_queues[0..unique_queue_num]) |existing_unique_queue_family, *existing_num_req_queues| {
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(
+        common.physical_device,
+        &queue_family_property_count,
+        queue_family_properties.ptr,
+    );
+
+    outer: for (
+        unique_queue_families,
+        &num_required_queues,
+        max_queues,
+    ) |queue_family, *num_req_queues, max_queue| {
+        for (
+            unique_queue_families[0..unique_queue_num],
+            num_required_queues[0..unique_queue_num],
+        ) |existing_unique_queue_family, *existing_num_req_queues| {
             if (existing_unique_queue_family == queue_family) {
                 existing_num_req_queues.* += num_req_queues.*;
                 existing_num_req_queues.* = @min(existing_num_req_queues.*, max_queue);
@@ -1026,12 +1028,20 @@ fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
     defer alloc.free(queue_create_infos);
 
     const queue_priority: [2]f32 = .{ 1, 0 };
-    for (unique_queue_families[0..unique_queue_num], queue_create_infos, num_required_queues[0..unique_queue_num]) |queue_family, *queue_create_info, num_queues| {
+    for (
+        unique_queue_families[0..unique_queue_num],
+        queue_create_infos,
+        num_required_queues[0..unique_queue_num],
+    ) |queue_family, *queue_create_info, num_queues| {
         queue_create_info.* = .{
             .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
             .queueCount = num_queues,
-            .pQueuePriorities = if (queue_family == indicies.compute_family and queue_family != indicies.graphics_family) &queue_priority[1] else &queue_priority,
+            .pQueuePriorities = if (queue_family == common.queue_families.compute_family and
+                queue_family != common.queue_families.graphics_family)
+                &queue_priority[1]
+            else
+                &queue_priority,
         };
     }
 
@@ -1057,12 +1067,14 @@ fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
         return InitVulkanError.logical_device_creation_failed;
     }
 
-    c.vkGetDeviceQueue(common.device, indicies.graphics_family.?, 0, &common.graphics_queue);
-    c.vkGetDeviceQueue(common.device, indicies.present_family.?, 0, &common.present_queue);
-    if (indicies.graphics_family.? == indicies.compute_family.? and indicies.graphics_max_queues >= 2) {
-        c.vkGetDeviceQueue(common.device, indicies.compute_family.?, 1, &common.compute_queue);
+    c.vkGetDeviceQueue(common.device, common.queue_families.graphics_family.?, 0, &common.graphics_queue);
+    c.vkGetDeviceQueue(common.device, common.queue_families.present_family.?, 0, &common.present_queue);
+    if (common.queue_families.graphics_family.? == common.queue_families.compute_family.? and
+        common.queue_families.graphics_max_queues >= 2)
+    {
+        c.vkGetDeviceQueue(common.device, common.queue_families.compute_family.?, 1, &common.compute_queue);
     } else {
-        c.vkGetDeviceQueue(common.device, indicies.compute_family.?, 0, &common.compute_queue);
+        c.vkGetDeviceQueue(common.device, common.queue_families.compute_family.?, 0, &common.compute_queue);
     }
 }
 
@@ -1098,7 +1110,8 @@ fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Erro
         const swap_chain_support = try querySwapChainSupport(common.surface, device, alloc);
         defer alloc.free(swap_chain_support.presentModes);
         defer alloc.free(swap_chain_support.formats);
-        swap_chain_adequate = (swap_chain_support.formats.len != 0) and (swap_chain_support.presentModes.len != 0);
+        swap_chain_adequate = (swap_chain_support.formats.len != 0) and
+            (swap_chain_support.presentModes.len != 0);
     }
 
     return indices.isComplete() and extensions_supported and swap_chain_adequate;
@@ -1198,10 +1211,12 @@ fn createSwapChain(alloc: Allocator) InitVulkanError!void {
         .clipped = c.VK_TRUE,
     };
 
-    const indices = try findQueueFamilies(common.physical_device, alloc);
-    const queue_family_indices = [_]u32{ indices.graphics_family.?, indices.present_family.? };
+    const queue_family_indices = [_]u32{
+        common.queue_families.graphics_family.?,
+        common.queue_families.present_family.?,
+    };
 
-    if (indices.graphics_family != indices.present_family) {
+    if (common.queue_families.graphics_family != common.queue_families.present_family) {
         create_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;

@@ -29,6 +29,11 @@ pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
 
+        c.cImGui_ImplVulkan_NewFrame();
+        c.cImGui_ImplGlfw_NewFrame();
+        c.ImGui_NewFrame();
+        c.ImGui_ShowDemoWindow(null);
+
         const delta = get_update_delta_time(io);
         renderedBufferResolve(io);
         updateFractalPosition(delta);
@@ -1091,6 +1096,14 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         0,
         0,
     );
+
+    // draw gui
+    c.ImGui_Render();
+    c.cImGui_ImplVulkan_RenderDrawData(
+        c.ImGui_GetDrawData(),
+        command_buffer,
+    );
+
     c.vkCmdEndRenderPass(command_buffer);
 
     if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
