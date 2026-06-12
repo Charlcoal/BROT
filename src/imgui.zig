@@ -18,6 +18,12 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const c = common.c;
 
+const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
+
+fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
+    return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
+}
+
 fn checkVkResult(err: c.VkResult) callconv(.c) void {
     if (err == 0) {
         @branchHint(.likely);
@@ -38,6 +44,8 @@ pub fn deinit() void {
 pub fn init() void {
     common.cimgui.context = c.ImGui_CreateContext(null) orelse
         std.debug.panic("imgui context creation failed!\n", .{});
+
+    _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, loader);
     var info: c.struct_ImGui_ImplVulkan_InitInfo_t = .{
         .Instance = common.instance,
         .PhysicalDevice = common.physical_device,
