@@ -16,8 +16,6 @@
 
 #define GLFW_INCLUDE_NONE 1
 #define GLFW_INCLUDE_VULKAN 1
-#undef IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-#undef VK_NO_PROTOTYPES
 #include "GLFW/glfw3.h"
 #include "dcimgui.h"
 #include "backends/dcimgui_impl_glfw.h"
