@@ -45,6 +45,9 @@ pub fn init() void {
     common.cimgui.context = c.ImGui_CreateContext(null) orelse
         std.debug.panic("imgui context creation failed!\n", .{});
 
+    const gio = c.ImGui_GetIO();
+    gio.*.IniFilename = null;
+
     _ = c.cImGui_ImplGlfw_InitForVulkan(common.window, true);
     const style = c.ImGui_GetStyle();
     _ = c.ImGui_StyleColorsDark(style);

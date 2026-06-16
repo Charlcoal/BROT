@@ -32,7 +32,6 @@ pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
         c.cImGui_ImplVulkan_NewFrame();
         c.cImGui_ImplGlfw_NewFrame();
         c.ImGui_NewFrame();
-        c.ImGui_ShowDemoWindow(null);
 
         const delta = get_update_delta_time(io);
         renderedBufferResolve(io);
