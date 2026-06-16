@@ -78,6 +78,7 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
     c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
 
     c.vkDestroyDescriptorPool(common.device, common.descriptor_pool, null);
+    c.vkDestroyDescriptorPool(common.device, common.gui_descriptor_pool, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.render_patch_descriptor_set_layout, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.render_to_coloring_descriptor_set_layout, null);
     c.vkDestroyDescriptorSetLayout(common.device, common.cpu_to_render_descriptor_set_layout, null);
