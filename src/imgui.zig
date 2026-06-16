@@ -45,6 +45,10 @@ pub fn init() void {
     common.cimgui.context = c.ImGui_CreateContext(null) orelse
         std.debug.panic("imgui context creation failed!\n", .{});
 
+    _ = c.cImGui_ImplGlfw_InitForVulkan(common.window, true);
+    const style = c.ImGui_GetStyle();
+    _ = c.ImGui_StyleColorsDark(style);
+
     _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, loader);
     var info: c.struct_ImGui_ImplVulkan_InitInfo_t = .{
         .Instance = common.instance,
@@ -52,9 +56,9 @@ pub fn init() void {
         .Device = common.device,
         .QueueFamily = common.queue_families.graphics_family.?,
         .Queue = common.graphics_queue,
-        .DescriptorPool = null, // TODO
-        .MinImageCount = 0, // TODO
-        .ImageCount = 0, // TODO
+        .DescriptorPool = common.gui_descriptor_pool,
+        .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
+        .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .Allocator = null, // TODO
         .PipelineInfoMain = .{
             .RenderPass = common.render_pass,

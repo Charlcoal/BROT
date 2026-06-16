@@ -356,6 +356,7 @@ pub var perturbation_staging_buffer: c.VkBuffer = undefined;
 pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
 
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
+pub var gui_descriptor_pool: c.VkDescriptorPool = undefined;
 
 pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]c.VkDescriptorSet = undefined;

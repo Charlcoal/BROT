@@ -54,6 +54,7 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createComputeCommandPool();
     try createBuffers();
     try createDescriptorPool();
+    try createGuiDescriptorPool();
     try createRenderPatchDescriptorSets();
     try createCpuToRndDescriptorSets();
     try createRndToClrDescriptorSets();
@@ -356,6 +357,34 @@ fn createDescriptorPool() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_pool_creation_failed;
+    }
+}
+
+fn createGuiDescriptorPool() InitVulkanError!void {
+    const pool_sizes = [_]c.VkDescriptorPoolSize{
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .descriptorCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
+        },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_SAMPLER,
+            .descriptorCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
+        },
+    };
+
+    var count: u32 = 0;
+    for (pool_sizes) |ps| count += ps.descriptorCount;
+
+    const pool_info: c.VkDescriptorPoolCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = c.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = count,
+        .pPoolSizes = &pool_sizes,
+        .poolSizeCount = @intCast(pool_sizes.len),
+    };
+
+    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.gui_descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
     }
 }
