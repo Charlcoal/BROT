@@ -364,11 +364,7 @@ fn createDescriptorPool() InitVulkanError!void {
 fn createGuiDescriptorPool() InitVulkanError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
-            .type = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .descriptorCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
-        },
-        .{
-            .type = c.VK_DESCRIPTOR_TYPE_SAMPLER,
+            .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         },
     };
