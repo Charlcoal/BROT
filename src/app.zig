@@ -36,8 +36,8 @@ const Allocator = std.mem.Allocator;
 const AppData = common.AppData;
 
 pub fn run(alloc: Allocator, io: std.Io) Error!void {
-    common.width = 800;
-    common.height = 600;
+    common.width = 1600;
+    common.height = 1000;
 
     common.fractal_pos.x = big_float.string_init("-0.5");
     common.fractal_pos.y = big_float.string_init("-0.0");

@@ -20,11 +20,6 @@ const c = common.c;
 
 const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 
-pub const GuiState = struct {
-    frame_shown: bool = false,
-    main_window_open: bool = true,
-};
-
 fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
 }
@@ -43,11 +38,11 @@ fn checkVkResult(err: c.VkResult) callconv(.c) void {
 pub fn deinit() void {
     c.cImGui_ImplVulkan_Shutdown();
     c.cImGui_ImplGlfw_Shutdown();
-    c.ImGui_DestroyContext(common.cimgui.context);
+    c.ImGui_DestroyContext(common.gui.context);
 }
 
 pub fn init() void {
-    common.cimgui.context = c.ImGui_CreateContext(null) orelse
+    common.gui.context = c.ImGui_CreateContext(null) orelse
         std.debug.panic("imgui context creation failed!\n", .{});
 
     const gio = c.ImGui_GetIO();
@@ -99,12 +94,12 @@ pub fn scalarInput(comptime name: [:0]const u8, desc: ?[:0]const u8, cur_val: an
     var new_val = cur_val;
     var updated: bool = false;
     if (options.doubler_divider) {
-        if (c.ImGui_Button("-##" ++ name)) {
+        if (c.ImGui_Button("÷2##" ++ name)) {
             new_val = @divTrunc(new_val, 2);
             updated = true;
         }
         c.ImGui_SameLineEx(0, 5.0);
-        if (c.ImGui_Button("+##" ++ name)) {
+        if (c.ImGui_Button("x2##" ++ name)) {
             new_val *= 2;
             updated = true;
         }

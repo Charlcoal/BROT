@@ -281,9 +281,9 @@ pub var surface: c.VkSurfaceKHR = null;
 
 pub const CimguiData = struct {
     context: *c.ImGuiContext,
+    frame_shown: bool = false,
 };
-pub var cimgui: CimguiData = undefined;
-pub var gui_state: imgui.GuiState = .{};
+pub var gui: CimguiData = undefined;
 pub var instance: c.VkInstance = null;
 pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
 pub var physical_device: c.VkPhysicalDevice = null;

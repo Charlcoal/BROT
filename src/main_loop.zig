@@ -1100,7 +1100,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         c.ImGui_GetDrawData(),
         command_buffer,
     );
-    common.gui_state.frame_shown = false;
+    common.gui.frame_shown = false;
 
     c.vkCmdEndRenderPass(command_buffer);
 
@@ -1119,14 +1119,16 @@ fn get_update_delta_time(io: std.Io) f64 {
 
 /// deals with gui state, doesn't render on its own
 fn showGui(io: std.Io, alloc: Allocator) !void {
-    if (common.gui_state.frame_shown) return;
-    common.gui_state.frame_shown = true;
+    if (common.gui.frame_shown) return;
+    common.gui.frame_shown = true;
     c.cImGui_ImplVulkan_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();
     c.ImGui_NewFrame();
 
     defer c.ImGui_End();
-    if (!c.ImGui_Begin("BROT", &common.gui_state.main_window_open, 0)) return;
+    c.ImGui_SetNextWindowSize(.{ .x = 300.0, .y = 400.0 }, c.ImGuiCond_FirstUseEver);
+    c.ImGui_SetNextWindowPos(.{ .x = 20.0, .y = 20.0 }, c.ImGuiCond_FirstUseEver);
+    if (!c.ImGui_Begin("BROT", null, 0)) return;
 
     if (c.ImGui_CollapsingHeader("Bailout", 0)) {
         if (imgui.scalarInput(

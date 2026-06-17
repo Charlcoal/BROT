@@ -77,9 +77,7 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
         }
     }
 
-    if (key == c.GLFW_KEY_SPACE and action == c.GLFW_PRESS) {
-        for (0.., common.perturbation_vals[0..1000]) |i, val| {
-            std.debug.print("{}: {}, {}\n", .{ i, val[0], val[1] });
-        }
+    if (key == c.GLFW_KEY_ESCAPE and action == c.GLFW_PRESS) {
+        c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
     }
 }
