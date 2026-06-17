@@ -20,6 +20,7 @@ const vulkan_init = @import("vulkan_init.zig");
 const c = common.c;
 const big_float = @import("big_float.zig");
 const reference_calc = @import("reference_calc.zig");
+const imgui = @import("imgui.zig");
 
 const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
@@ -1125,11 +1126,12 @@ fn showGui(io: std.Io, alloc: Allocator) !void {
     if (!c.ImGui_Begin("BROT", &common.gui_state.main_window_open, 0)) return;
 
     if (c.ImGui_CollapsingHeader("Bailout", 0)) {
-        var new_max_iterations = common.max_iterations;
-        var updated: bool = false;
-        if (c.ImGui_InputScalar("Iterations", c.ImGuiDataType_U32, &new_max_iterations)) updated = true;
-
-        if (updated) {
+        if (imgui.scalarInput(
+            "Iterations",
+            "Caps the number of iterations before giving up",
+            common.max_iterations,
+            .{ .doubler_divider = true },
+        )) |new_max_iterations| {
             common.reference_center_stale = true;
             defer common.reference_center_stale = false;
             if (new_max_iterations > common.allocated_iterations)
