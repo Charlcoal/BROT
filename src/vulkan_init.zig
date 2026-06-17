@@ -166,7 +166,7 @@ fn querySwapChainSupport(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice, al
     return details;
 }
 
-fn createBuffer(
+pub fn createBuffer(
     size: c.VkDeviceSize,
     usage: c.VkBufferUsageFlags,
     properties: c.VkMemoryPropertyFlags,
@@ -488,7 +488,7 @@ fn createRenderPatchDescriptorSets() InitVulkanError!void {
     }
 }
 
-fn createCpuToRndDescriptorSets() InitVulkanError!void {
+pub fn createCpuToRndDescriptorSets() InitVulkanError!void {
     var layouts: [common.cpu_to_render_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.cpu_to_render_descriptor_set_layout;
@@ -524,7 +524,13 @@ fn createCpuToRndDescriptorSets() InitVulkanError!void {
             },
         };
 
-        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(
+            common.device,
+            @intCast(descriptor_writes.len),
+            &descriptor_writes,
+            0,
+            null,
+        );
     }
 }
 

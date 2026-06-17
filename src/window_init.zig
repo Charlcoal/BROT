@@ -62,6 +62,9 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {
+    const gio = c.ImGui_GetIO();
+    if (gio.*.WantCaptureKeyboard) return;
+
     _ = mods;
     _ = scancode;
     if (key == c.GLFW_KEY_F and action == c.GLFW_PRESS) {
