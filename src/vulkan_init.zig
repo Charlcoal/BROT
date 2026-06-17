@@ -508,8 +508,8 @@ fn createCpuToRndDescriptorSets() InitVulkanError!void {
     for (0..common.cpu_to_render_descriptor_sets.len) |i| {
         const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
             .buffer = common.perturbation_buffer,
-            .offset = common.max_iterations * 2 * @sizeOf(f32) * i,
-            .range = common.max_iterations * 2 * @sizeOf(f32),
+            .offset = common.allocated_iterations * 2 * @sizeOf(f32) * i,
+            .range = common.allocated_iterations * 2 * @sizeOf(f32),
         };
 
         const descriptor_writes = [_]c.VkWriteDescriptorSet{
@@ -1388,7 +1388,7 @@ fn createBuffers() InitVulkanError!void {
     );
 
     try createBuffer(
-        common.max_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
+        common.allocated_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         &common.perturbation_buffer,
@@ -1396,7 +1396,7 @@ fn createBuffers() InitVulkanError!void {
     );
 
     try createBuffer(
-        common.max_iterations * 2 * @sizeOf(f32),
+        common.allocated_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         &common.perturbation_staging_buffer,

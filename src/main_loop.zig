@@ -28,10 +28,7 @@ const RenderPatch = common.RenderPatch;
 pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
-
-        c.cImGui_ImplVulkan_NewFrame();
-        c.cImGui_ImplGlfw_NewFrame();
-        c.ImGui_NewFrame();
+        showGui();
 
         const delta = get_update_delta_time(io);
         renderedBufferResolve(io);
@@ -405,7 +402,7 @@ fn renderedBufferResolve(io: std.Io) void {
             );
         }
         common.reference_center_stale = true;
-        reference_calc.update(io);
+        reference_calc.update(io, common.max_iterations);
         common.reference_center_stale = false;
 
         var next_index = (common.current_render_to_coloring_descriptor_index + 1);
@@ -994,6 +991,7 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
                 @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
             },
             .screen_offset = params.pos,
+            .max_iterations = common.max_iterations,
             .height_scale_exp = params.zoom_exp,
             .resolution_scale_exponent = params.res_exp,
             .cur_height = @intCast(common.height),
@@ -1116,6 +1114,27 @@ fn get_update_delta_time(io: std.Io) f64 {
     const delta_time: f64 = @as(f64, @floatFromInt(delta_dur.toMicroseconds())) / 1_000_000;
     common.prev_update_time = current_time;
     return delta_time;
+}
+
+/// deals with gui state, doesn't render on its own
+fn showGui() void {
+    c.cImGui_ImplVulkan_NewFrame();
+    c.cImGui_ImplGlfw_NewFrame();
+    c.ImGui_NewFrame();
+
+    defer c.ImGui_End();
+    if (!c.ImGui_Begin("BROT", &common.gui_state.main_window_open, 0)) return;
+
+    if (c.ImGui_CollapsingHeader("Bailout", 0)) {
+        var new_max_iterations = common.max_iterations;
+        var updated: bool = false;
+        if (c.ImGui_InputScalar("Iterations", c.ImGuiDataType_U32, &new_max_iterations)) updated = true;
+
+        if (updated) {
+            common.max_iterations = new_max_iterations;
+            common.buffer_invalidated = true;
+        }
+    }
 }
 
 //fn updateUniformBuffer(current_image: u32) void {

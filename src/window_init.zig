@@ -41,6 +41,9 @@ fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int
 }
 
 fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.c) void {
+    const gio = c.ImGui_GetIO();
+    if (gio.*.WantCaptureMouse) return;
+
     _ = xoffset;
     const scroll_factor: f64 = @exp(0.3 * yoffset);
 
