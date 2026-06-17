@@ -1100,6 +1100,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         c.ImGui_GetDrawData(),
         command_buffer,
     );
+    common.gui_state.frame_shown = false;
 
     c.vkCmdEndRenderPass(command_buffer);
 
@@ -1118,6 +1119,8 @@ fn get_update_delta_time(io: std.Io) f64 {
 
 /// deals with gui state, doesn't render on its own
 fn showGui(io: std.Io, alloc: Allocator) !void {
+    if (common.gui_state.frame_shown) return;
+    common.gui_state.frame_shown = true;
     c.cImGui_ImplVulkan_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();
     c.ImGui_NewFrame();

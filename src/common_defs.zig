@@ -283,7 +283,7 @@ pub const CimguiData = struct {
     context: *c.ImGuiContext,
 };
 pub var cimgui: CimguiData = undefined;
-pub var gui_state: imgui.GuiState = undefined;
+pub var gui_state: imgui.GuiState = .{};
 pub var instance: c.VkInstance = null;
 pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
 pub var physical_device: c.VkPhysicalDevice = null;
