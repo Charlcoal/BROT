@@ -20,6 +20,10 @@ const c = common.c;
 
 const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 
+pub const GuiState = struct {
+    main_window_open: bool,
+};
+
 fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
 }

@@ -21,17 +21,17 @@ const Allocator = std.mem.Allocator;
 const big_float = @import("big_float.zig");
 
 pub fn init(alloc: Allocator) Allocator.Error!void {
-    common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.max_iterations);
+    common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.allocated_iterations);
 }
 
-pub fn update(io: std.Io) void {
+pub fn update(io: std.Io, max_iterations: u32) void {
     _ = big_float.ensure_precision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
     _ = big_float.ensure_precision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
 
     c.mpf_set_d(&common.ref_calc_x, 0.0);
     c.mpf_set_d(&common.ref_calc_y, 0.0);
 
-    for (0..common.max_iterations) |i| {
+    for (0..max_iterations) |i| {
         const real: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_x));
         const imag: f32 = @floatCast(c.mpf_get_d(&common.ref_calc_y));
 
@@ -61,7 +61,7 @@ pub fn update(io: std.Io) void {
         common.device,
         common.perturbation_staging_buffer_memory,
         0,
-        2 * @sizeOf(f32) * common.max_iterations,
+        2 * @sizeOf(f32) * common.allocated_iterations,
         0,
         @ptrCast(&mapped_data),
     );
@@ -75,8 +75,8 @@ pub fn update(io: std.Io) void {
     copyBuffer(
         common.perturbation_buffer,
         common.perturbation_staging_buffer,
-        2 * @sizeOf(f32) * common.max_iterations,
-        .{ .dst_offset = next_index * 2 * @sizeOf(f32) * common.max_iterations },
+        2 * @sizeOf(f32) * common.allocated_iterations,
+        .{ .dst_offset = next_index * 2 * @sizeOf(f32) * common.allocated_iterations },
     );
     common.current_cpu_to_render_descriptor_index = next_index;
 }

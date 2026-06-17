@@ -54,7 +54,7 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     try vulkan_init.initVulkan(alloc);
     imgui.init();
     try ref_calc.init(alloc);
-    ref_calc.update(io);
+    ref_calc.update(io, common.max_iterations);
     common.compute_manager_future = try io.concurrent(
         main_loop.computeManage,
         .{ alloc, io },

@@ -18,6 +18,7 @@ const std = @import("std");
 pub const c = @import("c");
 const big_float = @import("big_float.zig");
 const builtin = @import("builtin");
+const imgui = @import("imgui.zig");
 
 // ------------------- settings -------------------------
 
@@ -44,6 +45,7 @@ pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
 pub const RenderingConstants = extern struct {
     center_screen_pos: @Vector(2, u32),
     screen_offset: @Vector(2, u32),
+    max_iterations: u32,
     height_scale_exp: i32,
     resolution_scale_exponent: i32,
     cur_height: u32,
@@ -281,6 +283,7 @@ pub const CimguiData = struct {
     context: *c.ImGuiContext,
 };
 pub var cimgui: CimguiData = undefined;
+pub var gui_state: imgui.GuiState = undefined;
 pub var instance: c.VkInstance = null;
 pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
 pub var physical_device: c.VkPhysicalDevice = null;
@@ -349,7 +352,8 @@ pub var placing_patches: bool = false;
 pub var remapping_buffer: bool = false;
 
 pub var perturbation_vals: []@Vector(2, f32) = undefined;
-pub var max_iterations: u32 = 20000;
+pub var max_iterations: u32 = 1 << 13;
+pub var allocated_iterations: u32 = 1 << 14;
 pub var perturbation_buffer: c.VkBuffer = undefined;
 pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
 pub var perturbation_staging_buffer: c.VkBuffer = undefined;
