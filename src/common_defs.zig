@@ -374,8 +374,12 @@ pub var current_render_to_coloring_descriptor_index: usize = 0;
 pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 
-pub const PanOffset = struct { x: f32, y: f32, zoom: i32, zoom_change: i32 };
-pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0, .zoom_change = 0 }} ** 2;
+pub const PanOffset = struct { x: f32, y: f32, zoom: i32 };
+pub var back_r2c_offset = [1]PanOffset{.{
+    .x = 0,
+    .y = 0,
+    .zoom = 0,
+}} ** 2;
 pub var back_r2c_is_rendering = [1]bool{false} ** 2;
 pub var background_needs_render = true;
 pub var current_back_r2c_descriptor_index: usize = 0;

@@ -247,7 +247,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
             common.background_needs_render = false;
             common.back_r2c_is_rendering[bg_next_render_index] = true;
             std.debug.print("rendering background...\n", .{});
-            common.back_r2c_offset[bg_next_render_index] = .{ .x = 0, .y = 0, .zoom = -@as(i32, res_exp), .zoom_change = 0 };
+            common.back_r2c_offset[bg_next_render_index] = .{ .x = 0, .y = 0, .zoom = -@as(i32, res_exp) };
             fences_status[comp_index] = .{ .assigned_background = bg_next_render_index };
 
             break :blk .{
@@ -432,7 +432,6 @@ fn renderedBufferResolve(io: std.Io) void {
             offset.x /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
             offset.y /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
             offset.zoom += common.remap_exp;
-            offset.zoom_change += common.remap_exp;
             offset.x += @as(f32, @floatFromInt(common.remap_x)); // * scale;
             offset.y += @as(f32, @floatFromInt(common.remap_y)); // * scale;
 
@@ -1157,19 +1156,15 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     const zoom_mult = @exp2(@as(f32, @floatFromInt(
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom,
     )));
-    const zoom_change_mult = @exp2(@as(f32, @floatFromInt(
-        common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom_change,
-    )));
+    const offset_factor = zoom_mult * @as(f32, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent)));
     const background_zoom = (common.fractal_pos.zoom_diff() * zoom_mult);
 
-    // const scallelelel = @exp2(@as(f32, @floatFromInt(common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom_change)));
-
     const background_offset = @Vector(2, f32){
-        common.back_r2c_offset[common.current_back_r2c_descriptor_index].x * 4.0 * zoom_change_mult +
-            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) + // / scallelelel +
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].x * offset_factor +
+            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) +
             @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
-        common.back_r2c_offset[common.current_back_r2c_descriptor_index].y * 4.0 * zoom_change_mult +
-            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) + // / scallelelel +
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].y * offset_factor +
+            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) +
             @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
     };
 
