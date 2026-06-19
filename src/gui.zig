@@ -18,6 +18,7 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const reference_calc = @import("reference_calc.zig");
 const c = common.c;
+const vulkan = @import("vulkan.zig");
 
 const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 
@@ -35,9 +36,8 @@ fn checkVkResult(err: c.VkResult) callconv(.c) void {
         return;
     }
 
-    if (err < 0) std.debug.panic("[vulkan] Fatal Error: VkResult = {d}\n", .{err});
-    // TODO: change to log
-    std.debug.print("[vulkan] Error: VkResult = {d}\n", .{err});
+    if (err < 0) std.debug.panic("VULKAN: VkResult = {d}", .{err});
+    vulkan.log.err("VkResult = {d}", .{err});
 }
 
 pub fn deinit() void {

@@ -21,6 +21,8 @@ const c = common.c;
 const gui = @import("gui.zig");
 const Allocator = std.mem.Allocator;
 
+pub const log = std.log.scoped(.vulkan);
+
 const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const color_code align(4) = @embedFile("triangle_frag_shader").*;
 const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
@@ -222,25 +224,20 @@ fn debugCallback(
     p_callback_common: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
     p_user_common: ?*anyopaque,
 ) callconv(.c) c.VkBool32 {
+    var performance: []const u8, var validation: []const u8, var general: []const u8 = .{ "", "", "" };
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) performance = "[performance] ";
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) validation = "[validation] ";
+    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) general = "[general] ";
+
     if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-        std.debug.print("ERROR ", .{});
+        log.err("{s}{s}{s}{s}", .{ performance, validation, general, p_callback_common.*.pMessage });
     } else if (message_severity >= c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std.debug.print("WARNING ", .{});
+        log.warn("{s}{s}{s}{s}", .{ performance, validation, general, p_callback_common.*.pMessage });
+    } else {
+        log.info("{s}{s}{s}{s}", .{ performance, validation, general, p_callback_common.*.pMessage });
     }
 
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT != 0) {
-        std.debug.print("[performance] ", .{});
-    }
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT != 0) {
-        std.debug.print("[validation] ", .{});
-    }
-    if (message_type & c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT != 0) {
-        std.debug.print("[general] ", .{});
-    }
-
-    std.debug.print("{s}\n", .{p_callback_common.*.pMessage});
     _ = p_user_common;
-
     return c.VK_FALSE;
 }
 
@@ -913,7 +910,6 @@ fn createColoringPipeline() void {
 }
 
 fn createShaderModule(code: []align(4) const u8) c.VkShaderModule {
-    //std.debug.print("shader module at: {x}\n", .{@intFromPtr(code.ptr)});
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = code.len,

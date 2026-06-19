@@ -15,16 +15,15 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
-//const imports = @import("imports.zig");
-//const glfw = imports.glfw;
-//const mat4 = @import("zglm/mat4.zig");
 const app = @import("app.zig");
 const common = @import("common_defs.zig");
 
-//tests
-comptime {
-    _ = @import("big_float.zig");
-}
+pub const std_options: std.Options = .{
+    .log_level = std.log.default_level,
+    .log_scope_levels = &.{
+        .{ .scope = .render_patch, .level = std.log.Level.info },
+    },
+};
 
 pub fn main(init: std.process.Init) !void {
     try app.run(init.gpa, init.io);

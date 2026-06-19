@@ -22,6 +22,8 @@ const big_float = @import("big_float.zig");
 const reference_calc = @import("reference_calc.zig");
 const gui = @import("gui.zig");
 
+const patch_log = std.log.scoped(.render_patch);
+
 const Allocator = std.mem.Allocator;
 const RenderPatch = common.RenderPatch;
 
@@ -74,10 +76,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
         const sleep_nanosecs = target_delta - delta_dur.nanoseconds;
         try io.sleep(.fromNanoseconds(sleep_nanosecs), common.time);
         delta_dur = common.prev_frame_time.untilNow(io, common.time);
-    } else {
-        //std.debug.print("MISSED FRAME: {d:.4} seconds\n", .{delta_time});
     }
-    //std.debug.print("time: {d:.3}\n", .{delta_time});
     common.prev_frame_time = common.time.now(io);
 
     var image_index: u32 = undefined;
@@ -220,8 +219,8 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
 
         if (common.buffer_invalidated) {
             common.buffer_invalidated = false;
-            common.background_needs_render = true;
             try common.render_patch_mutex.lock(io);
+            common.background_needs_render = true;
             resetRenderPatchsResComps(common.resolutions_complete);
             common.render_patch_mutex.unlock(io);
         }
@@ -313,9 +312,6 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
         try common.gpu_interface_lock.lock(io);
         defer common.gpu_interface_lock.unlock(io);
 
-        //updateUniformBuffer();
-
-        //std.debug.print("starting compute\n", .{});
         _ = c.vkResetFences(common.device, 1, &common.rendering_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
@@ -381,7 +377,6 @@ fn updateFractalPosition(delta_time: f64) void {
 
     if (@abs(block_x_diff) > 0.5 or @abs(block_y_diff) > 0.5) {
         updated_state = true;
-        //std.debug.print("moving buffer...\n", .{});
         remap_x = @intFromFloat(@round(block_x_diff));
         remap_y = @intFromFloat(@round(block_y_diff));
     }
@@ -454,7 +449,7 @@ fn renderedBufferResolve(io: std.Io) void {
             }
             c.mpf_set_prec(&common.ref_calc_x, needed_prec);
             c.mpf_set_prec(&common.ref_calc_y, needed_prec);
-            std.debug.print(
+            std.log.debug(
                 "set precision to: {}\n",
                 .{needed_prec},
             );
@@ -554,18 +549,15 @@ fn resetRenderPatchsResComps(resolutions_complete: [common.num_distinct_res_scal
 }
 
 fn moveUnplacedPatches() void {
-    //std.debug.print("remapping by: ({}, {}) - {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
     const remap = calculateRemapDimensions();
 
-    for (&common.render_patches_status, &common.render_patches) |*status, *patch| {
+    for (&common.render_patches_status, &common.render_patches, 0..) |*status, *patch, i| {
         if (status.* == .rendering or status.* == .complete) {
-            //std.debug.print("({}, {}) - {}  -->", .{ patch.x_pos, patch.y_pos, patch.resolution_scale_exponent });
-
             const new_exp = @as(i64, patch.resolution_scale_exponent) - common.remap_exp;
             if (new_exp > common.max_res_scale_exponent or new_exp < 0) {
                 if (status.* == .rendering) status.* = .cancelled;
                 if (status.* == .complete) status.* = .empty;
-                //std.debug.print("  CANCELLED (exp: {})\n", .{new_exp});
+                patch_log.debug("cancelled render patch #{} (exp: {})", .{ i, new_exp });
                 continue;
             }
 
@@ -579,23 +571,6 @@ fn moveUnplacedPatches() void {
             const new_y: i64 = dst_start.y + diff_y;
             const new_shft: u5 = @intCast(common.max_res_scale_exponent - new_exp);
 
-            //const old_shft: u5 = @intCast(common.max_res_scale_exponent - patch.resolution_scale_exponent);
-
-            //if (common.remap_exp == 1) {
-            //    new_x <<= 1;
-            //    new_y <<= 1;
-            //    new_x -= (common.escape_potential_buffer_block_num_x << new_shft) / 4;
-            //    new_y -= (common.escape_potential_buffer_block_num_y << new_shft) / 4;
-            //} else if (common.remap_exp == -1) {
-            //    new_x >>= 1;
-            //    new_y >>= 1;
-            //    new_x += (common.escape_potential_buffer_block_num_x << new_shft) / 4;
-            //    new_y += (common.escape_potential_buffer_block_num_y << new_shft) / 4;
-            //}
-
-            //new_x -= common.remap_x << old_shft;
-            //new_y -= common.remap_y << old_shft;
-
             if (new_x < 0 or
                 new_x >= common.escape_potential_buffer_block_num_x << new_shft or
                 new_y < 0 or
@@ -603,11 +578,10 @@ fn moveUnplacedPatches() void {
             {
                 if (status.* == .rendering) status.* = .cancelled;
                 if (status.* == .complete) status.* = .empty;
-                //std.debug.print("  CANCELLED (pos: ({}, {}))\n", .{ new_x, new_y });
+                patch_log.debug("cancelled render patch #{} (exp: {})", .{ i, new_exp });
                 continue;
             }
 
-            //std.debug.print("  ({}, {}) - {}\n", .{ new_x, new_y, new_exp });
             patch.resolution_scale_exponent = @intCast(new_exp);
             patch.x_pos = @intCast(new_x);
             patch.y_pos = @intCast(new_y);
@@ -642,7 +616,6 @@ fn moveRenderPatches(
             .x = @intCast(@min(res.len - dst_start.x, resolutions_complete_src[src_exp].len - src_start.x)),
             .y = @intCast(@min(res[0].len - dst_start.y, resolutions_complete_src[src_exp][0].len - src_start.y)),
         };
-        //std.debug.print("({}) {any}   ->   ({}) {any}  x  {any}\n", .{ src_exp, src_start, dst_exp, dst_start, range });
         for (src_start.x.., res[dst_start.x..(range.x + dst_start.x)]) |i, col| {
             for (src_start.y.., col[dst_start.y..(range.y + dst_start.y)]) |j, *elem| {
                 elem.* = resolutions_complete_src[src_exp][i][j];
@@ -716,8 +689,6 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     var mouse_y_flt: f64 = undefined;
     c.glfwGetCursorPos(common.window, &mouse_x_flt, &mouse_y_flt);
 
-    //std.debug.print("mouse position: {}, {}\n", .{ mouse_x_flt, mouse_y_flt });
-
     mouse_x_flt = std.math.clamp(mouse_x_flt, 0.0, @as(f64, @floatFromInt(common.width)));
     mouse_y_flt = std.math.clamp(mouse_y_flt, 0.0, @as(f64, @floatFromInt(common.height)));
 
@@ -730,8 +701,6 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
 
     const buffer_target_pos_x: u32 = @intFromFloat(@max(0, mouse_x_from_screen_center + screen_center.x));
     const buffer_target_pos_y: u32 = @intFromFloat(@max(0, mouse_y_from_screen_center + screen_center.y));
-
-    //std.debug.print("target render pos: {}, {}\n", .{ buffer_target_pos_x, buffer_target_pos_y });
 
     var running_dists: [common.num_distinct_res_scales]f32 = [1]f32{std.math.floatMax(f32)} ** common.num_distinct_res_scales;
     var min_dist_poss: [common.num_distinct_res_scales]common.Pos = [1]common.Pos{.{}} ** common.num_distinct_res_scales;
@@ -892,7 +861,7 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
     var buffer_src_start: common.Pos = .{};
     var buffer_dst_start: common.Pos = .{};
 
-    //std.debug.print("remapping by ({}, {}) x {}\n", .{ common.remap_x, common.remap_y, common.remap_exp });
+    patch_log.debug("remapping by ({}, {}) x {}", .{ common.remap_x, common.remap_y, common.remap_exp });
 
     if (common.remap_x < 0) {
         buffer_dst_start.x = @intCast(2 * -common.remap_x);
