@@ -21,7 +21,7 @@ const c = common.c;
 const gui = @import("gui.zig");
 const Allocator = std.mem.Allocator;
 
-const InitVulkanError = common.InitVulkanError;
+const InitError = common.InitVulkanError;
 
 const vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const frag_code align(4) = @embedFile("triangle_frag_shader").*;
@@ -29,12 +29,12 @@ const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
 const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
 const buffer_remap_code align(4) = @embedFile("buffer_remap_comp_shader").*;
 
-pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
+pub fn init(alloc: Allocator) InitError!void {
     try createInstance(alloc);
     try setupDebugMessenger();
 
     if (c.glfwCreateWindowSurface(common.instance, common.window, null, &common.surface) != c.VK_SUCCESS) {
-        return InitVulkanError.window_surface_creation_failed;
+        return InitError.window_surface_creation_failed;
     }
 
     try pickPhysicalDevice(alloc);
@@ -66,7 +66,7 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createSyncObjects(alloc);
 }
 
-pub fn recreateSwapChain(alloc: Allocator) InitVulkanError!void {
+pub fn recreateSwapChain(alloc: Allocator) InitError!void {
     common.frame_buffer_just_resized = true;
 
     var width: c_int = 0;
@@ -174,7 +174,7 @@ pub fn createBuffer(
     properties: c.VkMemoryPropertyFlags,
     buffer: *c.VkBuffer,
     buffer_memory: *c.VkDeviceMemory,
-) common.InitVulkanError!void {
+) InitError!void {
     const buffer_info: c.VkBufferCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -183,7 +183,7 @@ pub fn createBuffer(
     };
 
     if (c.vkCreateBuffer(common.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
-        return common.InitVulkanError.buffer_creation_failed;
+        return InitError.buffer_creation_failed;
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
@@ -196,13 +196,13 @@ pub fn createBuffer(
     };
 
     if (c.vkAllocateMemory(common.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
-        return common.InitVulkanError.buffer_memory_allocation_failed;
+        return InitError.buffer_memory_allocation_failed;
     }
 
     _ = c.vkBindBufferMemory(common.device, buffer.*, buffer_memory.*, 0);
 }
 
-pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) common.InitVulkanError!u32 {
+pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) InitError!u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(common.physical_device, &mem_properties);
 
@@ -212,7 +212,7 @@ pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) com
         }
     }
 
-    return common.InitVulkanError.suitable_memory_type_not_found;
+    return InitError.suitable_memory_type_not_found;
 }
 
 fn debugCallback(
@@ -243,7 +243,7 @@ fn debugCallback(
     return c.VK_FALSE;
 }
 
-fn createColoringCommandBuffers(alloc: Allocator) InitVulkanError!void {
+fn createColoringCommandBuffers(alloc: Allocator) InitError!void {
     common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
@@ -254,11 +254,11 @@ fn createColoringCommandBuffers(alloc: Allocator) InitVulkanError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, common.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
-        return InitVulkanError.command_buffer_allocation_failed;
+        return InitError.command_buffer_allocation_failed;
     }
 }
 
-fn createPatchPlaceCommandBuffer() InitVulkanError!void {
+fn createPatchPlaceCommandBuffer() InitError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = common.compute_command_pool,
@@ -267,11 +267,11 @@ fn createPatchPlaceCommandBuffer() InitVulkanError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        return InitVulkanError.command_buffer_allocation_failed;
+        return InitError.command_buffer_allocation_failed;
     }
 }
 
-fn createRenderCommandBuffers() InitVulkanError!void {
+fn createRenderCommandBuffers() InitError!void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = common.compute_command_pool,
@@ -280,11 +280,11 @@ fn createRenderCommandBuffers() InitVulkanError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rendering_command_buffers) != c.VK_SUCCESS) {
-        return InitVulkanError.command_buffer_allocation_failed;
+        return InitError.command_buffer_allocation_failed;
     }
 }
 
-fn createGraphicsCommandPool() InitVulkanError!void {
+fn createGraphicsCommandPool() InitError!void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -292,11 +292,11 @@ fn createGraphicsCommandPool() InitVulkanError!void {
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
-        return InitVulkanError.command_pool_creation_failed;
+        return InitError.command_pool_creation_failed;
     }
 }
 
-fn createComputeCommandPool() InitVulkanError!void {
+fn createComputeCommandPool() InitError!void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -304,18 +304,18 @@ fn createComputeCommandPool() InitVulkanError!void {
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
-        return InitVulkanError.command_pool_creation_failed;
+        return InitError.command_pool_creation_failed;
     }
 }
 
-fn setupDebugMessenger() InitVulkanError!void {
+fn setupDebugMessenger() InitError!void {
     if (!common.enable_validation_layers) return;
 
     var create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     populateDebugMessengerCreateInfo(&create_info);
 
     if (createDebugUtilsMessengerEXT(common.instance, &create_info, null, &common.debug_messenger) != c.VK_SUCCESS) {
-        return InitVulkanError.debug_messenger_setup_failed;
+        return InitError.debug_messenger_setup_failed;
     }
 }
 
@@ -333,7 +333,7 @@ fn createDebugUtilsMessengerEXT(
     }
 }
 
-fn createDescriptorPool() InitVulkanError!void {
+fn createDescriptorPool() InitError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -364,11 +364,11 @@ fn createDescriptorPool() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_pool_creation_failed;
+        return InitError.descriptor_pool_creation_failed;
     }
 }
 
-fn createGuiDescriptorPool() InitVulkanError!void {
+fn createGuiDescriptorPool() InitError!void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -388,11 +388,11 @@ fn createGuiDescriptorPool() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &gui.descriptor_pool) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_pool_creation_failed;
+        return InitError.descriptor_pool_creation_failed;
     }
 }
 
-fn createRenderPatchDescriptorSetLayout() InitVulkanError!void {
+fn createRenderPatchDescriptorSetLayout() InitError!void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -408,11 +408,11 @@ fn createRenderPatchDescriptorSetLayout() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_patch_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_set_layout_creation_failed;
+        return InitError.descriptor_set_layout_creation_failed;
     }
 }
 
-fn createCpuToRndDescriptorSetLayout() InitVulkanError!void {
+fn createCpuToRndDescriptorSetLayout() InitError!void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -428,11 +428,11 @@ fn createCpuToRndDescriptorSetLayout() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.cpu_to_render_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_set_layout_creation_failed;
+        return InitError.descriptor_set_layout_creation_failed;
     }
 }
 
-fn createRndToClrDescriptorSetLayout() InitVulkanError!void {
+fn createRndToClrDescriptorSetLayout() InitError!void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -448,11 +448,11 @@ fn createRndToClrDescriptorSetLayout() InitVulkanError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_set_layout_creation_failed;
+        return InitError.descriptor_set_layout_creation_failed;
     }
 }
 
-fn createRenderPatchDescriptorSets() InitVulkanError!void {
+fn createRenderPatchDescriptorSets() InitError!void {
     var layouts: [common.render_patch_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_patch_descriptor_set_layout;
@@ -466,7 +466,7 @@ fn createRenderPatchDescriptorSets() InitVulkanError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_patch_descriptor_sets) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_sets_allocation_failed;
+        return InitError.descriptor_sets_allocation_failed;
     }
 
     const patch_size: usize =
@@ -495,7 +495,7 @@ fn createRenderPatchDescriptorSets() InitVulkanError!void {
     }
 }
 
-pub fn createCpuToRndDescriptorSets() InitVulkanError!void {
+pub fn createCpuToRndDescriptorSets() InitError!void {
     var layouts: [common.cpu_to_render_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.cpu_to_render_descriptor_set_layout;
@@ -509,7 +509,7 @@ pub fn createCpuToRndDescriptorSets() InitVulkanError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.cpu_to_render_descriptor_sets) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_sets_allocation_failed;
+        return InitError.descriptor_sets_allocation_failed;
     }
 
     for (0..common.cpu_to_render_descriptor_sets.len) |i| {
@@ -541,7 +541,7 @@ pub fn createCpuToRndDescriptorSets() InitVulkanError!void {
     }
 }
 
-fn createRndToClrDescriptorSets() InitVulkanError!void {
+fn createRndToClrDescriptorSets() InitError!void {
     var layouts: [common.render_to_coloring_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_to_coloring_descriptor_set_layout;
@@ -555,7 +555,7 @@ fn createRndToClrDescriptorSets() InitVulkanError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_to_coloring_descriptor_sets) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_sets_allocation_failed;
+        return InitError.descriptor_sets_allocation_failed;
     }
 
     for (0..common.render_to_coloring_descriptor_sets.len) |i| {
@@ -581,7 +581,7 @@ fn createRndToClrDescriptorSets() InitVulkanError!void {
     }
 }
 
-fn createBackR2CDescriptorSets() InitVulkanError!void {
+fn createBackR2CDescriptorSets() InitError!void {
     var layouts: [common.back_r2c_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_patch_descriptor_set_layout;
@@ -595,7 +595,7 @@ fn createBackR2CDescriptorSets() InitVulkanError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.back_r2c_descriptor_sets) != c.VK_SUCCESS) {
-        return InitVulkanError.descriptor_sets_allocation_failed;
+        return InitError.descriptor_sets_allocation_failed;
     }
 
     const patch_size: usize =
@@ -624,7 +624,7 @@ fn createBackR2CDescriptorSets() InitVulkanError!void {
     }
 }
 
-fn createFrameBuffers(alloc: Allocator) InitVulkanError!void {
+fn createFrameBuffers(alloc: Allocator) InitError!void {
     common.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, common.swap_chain_image_views.len);
 
     for (0..common.swap_chain_image_views.len) |i| {
@@ -643,22 +643,12 @@ fn createFrameBuffers(alloc: Allocator) InitVulkanError!void {
         };
 
         if (c.vkCreateFramebuffer(common.device, &frame_buffer_info, null, &common.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
-            return InitVulkanError.framebuffer_creation_failed;
+            return InitError.framebuffer_creation_failed;
         }
     }
 }
 
-fn createBufferRemapPipeline() InitVulkanError!void {
-    const shader_module = try createShaderModule(&buffer_remap_code);
-    defer _ = c.vkDestroyShaderModule(common.device, shader_module, null);
-
-    const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = c.VK_SHADER_STAGE_COMPUTE_BIT,
-        .module = shader_module,
-        .pName = "main",
-    };
-
+fn createBufferRemapPipeline() InitError!void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.BufferRemapConstants),
@@ -670,43 +660,26 @@ fn createBufferRemapPipeline() InitVulkanError!void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
-    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = descriptor_sets.len,
-        .pSetLayouts = &descriptor_sets,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constant_range,
-    };
-    if (c.vkCreatePipelineLayout(
-        common.device,
-        &pipeline_layout_info,
+    common.buffer_remap_pipeline, common.buffer_remap_pipeline_layout = try createComputePipeline(
+        &buffer_remap_code,
         null,
-        &common.buffer_remap_pipeline_layout,
-    ) != c.VK_SUCCESS) {
-        return InitVulkanError.pipeline_layout_creation_failed;
-    }
-
-    const pipeline_info: c.VkComputePipelineCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .layout = common.buffer_remap_pipeline_layout,
-        .stage = shader_stage_info,
-    };
-
-    if (c.vkCreateComputePipelines(
-        common.device,
-        @ptrCast(c.VK_NULL_HANDLE),
-        1,
-        &pipeline_info,
-        null,
-        &common.buffer_remap_pipeline,
-    ) != c.VK_SUCCESS) {
-        return InitVulkanError.graphics_pipeline_creation_failed;
-    }
+        descriptor_sets[0..],
+        .{ .push_constant_ranges = &.{push_constant_range} },
+    );
 }
 
-fn createPatchPlacePipeline() InitVulkanError!void {
-    const shader_module = try createShaderModule(&patch_place_code);
-    defer _ = c.vkDestroyShaderModule(common.device, shader_module, null);
+const ComputePipelineOptions = struct {
+    push_constant_ranges: []const c.VkPushConstantRange = &.{},
+};
+
+fn createComputePipeline(
+    shader_spirv: []align(4) const u8,
+    vk_alloc: [*c]const c.struct_VkAllocationCallbacks,
+    descriptor_set_layouts: []const c.VkDescriptorSetLayout,
+    options: ComputePipelineOptions,
+) InitError!@Tuple(&.{ c.VkPipeline, c.VkPipelineLayout }) {
+    const shader_module = try createShaderModule(shader_spirv);
+    defer _ = c.vkDestroyShaderModule(common.device, shader_module, vk_alloc);
 
     const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -715,6 +688,46 @@ fn createPatchPlacePipeline() InitVulkanError!void {
         .pName = "main",
     };
 
+    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = @intCast(descriptor_set_layouts.len),
+        .pSetLayouts = descriptor_set_layouts.ptr,
+        .pushConstantRangeCount = @intCast(options.push_constant_ranges.len),
+        .pPushConstantRanges = options.push_constant_ranges.ptr,
+    };
+
+    var pipeline_layout: c.VkPipelineLayout = undefined;
+    if (c.vkCreatePipelineLayout(
+        common.device,
+        &pipeline_layout_info,
+        vk_alloc,
+        &pipeline_layout,
+    ) != c.VK_SUCCESS) {
+        return InitError.pipeline_layout_creation_failed;
+    }
+
+    const pipeline_info: c.VkComputePipelineCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .layout = pipeline_layout,
+        .stage = shader_stage_info,
+    };
+
+    var pipeline: c.VkPipeline = undefined;
+    if (c.vkCreateComputePipelines(
+        common.device,
+        @ptrCast(c.VK_NULL_HANDLE),
+        1,
+        &pipeline_info,
+        vk_alloc,
+        &pipeline,
+    ) != c.VK_SUCCESS) {
+        return InitError.graphics_pipeline_creation_failed;
+    }
+
+    return .{ pipeline, pipeline_layout };
+}
+
+fn createPatchPlacePipeline() InitError!void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.PatchPlaceConstants),
@@ -726,39 +739,15 @@ fn createPatchPlacePipeline() InitVulkanError!void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
-    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = descriptor_sets.len,
-        .pSetLayouts = &descriptor_sets,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constant_range,
-    };
-    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.patch_place_pipeline_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.pipeline_layout_creation_failed;
-    }
-
-    const pipeline_info: c.VkComputePipelineCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .layout = common.patch_place_pipeline_layout,
-        .stage = shader_stage_info,
-    };
-
-    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.patch_place_pipeline) != c.VK_SUCCESS) {
-        return InitVulkanError.graphics_pipeline_creation_failed;
-    }
+    common.patch_place_pipeline, common.patch_place_pipeline_layout = try createComputePipeline(
+        &patch_place_code,
+        null,
+        descriptor_sets[0..],
+        .{ .push_constant_ranges = &.{push_constant_range} },
+    );
 }
 
-fn createRendingPipeline() InitVulkanError!void {
-    const comp_shader_module = try createShaderModule(&render_code);
-    defer _ = c.vkDestroyShaderModule(common.device, comp_shader_module, null);
-
-    const comp_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = c.VK_SHADER_STAGE_COMPUTE_BIT,
-        .module = comp_shader_module,
-        .pName = "main",
-    };
-
+fn createRendingPipeline() InitError!void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.RenderingConstants),
@@ -770,29 +759,15 @@ fn createRendingPipeline() InitVulkanError!void {
         common.cpu_to_render_descriptor_set_layout,
     };
 
-    const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = descriptor_sets.len,
-        .pSetLayouts = &descriptor_sets,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constant_range,
-    };
-    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.rendering_pipeline_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.pipeline_layout_creation_failed;
-    }
-
-    const pipeline_info: c.VkComputePipelineCreateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .layout = common.rendering_pipeline_layout,
-        .stage = comp_shader_stage_info,
-    };
-
-    if (c.vkCreateComputePipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.rendering_pipeline) != c.VK_SUCCESS) {
-        return InitVulkanError.graphics_pipeline_creation_failed;
-    }
+    common.rendering_pipeline, common.rendering_pipeline_layout = try createComputePipeline(
+        &render_code,
+        null,
+        descriptor_sets[0..],
+        .{ .push_constant_ranges = &.{push_constant_range} },
+    );
 }
 
-fn createColoringPipeline() InitVulkanError!void {
+fn createColoringPipeline() InitError!void {
     const vert_shader_module = try createShaderModule(&vert_code);
     const frag_shader_module = try createShaderModule(&frag_code);
     defer _ = c.vkDestroyShaderModule(common.device, vert_shader_module, null);
@@ -909,7 +884,7 @@ fn createColoringPipeline() InitVulkanError!void {
         .pPushConstantRanges = &push_constant_range,
     };
     if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.coloring_pipeline_layout) != c.VK_SUCCESS) {
-        return InitVulkanError.pipeline_layout_creation_failed;
+        return InitError.pipeline_layout_creation_failed;
     }
 
     const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
@@ -932,11 +907,11 @@ fn createColoringPipeline() InitVulkanError!void {
     };
 
     if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.coloring_pipeline) != c.VK_SUCCESS) {
-        return InitVulkanError.graphics_pipeline_creation_failed;
+        return InitError.graphics_pipeline_creation_failed;
     }
 }
 
-fn createShaderModule(code: []align(4) const u8) InitVulkanError!c.VkShaderModule {
+fn createShaderModule(code: []align(4) const u8) InitError!c.VkShaderModule {
     //std.debug.print("shader module at: {x}\n", .{@intFromPtr(code.ptr)});
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -945,12 +920,12 @@ fn createShaderModule(code: []align(4) const u8) InitVulkanError!c.VkShaderModul
     };
     var shader_module: c.VkShaderModule = undefined;
     if (c.vkCreateShaderModule(common.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
-        return InitVulkanError.shader_module_creation_failed;
+        return InitError.shader_module_creation_failed;
     }
     return shader_module;
 }
 
-fn createImageViews(alloc: Allocator) InitVulkanError!void {
+fn createImageViews(alloc: Allocator) InitError!void {
     common.swap_chain_image_views = try alloc.alloc(c.VkImageView, common.swap_chain_images.len);
 
     for (common.swap_chain_images, 0..) |image, i| {
@@ -975,14 +950,14 @@ fn createImageViews(alloc: Allocator) InitVulkanError!void {
         };
 
         if (c.vkCreateImageView(common.device, &create_info, null, &common.swap_chain_image_views[i]) != c.VK_SUCCESS) {
-            return InitVulkanError.image_views_creation_failed;
+            return InitError.image_views_creation_failed;
         }
     }
 }
 
-fn createInstance(alloc: Allocator) InitVulkanError!void {
+fn createInstance(alloc: Allocator) InitError!void {
     if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc)) {
-        return InitVulkanError.validation_layer_unavailible;
+        return InitError.validation_layer_unavailible;
     }
 
     const app_info = c.VkApplicationInfo{
@@ -1020,7 +995,7 @@ fn createInstance(alloc: Allocator) InitVulkanError!void {
 
     const result = c.vkCreateInstance(&create_info, null, &common.instance);
     if (result != c.VK_SUCCESS) {
-        return InitVulkanError.instance_creation_failed;
+        return InitError.instance_creation_failed;
     }
 }
 
@@ -1063,7 +1038,7 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
     return out;
 }
 
-fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
+fn createLogicalDevice(alloc: Allocator) InitError!void {
     var unique_queue_families = [_]u32{
         common.queue_families.graphics_family.?,
         common.queue_families.compute_family.?,
@@ -1150,7 +1125,7 @@ fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
     }
 
     if (c.vkCreateDevice(common.physical_device, &createInfo, null, &common.device) != c.VK_SUCCESS) {
-        return InitVulkanError.logical_device_creation_failed;
+        return InitError.logical_device_creation_failed;
     }
 
     c.vkGetDeviceQueue(common.device, common.queue_families.graphics_family.?, 0, &common.graphics_queue);
@@ -1164,12 +1139,12 @@ fn createLogicalDevice(alloc: Allocator) InitVulkanError!void {
     }
 }
 
-fn pickPhysicalDevice(alloc: Allocator) InitVulkanError!void {
+fn pickPhysicalDevice(alloc: Allocator) InitError!void {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, null);
 
     if (device_count == 0) {
-        return InitVulkanError.gpu_with_vulkan_support_not_found;
+        return InitError.gpu_with_vulkan_support_not_found;
     }
 
     const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
@@ -1182,7 +1157,7 @@ fn pickPhysicalDevice(alloc: Allocator) InitVulkanError!void {
             break;
         }
     } else {
-        return InitVulkanError.suitable_gpu_not_found;
+        return InitError.suitable_gpu_not_found;
     }
 }
 
@@ -1221,7 +1196,7 @@ fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) All
     return true;
 }
 
-pub fn createRenderPass() InitVulkanError!void {
+pub fn createRenderPass() InitError!void {
     const color_attachment: c.VkAttachmentDescription = .{
         .format = common.swap_chain_image_format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
@@ -1264,11 +1239,11 @@ pub fn createRenderPass() InitVulkanError!void {
     };
 
     if (c.vkCreateRenderPass(common.device, &render_pass_info, null, &common.render_pass) != c.VK_SUCCESS) {
-        return InitVulkanError.render_pass_creation_failed;
+        return InitError.render_pass_creation_failed;
     }
 }
 
-fn createSwapChain(alloc: Allocator) InitVulkanError!void {
+fn createSwapChain(alloc: Allocator) InitError!void {
     const swap_chain_support = try querySwapChainSupport(common.surface, common.physical_device, alloc);
     defer alloc.free(swap_chain_support.formats);
     defer alloc.free(swap_chain_support.presentModes);
@@ -1314,7 +1289,7 @@ fn createSwapChain(alloc: Allocator) InitVulkanError!void {
     }
 
     if (c.vkCreateSwapchainKHR(common.device, &create_info, null, &common.swap_chain) != c.VK_SUCCESS) {
-        return InitVulkanError.logical_device_creation_failed;
+        return InitError.logical_device_creation_failed;
     }
 
     _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), null);
@@ -1374,7 +1349,7 @@ fn chooseSwapExtent(capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2
     }
 }
 
-fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
+fn createSyncObjects(alloc: Allocator) InitError!void {
     common.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
     common.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, common.swap_chain_images.len);
     common.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
@@ -1389,12 +1364,12 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
     };
 
     if (c.vkCreateFence(common.device, &fence_info, null, &common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        return InitVulkanError.fence_creation_failed;
+        return InitError.fence_creation_failed;
     }
 
     for (&common.rendering_fences) |*fence| {
         if (c.vkCreateFence(common.device, &fence_info, null, fence) != c.VK_SUCCESS) {
-            return InitVulkanError.fence_creation_failed;
+            return InitError.fence_creation_failed;
         }
     }
 
@@ -1402,18 +1377,18 @@ fn createSyncObjects(alloc: Allocator) InitVulkanError!void {
         if (c.vkCreateSemaphore(common.device, &semaphore_info, null, &common.image_availible_semaphores[i]) != c.VK_SUCCESS or
             c.vkCreateFence(common.device, &fence_info, null, &common.in_flight_fences[i]) != c.VK_SUCCESS)
         {
-            return InitVulkanError.semaphore_creation_failed;
+            return InitError.semaphore_creation_failed;
         }
     }
 
     for (common.render_finished_semaphores) |*sem| {
         if (c.vkCreateSemaphore(common.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
-            return InitVulkanError.semaphore_creation_failed;
+            return InitError.semaphore_creation_failed;
         }
     }
 }
 
-fn createBuffers() InitVulkanError!void {
+fn createBuffers() InitError!void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
     common.escape_potential_buffer_block_num_x =
         @as(u32, @intCast(2 * video_mode.?.*.width)) / common.renderPatchSize(common.max_res_scale_exponent) + 2;

@@ -51,7 +51,7 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     c.mpf_init2(&common.ref_calc_y, 32);
 
     try window_init.initWindow();
-    try vulkan.initVulkan(alloc);
+    try vulkan.init(alloc);
     gui.init();
     try ref_calc.init(alloc);
     ref_calc.update(io, common.max_iterations);
