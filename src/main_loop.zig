@@ -229,7 +229,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
 
         // waiting on reference to be ready
         if (common.reference_center_stale) {
-            try io.sleep(.fromMilliseconds(1), common.time);
+            try io.sleep(.fromMicroseconds(500), common.time);
             continue;
         }
 
@@ -243,6 +243,8 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
                 common.renderPatchSize(0),
             ));
 
+            try common.render_patch_mutex.lock(io);
+            defer common.render_patch_mutex.unlock(io);
             common.background_needs_render = false;
             common.back_r2c_is_rendering[bg_next_render_index] = true;
             common.back_r2c_offset[bg_next_render_index] = .{ .x = 0, .y = 0, .zoom = -@as(i32, res_exp) };
@@ -265,7 +267,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
 
             // waiting on render queue to empty patch buffers
             if (buffer_to_render_to == null) {
-                try io.sleep(.fromMilliseconds(1), common.time);
+                try io.sleep(.fromMicroseconds(500), common.time);
                 continue;
             }
 
@@ -277,7 +279,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
             } else {
                 common.render_patch_mutex.unlock(io);
                 common.render_patches_saturated = true;
-                try io.sleep(.fromMilliseconds(4), common.time);
+                try io.sleep(.fromMicroseconds(500), common.time);
                 continue;
             }
 
