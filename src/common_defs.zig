@@ -35,7 +35,7 @@ pub const device_extensions = [_][*:0]const u8{
 
 pub const target_frame_rate: f64 = 60;
 pub const max_frames_in_flight: u32 = 2;
-const num_active_render_patches = 6;
+pub const num_active_render_patches = 6;
 const patch_buffer_factor = 4; // should be >= 3
 
 // ------------------- program defs ---------------------
@@ -43,8 +43,7 @@ const patch_buffer_factor = 4; // should be >= 3
 pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
 
 pub const RenderingConstants = extern struct {
-    center_screen_pos: @Vector(2, u32),
-    screen_offset: @Vector(2, u32),
+    screen_offset: @Vector(2, i32),
     max_iterations: u32,
     height_scale_exp: i32,
     resolution_scale_exponent: i32,
@@ -55,7 +54,10 @@ pub const ColoringConstants = extern struct {
     cur_resolution: @Vector(2, u32),
     center_position: @Vector(2, u32),
     buffer_size: @Vector(2, u32),
+    background_offset: @Vector(2, f32),
+    background_size: @Vector(2, u32),
     zoom_diff: f32,
+    background_zoom: f32,
 };
 
 pub const PatchPlaceConstants = extern struct {
@@ -348,6 +350,9 @@ pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
 pub var render_patch_buffer: c.VkBuffer = undefined;
 pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
 
+pub var back_pb_buffer: c.VkBuffer = undefined;
+pub var back_pb_buffer_memory: c.VkDeviceMemory = undefined;
+
 pub var placing_patches: bool = false;
 pub var remapping_buffer: bool = false;
 
@@ -369,6 +374,13 @@ pub var current_render_to_coloring_descriptor_index: usize = 0;
 pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 
+pub const PanOffset = struct { x: f32, y: f32, zoom: i32, zoom_change: i32 };
+pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0, .zoom_change = 0 }} ** 2;
+pub var back_r2c_is_rendering = [1]bool{false} ** 2;
+pub var background_needs_render = true;
+pub var current_back_r2c_descriptor_index: usize = 0;
+pub var back_r2c_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
 pub var current_cpu_to_render_descriptor_index: usize = 0;
 pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
@@ -376,7 +388,6 @@ pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 pub var render_patches: [patch_buffer_factor * num_active_render_patches]RenderPatch = undefined;
 pub var render_patches_status = [1]RenderPatchStatus{.empty} **
     (patch_buffer_factor * num_active_render_patches);
-pub var fence_to_patch_index = [1]?usize{null} ** num_active_render_patches;
 
 pub var remap_x: i32 = 0;
 pub var remap_y: i32 = 0;

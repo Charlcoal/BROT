@@ -27,8 +27,7 @@ layout(set = 1, std430, binding = 0) readonly buffer storage_from_cpu {
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout( push_constant ) uniform UniformBufferObject {
-    uvec2 center_screen_pos;
-    uvec2 screen_offset;
+    ivec2 screen_offset;
     uint max_iterations;
     int scale_exp;
     int res_scale_exp;
@@ -44,13 +43,12 @@ void main() {
     const uint max_count = ubo.max_iterations;
 	const float escape_radius = 1e6;
 	const float interior_test_e_sqr = 1e-6;
-    const uint pixel_scale = 1u << ubo.res_scale_exp;
+    const float pixel_scale = float(1u << ubo.res_scale_exp);
 
-    uvec2 screen_loc = pixel_scale * gl_GlobalInvocationID.xy + ubo.screen_offset;
+    vec2 screen_loc = pixel_scale * vec2(gl_GlobalInvocationID.xy) + vec2(ubo.screen_offset);
     // center within render patch
-    vec2 center_screen_loc = vec2(screen_loc) + float(pixel_scale)/2.0;//ivec2(screen_loc + uvec2(pixel_scale/2, pixel_scale/2));
+    vec2 center_screen_loc = vec2(screen_loc) + pixel_scale/2.0;
 
-    center_screen_loc = center_screen_loc - vec2(ubo.center_screen_pos);
     vec2 delta_c = center_screen_loc * height_scale;
     vec2 delta_pos = delta_c;
     

@@ -56,7 +56,7 @@ void main() {
 
     float potential;
     if (src_loc.x < 0 || src_loc.x >= ubo.buffer_size.x || src_loc.y < 0 || src_loc.y >= ubo.buffer_size.y) {
-        potential = -1.0;
+        potential = 0.0;
     } else {
         potential = buff_potential_vals_src[src_loc.x + src_loc.y * ubo.buffer_size.x];
     }

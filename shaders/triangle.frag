@@ -22,23 +22,37 @@ layout(push_constant) uniform UniformBufferObject {
     uvec2 cur_res;
     uvec2 center_pos;
     uvec2 buffer_size;
+    vec2 background_offset;
+    uvec2 background_size;
     float zoom_diff;
+    float background_zoom;
 } ubo;
-layout(std430, binding = 0) readonly buffer storage {
+layout(set = 0, std430, binding = 0) readonly buffer storage {
     float potential_vals[];
+};
+
+layout(set = 1, std430, binding = 0) readonly buffer background {
+    float background_potential_vals[];
 };
 
 void main() {
     vec2 true_loc_f = (gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0));
+    ivec2 back_loc = ivec2(true_loc_f * ubo.background_zoom + ubo.background_offset);
     true_loc_f *= ubo.zoom_diff;
     true_loc_f += vec2(ubo.center_pos);
     uvec2 true_loc = uvec2(true_loc_f);
     float potential_val;
     if (true_loc.x >= ubo.buffer_size.x || true_loc.y >= ubo.buffer_size.y) {
-        potential_val = -1;
+        potential_val = 0.0;
     } else {
         potential_val = potential_vals[true_loc.x + true_loc.y * ubo.buffer_size.x];
     }
+
+    // if (potential_val == 0.0) {
+        if (back_loc.x >= 0 && back_loc.y >= 0 && back_loc.x < ubo.background_size.x && back_loc.y < ubo.background_size.y) {
+            potential_val = background_potential_vals[back_loc.x + back_loc.y * ubo.background_size.x];
+        } else potential_val = -1;
+    // }
     
     //ivec2 zoom_out_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) * 2 + ivec2(ubo.center_pos);
 

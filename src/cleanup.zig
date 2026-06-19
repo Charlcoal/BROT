@@ -71,6 +71,9 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
     c.vkDestroyBuffer(common.device, common.escape_potential_buffer, null);
     c.vkFreeMemory(common.device, common.escape_potential_buffer_memory, null);
 
+    c.vkDestroyBuffer(common.device, common.back_pb_buffer, null);
+    c.vkFreeMemory(common.device, common.back_pb_buffer_memory, null);
+
     c.vkDestroyBuffer(common.device, common.perturbation_buffer, null);
     c.vkFreeMemory(common.device, common.perturbation_buffer_memory, null);
 

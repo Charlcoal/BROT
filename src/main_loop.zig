@@ -172,7 +172,14 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
         }
     }
 
+    const FenceStatusTag = enum { unassigned, assigned_normal, assigned_background };
+    const FenceStatus = union(FenceStatusTag) {
+        unassigned: void,
+        assigned_normal: usize,
+        assigned_background: usize,
+    };
     var round_robin_index: usize = 0;
+    var fences_status = [1]FenceStatus{.{ .unassigned = void{} }} ** common.num_active_render_patches;
 
     while (!common.compute_manager_should_close) {
         // wait for a rendering task to complete
@@ -195,17 +202,27 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
             unreachable;
         };
 
-        if (common.fence_to_patch_index[comp_index]) |index| {
-            if (common.render_patches_status[index] == .cancelled) {
-                common.render_patches_status[index] = .empty;
-            } else {
-                common.render_patches_status[index] = .complete;
-            }
-            common.fence_to_patch_index[comp_index] = null;
+        switch (fences_status[comp_index]) {
+            .unassigned => {},
+            .assigned_normal => |index| {
+                if (common.render_patches_status[index] == .cancelled) {
+                    common.render_patches_status[index] = .empty;
+                } else {
+                    common.render_patches_status[index] = .complete;
+                }
+                fences_status[comp_index] = .unassigned;
+            },
+            .assigned_background => |index| {
+                std.debug.print("background rendered!\n", .{});
+                common.back_r2c_is_rendering[index] = false;
+                common.current_back_r2c_descriptor_index = index;
+                fences_status[comp_index] = .unassigned;
+            },
         }
 
         if (common.buffer_invalidated) {
             common.buffer_invalidated = false;
+            common.background_needs_render = true;
             try common.render_patch_mutex.lock(io);
             resetRenderPatchsResComps(common.resolutions_complete);
             common.render_patch_mutex.unlock(io);
@@ -217,50 +234,85 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
             continue;
         }
 
-        const buffer_to_render_to: ?usize = for (0.., common.render_patches_status) |i, status| {
-            if (status == .empty) break i;
-        } else null;
+        const bg_next_render_index: usize = (common.current_back_r2c_descriptor_index + 1) % common.back_r2c_descriptor_sets.len;
 
-        // waiting on render queue to empty patch buffers
-        if (buffer_to_render_to == null) {
-            try io.sleep(.fromMilliseconds(1), common.time);
-            continue;
-        }
+        const render_params: RenderingParams = if (common.background_needs_render and
+            !common.back_r2c_is_rendering[bg_next_render_index])
+        blk: {
+            const res_exp: u5 = 3 + std.math.log2_int(u32, @divTrunc(
+                @as(u32, @intCast(@max(common.height, common.width))),
+                common.renderPatchSize(0),
+            ));
 
-        try common.render_patch_mutex.lock(io);
-        const patch_to_render_maybe = chooseRenderPatch(common.resolutions_complete);
-        var patch_to_render: RenderPatch = undefined;
-        if (patch_to_render_maybe) |patch| {
-            patch_to_render = patch;
-        } else {
+            common.background_needs_render = false;
+            common.back_r2c_is_rendering[bg_next_render_index] = true;
+            std.debug.print("rendering background...\n", .{});
+            common.back_r2c_offset[bg_next_render_index] = .{ .x = 0, .y = 0, .zoom = -@as(i32, res_exp), .zoom_change = 0 };
+            fences_status[comp_index] = .{ .assigned_background = bg_next_render_index };
+
+            break :blk .{
+                .offset = @Vector(2, i32){
+                    -@as(i32, @intCast((common.renderPatchSize(res_exp) / 2))),
+                    -@as(i32, @intCast((common.renderPatchSize(res_exp) / 2))),
+                },
+                .res_exp = res_exp,
+                .zoom_exp = common.fractal_pos.zoom_exp,
+                .patch_descriptor_set = common.back_r2c_descriptor_sets[bg_next_render_index],
+                .active_ref = common.current_cpu_to_render_descriptor_index,
+            };
+        } else blk: { // normal render patch
+            // TEMP to make things slow
+            // try io.sleep(.fromMilliseconds(100), .awake);
+
+            const buffer_to_render_to: ?usize = for (0.., common.render_patches_status) |i, status| {
+                if (status == .empty) break i;
+            } else null;
+
+            // waiting on render queue to empty patch buffers
+            if (buffer_to_render_to == null) {
+                try io.sleep(.fromMilliseconds(1), common.time);
+                continue;
+            }
+
+            try common.render_patch_mutex.lock(io);
+            const patch_to_render_maybe = chooseRenderPatch(common.resolutions_complete);
+            var patch_to_render: RenderPatch = undefined;
+            if (patch_to_render_maybe) |patch| {
+                patch_to_render = patch;
+            } else {
+                common.render_patch_mutex.unlock(io);
+                common.render_patches_saturated = true;
+                try io.sleep(.fromMilliseconds(4), common.time);
+                continue;
+            }
+
+            fences_status[comp_index] = .{ .assigned_normal = buffer_to_render_to.? };
+            common.render_patches_status[buffer_to_render_to.?] = .rendering;
+            common.render_patches[buffer_to_render_to.?] = patch_to_render;
+
+            const resolution_scale_exponent: u32 = patch_to_render.resolution_scale_exponent;
+
+            var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
+            render_patch_size *= common.sqrt_invocation_num;
+            render_patch_size *= common.sqrt_workgroup_num;
+
+            const center_screen_pos = @Vector(2, i32){
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
+                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
+            };
+
             common.render_patch_mutex.unlock(io);
-            common.render_patches_saturated = true;
-            try io.sleep(.fromMilliseconds(4), common.time);
-            continue;
-        }
-
-        common.fence_to_patch_index[comp_index] = buffer_to_render_to;
-        common.render_patches_status[buffer_to_render_to.?] = .rendering;
-        common.render_patches[buffer_to_render_to.?] = patch_to_render;
-
-        const resolution_scale_exponent: u32 = patch_to_render.resolution_scale_exponent;
-
-        var render_patch_size: u32 = @as(u32, 1) << @as(u5, @intCast(resolution_scale_exponent));
-        render_patch_size *= common.sqrt_invocation_num;
-        render_patch_size *= common.sqrt_workgroup_num;
-
-        const render_params: RenderingParams = .{
-            .pos = @Vector(2, u32){
-                render_patch_size * patch_to_render.x_pos,
-                render_patch_size * patch_to_render.y_pos,
-            },
-            .res_exp = @intCast(patch_to_render.resolution_scale_exponent),
-            .zoom_exp = common.fractal_pos.zoom_exp,
-            .patch_index = buffer_to_render_to.?,
-            .active_ref = common.current_cpu_to_render_descriptor_index,
+            break :blk .{
+                .offset = @Vector(2, i32){
+                    @as(i32, @intCast(render_patch_size * patch_to_render.x_pos)) - center_screen_pos[0],
+                    @as(i32, @intCast(render_patch_size * patch_to_render.y_pos)) - center_screen_pos[1],
+                },
+                .res_exp = @intCast(patch_to_render.resolution_scale_exponent),
+                .zoom_exp = common.fractal_pos.zoom_exp,
+                .patch_descriptor_set = common.render_patch_descriptor_sets[buffer_to_render_to.?],
+                .active_ref = common.current_cpu_to_render_descriptor_index,
+            };
         };
-
-        common.render_patch_mutex.unlock(io);
 
         try common.gpu_interface_lock.lock(io);
         defer common.gpu_interface_lock.unlock(io);
@@ -368,6 +420,41 @@ fn renderedBufferResolve(io: std.Io) void {
 
         common.render_patch_mutex.lockUncancelable(io);
         defer common.render_patch_mutex.unlock(io);
+
+        for (common.back_r2c_offset[0..]) |*offset| {
+            std.debug.print("remapping...\n\n", .{});
+
+            if (common.remap_exp != 0)
+                std.debug.print("exp change!\n\n", .{});
+
+            // const scale: f32 = @floatCast(1.0 / fractalToBlockScale());
+
+            offset.x /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
+            offset.y /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
+            offset.zoom += common.remap_exp;
+            offset.zoom_change += common.remap_exp;
+            offset.x += @as(f32, @floatFromInt(common.remap_x)); // * scale;
+            offset.y += @as(f32, @floatFromInt(common.remap_y)); // * scale;
+
+            std.debug.print(
+                \\x offset: {},
+                \\y offset: {},
+                \\zoom: {},
+                \\zoom_diff: {},
+                \\x_diff: {},
+                \\height: {},
+                \\patch_size: {}
+                \\
+            , .{
+                offset.x,
+                offset.y,
+                std.math.exp2(@as(f32, @floatFromInt(offset.zoom))),
+                common.fractal_pos.zoom_diff(),
+                common.fractal_pos.x_diff(),
+                common.height,
+                common.renderPatchSize(0),
+            });
+        }
 
         moveUnplacedPatches();
         moveRenderPatches(
@@ -940,10 +1027,10 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
 }
 
 const RenderingParams = struct {
-    pos: @Vector(2, u32),
+    offset: @Vector(2, i32),
     res_exp: i32,
     zoom_exp: i32,
-    patch_index: usize,
+    patch_descriptor_set: c.VkDescriptorSet,
     active_ref: usize,
 };
 
@@ -959,7 +1046,7 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
     }
 
     const descriptor_sets = [_]c.VkDescriptorSet{
-        common.render_patch_descriptor_sets[params.patch_index],
+        params.patch_descriptor_set,
         common.cpu_to_render_descriptor_sets[params.active_ref],
     };
 
@@ -986,11 +1073,7 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
         0,
         @sizeOf(common.RenderingConstants),
         &common.RenderingConstants{
-            .center_screen_pos = @Vector(2, u32){
-                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x) / 2),
-                @intCast((common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y) / 2),
-            },
-            .screen_offset = params.pos,
+            .screen_offset = params.offset,
             .max_iterations = common.max_iterations,
             .height_scale_exp = params.zoom_exp,
             .resolution_scale_exponent = params.res_exp,
@@ -1053,18 +1136,42 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     };
     c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
+    // --------------- draw main rendered area ---------------
+    const descriptor_sets = [_]c.VkDescriptorSet{
+        common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        common.back_r2c_descriptor_sets[common.current_back_r2c_descriptor_index],
+    };
+
     c.vkCmdBindDescriptorSets(
         command_buffer,
         c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         common.coloring_pipeline_layout,
         0,
-        1,
-        &common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+        descriptor_sets.len,
+        &descriptor_sets,
         0,
         null,
     );
 
     const screen_center = common.getScreenCenter();
+    const zoom_mult = @exp2(@as(f32, @floatFromInt(
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom,
+    )));
+    const zoom_change_mult = @exp2(@as(f32, @floatFromInt(
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom_change,
+    )));
+    const background_zoom = (common.fractal_pos.zoom_diff() * zoom_mult);
+
+    // const scallelelel = @exp2(@as(f32, @floatFromInt(common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom_change)));
+
+    const background_offset = @Vector(2, f32){
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].x * 4.0 * zoom_change_mult +
+            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) + // / scallelelel +
+            @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
+        common.back_r2c_offset[common.current_back_r2c_descriptor_index].y * 4.0 * zoom_change_mult +
+            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) + // / scallelelel +
+            @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
+    };
 
     c.vkCmdPushConstants(
         command_buffer,
@@ -1082,7 +1189,13 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
             },
+            .background_offset = background_offset,
+            .background_size = .{
+                common.renderPatchSize(0),
+                common.renderPatchSize(0),
+            },
             .zoom_diff = common.fractal_pos.zoom_diff(),
+            .background_zoom = background_zoom,
         },
     );
 

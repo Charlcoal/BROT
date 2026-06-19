@@ -58,6 +58,7 @@ pub fn initVulkan(alloc: Allocator) InitVulkanError!void {
     try createRenderPatchDescriptorSets();
     try createCpuToRndDescriptorSets();
     try createRndToClrDescriptorSets();
+    try createBackR2CDescriptorSets();
     try createRenderCommandBuffers();
     try createPatchPlaceCommandBuffer();
     try createColoringCommandBuffers(alloc);
@@ -343,6 +344,10 @@ fn createDescriptorPool() InitVulkanError!void {
         },
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = @intCast(common.back_r2c_descriptor_sets.len),
+        },
+        .{
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = @intCast(common.render_patch_descriptor_sets.len),
         },
     };
@@ -353,6 +358,7 @@ fn createDescriptorPool() InitVulkanError!void {
         .pPoolSizes = &pool_sizes,
         .maxSets = @intCast(common.render_to_coloring_descriptor_sets.len +
             common.cpu_to_render_descriptor_sets.len +
+            common.back_r2c_descriptor_sets.len +
             common.render_patch_descriptor_sets.len),
     };
 
@@ -390,7 +396,7 @@ fn createRenderPatchDescriptorSetLayout() InitVulkanError!void {
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .stageFlags = c.VK_SHADER_STAGE_COMPUTE_BIT | c.VK_SHADER_STAGE_FRAGMENT_BIT,
         .pImmutableSamplers = null,
     }};
 
@@ -562,6 +568,49 @@ fn createRndToClrDescriptorSets() InitVulkanError!void {
             .{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = common.render_to_coloring_descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &escape_potential_buffer_info,
+            },
+        };
+
+        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+    }
+}
+
+fn createBackR2CDescriptorSets() InitVulkanError!void {
+    var layouts: [common.back_r2c_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
+    for (&layouts) |*layout| {
+        layout.* = common.render_patch_descriptor_set_layout;
+    }
+
+    const alloc_info: c.VkDescriptorSetAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = common.descriptor_pool,
+        .descriptorSetCount = layouts.len,
+        .pSetLayouts = &layouts,
+    };
+
+    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.back_r2c_descriptor_sets) != c.VK_SUCCESS) {
+        return InitVulkanError.descriptor_sets_allocation_failed;
+    }
+
+    const patch_size: usize =
+        @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
+
+    for (0..common.back_r2c_descriptor_sets.len) |i| {
+        const escape_potential_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = common.back_pb_buffer,
+            .offset = i * patch_size,
+            .range = patch_size,
+        };
+
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = common.back_r2c_descriptor_sets[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -846,10 +895,15 @@ fn createColoringPipeline() InitVulkanError!void {
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
+    const descriptor_sets = [_]c.VkDescriptorSetLayout{
+        common.render_to_coloring_descriptor_set_layout,
+        common.render_patch_descriptor_set_layout,
+    };
+
     const pipeline_layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &common.render_to_coloring_descriptor_set_layout,
+        .setLayoutCount = descriptor_sets.len,
+        .pSetLayouts = &descriptor_sets,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
@@ -1374,8 +1428,8 @@ fn createBuffers() InitVulkanError!void {
         common.renderPatchSize(common.max_res_scale_exponent) *
         common.escape_potential_buffer_block_num_x * common.escape_potential_buffer_block_num_y;
 
-    const render_patch_buffer_size: usize = common.render_patch_descriptor_sets.len *
-        @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
+    const render_patch_size: usize = @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
+    const render_patch_buffer_size: usize = common.render_patch_descriptor_sets.len * render_patch_size;
 
     try createBuffer(
         render_patch_buffer_size,
@@ -1391,6 +1445,14 @@ fn createBuffers() InitVulkanError!void {
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         &common.escape_potential_buffer,
         &common.escape_potential_buffer_memory,
+    );
+
+    try createBuffer(
+        render_patch_size * common.back_r2c_descriptor_sets.len,
+        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &common.back_pb_buffer,
+        &common.back_pb_buffer_memory,
     );
 
     try createBuffer(
