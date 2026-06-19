@@ -238,40 +238,7 @@ pub const RenderPatchStatus = enum {
     placing,
 };
 
-pub const ComputeError = Allocator.Error || std.Io.Cancelable;
-pub const InitWindowError = error{create_window_failed};
-pub const InitVulkanError = error{
-    instance_creation_failed,
-    validation_layer_unavailible,
-    debug_messenger_setup_failed,
-    window_surface_creation_failed,
-    gpu_with_vulkan_support_not_found,
-    suitable_gpu_not_found,
-    logical_device_creation_failed,
-    swap_chain_creation_failed,
-    image_views_creation_failed,
-    shader_module_creation_failed,
-    render_pass_creation_failed,
-    pipeline_layout_creation_failed,
-    graphics_pipeline_creation_failed,
-    framebuffer_creation_failed,
-    command_pool_creation_failed,
-    command_buffer_allocation_failed,
-    semaphore_creation_failed,
-    fence_creation_failed,
-    descriptor_set_layout_creation_failed,
-    descriptor_pool_creation_failed,
-    descriptor_sets_allocation_failed,
-    buffer_creation_failed,
-    buffer_memory_allocation_failed,
-    suitable_memory_type_not_found,
-} || std.mem.Allocator.Error;
-pub const MainLoopError = error{
-    command_buffer_recording_begin_failed,
-    command_buffer_record_failed,
-    draw_command_buffer_submit_failed,
-    swap_chain_image_acquisition_failed,
-} || InitVulkanError || std.Io.Cancelable;
+pub const ACError = Allocator.Error || std.Io.Cancelable;
 
 const Allocator = std.mem.Allocator;
 // result of following OOP-based tutorial, maybe change in future.
@@ -323,7 +290,7 @@ pub var in_flight_fences: []c.VkFence = undefined;
 pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
 pub var render_buffer_write_fence: c.VkFence = undefined;
 
-pub var compute_manager_future: std.Io.Future(ComputeError!void) = undefined;
+pub var compute_manager_future: std.Io.Future(ACError!void) = undefined;
 pub var gpu_interface_lock: std.Io.Mutex = .init;
 pub var compute_manager_should_close: bool = false;
 
@@ -427,18 +394,6 @@ pub fn getScreenCenter() struct { x: f32, y: f32 } {
     };
 }
 
-//// readToEndAlloc doesn't provide error type :/
-//pub const ReadFileError = Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.GetSeekPosError;
-//
-///// caller owns slice, slice contains entire file exactly. File limited to 100kB
-//pub fn readFile(file_name: []const u8, alloc: Allocator, comptime alignment: u29) ReadFileError![]align(alignment) u8 {
-//    const file = try std.fs.cwd().openFile(file_name, .{});
-//    const num: u64 = try file.getEndPos();
-//    const out = try alloc.alignedAlloc(u8, alignment, @intCast(num));
-//    _ = try file.readAll(out);
-//    return out;
-//}
-
 pub const max_res_scale_exponent = 3;
 pub const num_distinct_res_scales = max_res_scale_exponent + 1;
 /// per workgroup, needs to be same as compute shader
@@ -485,14 +440,14 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
     c.vkDestroyBuffer(device, perturbation_staging_buffer, null);
     c.vkFreeMemory(device, perturbation_staging_buffer_memory, null);
 
-    perturbation_buffer, perturbation_buffer_memory = try vulkan.createBuffer(
+    perturbation_buffer, perturbation_buffer_memory = vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         null,
     );
 
-    perturbation_staging_buffer, perturbation_staging_buffer_memory = try vulkan.createBuffer(
+    perturbation_staging_buffer, perturbation_staging_buffer_memory = vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,

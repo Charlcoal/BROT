@@ -21,20 +21,18 @@ const c = common.c;
 const gui = @import("gui.zig");
 const Allocator = std.mem.Allocator;
 
-const InitError = common.InitVulkanError;
-
-const vert_code align(4) = @embedFile("triangle_vert_shader").*;
-const frag_code align(4) = @embedFile("triangle_frag_shader").*;
+const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
+const color_code align(4) = @embedFile("triangle_frag_shader").*;
 const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
 const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
 const buffer_remap_code align(4) = @embedFile("buffer_remap_comp_shader").*;
 
-pub fn init(alloc: Allocator) InitError!void {
+pub fn init(alloc: Allocator) Allocator.Error!void {
     try createInstance(alloc);
-    try setupDebugMessenger();
+    setupDebugMessenger();
 
     if (c.glfwCreateWindowSurface(common.instance, common.window, null, &common.surface) != c.VK_SUCCESS) {
-        return InitError.window_surface_creation_failed;
+        std.debug.panic("Window surface creation failed!", .{});
     }
 
     try pickPhysicalDevice(alloc);
@@ -42,31 +40,32 @@ pub fn init(alloc: Allocator) InitError!void {
     try createLogicalDevice(alloc);
     try createSwapChain(alloc);
     try createImageViews(alloc);
-    try createRenderPass();
-    try createRenderPatchDescriptorSetLayout();
-    try createCpuToRndDescriptorSetLayout();
-    try createRndToClrDescriptorSetLayout();
-    try createBufferRemapPipeline();
-    try createPatchPlacePipeline();
-    try createColoringPipeline();
-    try createRendingPipeline();
+
+    createRenderPass();
+    createRenderPatchDescriptorSetLayout();
+    createCpuToRndDescriptorSetLayout();
+    createRndToClrDescriptorSetLayout();
+    createBufferRemapPipeline();
+    createPatchPlacePipeline();
+    createColoringPipeline();
+    createRendingPipeline();
     try createFrameBuffers(alloc);
-    try createGraphicsCommandPool();
-    try createComputeCommandPool();
-    try createBuffers();
-    try createDescriptorPool();
-    try createGuiDescriptorPool();
-    try createRenderPatchDescriptorSets();
-    try createCpuToRndDescriptorSets();
-    try createRndToClrDescriptorSets();
-    try createBackR2CDescriptorSets();
-    try createRenderCommandBuffers();
-    try createPatchPlaceCommandBuffer();
+    createGraphicsCommandPool();
+    createComputeCommandPool();
+    createBuffers();
+    createDescriptorPool();
+    createGuiDescriptorPool();
+    createRenderPatchDescriptorSets();
+    createCpuToRndDescriptorSets();
+    createRndToClrDescriptorSets();
+    createBackR2CDescriptorSets();
+    createRenderCommandBuffers();
+    createPatchPlaceCommandBuffer();
     try createColoringCommandBuffers(alloc);
     try createSyncObjects(alloc);
 }
 
-pub fn recreateSwapChain(alloc: Allocator) InitError!void {
+pub fn recreateSwapChain(alloc: Allocator) Allocator.Error!void {
     common.frame_buffer_just_resized = true;
 
     var width: c_int = 0;
@@ -173,7 +172,7 @@ pub fn createBuffer(
     usage: c.VkBufferUsageFlags,
     properties: c.VkMemoryPropertyFlags,
     vk_alloc: [*c]const c.struct_VkAllocationCallbacks,
-) InitError!@Tuple(&.{ c.VkBuffer, c.VkDeviceMemory }) {
+) @Tuple(&.{ c.VkBuffer, c.VkDeviceMemory }) {
     const buffer_info: c.VkBufferCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -183,7 +182,7 @@ pub fn createBuffer(
 
     var buffer: c.VkBuffer = undefined;
     if (c.vkCreateBuffer(common.device, &buffer_info, vk_alloc, &buffer) != c.VK_SUCCESS) {
-        return InitError.buffer_creation_failed;
+        std.debug.panic("Buffer creation failed!", .{});
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
@@ -192,19 +191,19 @@ pub fn createBuffer(
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = mem_requirements.size,
-        .memoryTypeIndex = try findMemoryType(mem_requirements.memoryTypeBits, properties),
+        .memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties),
     };
 
     var buffer_mem: c.VkDeviceMemory = undefined;
     if (c.vkAllocateMemory(common.device, &alloc_info, vk_alloc, &buffer_mem) != c.VK_SUCCESS) {
-        return InitError.buffer_memory_allocation_failed;
+        std.debug.panic("Buffer memory allocation failed!", .{});
     }
 
     _ = c.vkBindBufferMemory(common.device, buffer, buffer_mem, 0);
     return .{ buffer, buffer_mem };
 }
 
-pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) InitError!u32 {
+pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
     c.vkGetPhysicalDeviceMemoryProperties(common.physical_device, &mem_properties);
 
@@ -214,7 +213,7 @@ pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) Ini
         }
     }
 
-    return InitError.suitable_memory_type_not_found;
+    std.debug.panic("Suitable memory type not found!", .{});
 }
 
 fn debugCallback(
@@ -245,7 +244,7 @@ fn debugCallback(
     return c.VK_FALSE;
 }
 
-fn createColoringCommandBuffers(alloc: Allocator) InitError!void {
+fn createColoringCommandBuffers(alloc: Allocator) Allocator.Error!void {
     common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
@@ -256,11 +255,11 @@ fn createColoringCommandBuffers(alloc: Allocator) InitError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, common.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
-        return InitError.command_buffer_allocation_failed;
+        std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
 
-fn createPatchPlaceCommandBuffer() InitError!void {
+fn createPatchPlaceCommandBuffer() void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = common.compute_command_pool,
@@ -269,11 +268,11 @@ fn createPatchPlaceCommandBuffer() InitError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        return InitError.command_buffer_allocation_failed;
+        std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
 
-fn createRenderCommandBuffers() InitError!void {
+fn createRenderCommandBuffers() void {
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = common.compute_command_pool,
@@ -282,11 +281,11 @@ fn createRenderCommandBuffers() InitError!void {
     };
 
     if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rendering_command_buffers) != c.VK_SUCCESS) {
-        return InitError.command_buffer_allocation_failed;
+        std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
 
-fn createGraphicsCommandPool() InitError!void {
+fn createGraphicsCommandPool() void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -294,11 +293,11 @@ fn createGraphicsCommandPool() InitError!void {
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
-        return InitError.command_pool_creation_failed;
+        std.debug.panic("Command pool creation failed!", .{});
     }
 }
 
-fn createComputeCommandPool() InitError!void {
+fn createComputeCommandPool() void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -306,18 +305,18 @@ fn createComputeCommandPool() InitError!void {
     };
 
     if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
-        return InitError.command_pool_creation_failed;
+        std.debug.panic("Command pool creation failed!", .{});
     }
 }
 
-fn setupDebugMessenger() InitError!void {
+fn setupDebugMessenger() void {
     if (!common.enable_validation_layers) return;
 
     var create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     populateDebugMessengerCreateInfo(&create_info);
 
     if (createDebugUtilsMessengerEXT(common.instance, &create_info, null, &common.debug_messenger) != c.VK_SUCCESS) {
-        return InitError.debug_messenger_setup_failed;
+        std.debug.panic("Debug messenger setup failed!", .{});
     }
 }
 
@@ -335,7 +334,7 @@ fn createDebugUtilsMessengerEXT(
     }
 }
 
-fn createDescriptorPool() InitError!void {
+fn createDescriptorPool() void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -366,11 +365,11 @@ fn createDescriptorPool() InitError!void {
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
-        return InitError.descriptor_pool_creation_failed;
+        std.debug.panic("Descriptor pool creation failed!", .{});
     }
 }
 
-fn createGuiDescriptorPool() InitError!void {
+fn createGuiDescriptorPool() void {
     const pool_sizes = [_]c.VkDescriptorPoolSize{
         .{
             .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -390,11 +389,11 @@ fn createGuiDescriptorPool() InitError!void {
     };
 
     if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &gui.descriptor_pool) != c.VK_SUCCESS) {
-        return InitError.descriptor_pool_creation_failed;
+        std.debug.panic("Descriptor pool creation failed!", .{});
     }
 }
 
-fn createRenderPatchDescriptorSetLayout() InitError!void {
+fn createRenderPatchDescriptorSetLayout() void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -410,11 +409,11 @@ fn createRenderPatchDescriptorSetLayout() InitError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_patch_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitError.descriptor_set_layout_creation_failed;
+        std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
 
-fn createCpuToRndDescriptorSetLayout() InitError!void {
+fn createCpuToRndDescriptorSetLayout() void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -430,11 +429,11 @@ fn createCpuToRndDescriptorSetLayout() InitError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.cpu_to_render_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitError.descriptor_set_layout_creation_failed;
+        std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
 
-fn createRndToClrDescriptorSetLayout() InitError!void {
+fn createRndToClrDescriptorSetLayout() void {
     const bindings = [_]c.VkDescriptorSetLayoutBinding{.{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -450,11 +449,11 @@ fn createRndToClrDescriptorSetLayout() InitError!void {
     };
 
     if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
-        return InitError.descriptor_set_layout_creation_failed;
+        std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
 
-fn createRenderPatchDescriptorSets() InitError!void {
+fn createRenderPatchDescriptorSets() void {
     var layouts: [common.render_patch_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_patch_descriptor_set_layout;
@@ -468,7 +467,7 @@ fn createRenderPatchDescriptorSets() InitError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_patch_descriptor_sets) != c.VK_SUCCESS) {
-        return InitError.descriptor_sets_allocation_failed;
+        std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
     const patch_size: usize =
@@ -497,7 +496,7 @@ fn createRenderPatchDescriptorSets() InitError!void {
     }
 }
 
-pub fn createCpuToRndDescriptorSets() InitError!void {
+pub fn createCpuToRndDescriptorSets() void {
     var layouts: [common.cpu_to_render_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.cpu_to_render_descriptor_set_layout;
@@ -511,7 +510,7 @@ pub fn createCpuToRndDescriptorSets() InitError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.cpu_to_render_descriptor_sets) != c.VK_SUCCESS) {
-        return InitError.descriptor_sets_allocation_failed;
+        std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
     for (0..common.cpu_to_render_descriptor_sets.len) |i| {
@@ -543,7 +542,7 @@ pub fn createCpuToRndDescriptorSets() InitError!void {
     }
 }
 
-fn createRndToClrDescriptorSets() InitError!void {
+fn createRndToClrDescriptorSets() void {
     var layouts: [common.render_to_coloring_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_to_coloring_descriptor_set_layout;
@@ -557,7 +556,7 @@ fn createRndToClrDescriptorSets() InitError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_to_coloring_descriptor_sets) != c.VK_SUCCESS) {
-        return InitError.descriptor_sets_allocation_failed;
+        std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
     for (0..common.render_to_coloring_descriptor_sets.len) |i| {
@@ -583,7 +582,7 @@ fn createRndToClrDescriptorSets() InitError!void {
     }
 }
 
-fn createBackR2CDescriptorSets() InitError!void {
+fn createBackR2CDescriptorSets() void {
     var layouts: [common.back_r2c_descriptor_sets.len]c.VkDescriptorSetLayout = undefined;
     for (&layouts) |*layout| {
         layout.* = common.render_patch_descriptor_set_layout;
@@ -597,7 +596,7 @@ fn createBackR2CDescriptorSets() InitError!void {
     };
 
     if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.back_r2c_descriptor_sets) != c.VK_SUCCESS) {
-        return InitError.descriptor_sets_allocation_failed;
+        std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
     const patch_size: usize =
@@ -626,7 +625,7 @@ fn createBackR2CDescriptorSets() InitError!void {
     }
 }
 
-fn createFrameBuffers(alloc: Allocator) InitError!void {
+fn createFrameBuffers(alloc: Allocator) Allocator.Error!void {
     common.swap_chain_framebuffers = try alloc.alloc(c.VkFramebuffer, common.swap_chain_image_views.len);
 
     for (0..common.swap_chain_image_views.len) |i| {
@@ -645,12 +644,12 @@ fn createFrameBuffers(alloc: Allocator) InitError!void {
         };
 
         if (c.vkCreateFramebuffer(common.device, &frame_buffer_info, null, &common.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
-            return InitError.framebuffer_creation_failed;
+            std.debug.panic("Framebuffer creation failed!", .{});
         }
     }
 }
 
-fn createBufferRemapPipeline() InitError!void {
+fn createBufferRemapPipeline() void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.BufferRemapConstants),
@@ -662,7 +661,7 @@ fn createBufferRemapPipeline() InitError!void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
-    common.buffer_remap_pipeline, common.buffer_remap_pipeline_layout = try createComputePipeline(
+    common.buffer_remap_pipeline, common.buffer_remap_pipeline_layout = createComputePipeline(
         &buffer_remap_code,
         null,
         descriptor_sets[0..],
@@ -679,8 +678,8 @@ fn createComputePipeline(
     vk_alloc: [*c]const c.struct_VkAllocationCallbacks,
     descriptor_set_layouts: []const c.VkDescriptorSetLayout,
     options: ComputePipelineOptions,
-) InitError!@Tuple(&.{ c.VkPipeline, c.VkPipelineLayout }) {
-    const shader_module = try createShaderModule(shader_spirv);
+) @Tuple(&.{ c.VkPipeline, c.VkPipelineLayout }) {
+    const shader_module = createShaderModule(shader_spirv);
     defer _ = c.vkDestroyShaderModule(common.device, shader_module, vk_alloc);
 
     const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
@@ -705,7 +704,7 @@ fn createComputePipeline(
         vk_alloc,
         &pipeline_layout,
     ) != c.VK_SUCCESS) {
-        return InitError.pipeline_layout_creation_failed;
+        std.debug.panic("Pipeline layout creation failed!", .{});
     }
 
     const pipeline_info: c.VkComputePipelineCreateInfo = .{
@@ -723,13 +722,13 @@ fn createComputePipeline(
         vk_alloc,
         &pipeline,
     ) != c.VK_SUCCESS) {
-        return InitError.graphics_pipeline_creation_failed;
+        std.debug.panic("Graphics pipeline creation failed!", .{});
     }
 
     return .{ pipeline, pipeline_layout };
 }
 
-fn createPatchPlacePipeline() InitError!void {
+fn createPatchPlacePipeline() void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.PatchPlaceConstants),
@@ -741,7 +740,7 @@ fn createPatchPlacePipeline() InitError!void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
-    common.patch_place_pipeline, common.patch_place_pipeline_layout = try createComputePipeline(
+    common.patch_place_pipeline, common.patch_place_pipeline_layout = createComputePipeline(
         &patch_place_code,
         null,
         descriptor_sets[0..],
@@ -749,7 +748,7 @@ fn createPatchPlacePipeline() InitError!void {
     );
 }
 
-fn createRendingPipeline() InitError!void {
+fn createRendingPipeline() void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.RenderingConstants),
@@ -761,7 +760,7 @@ fn createRendingPipeline() InitError!void {
         common.cpu_to_render_descriptor_set_layout,
     };
 
-    common.rendering_pipeline, common.rendering_pipeline_layout = try createComputePipeline(
+    common.rendering_pipeline, common.rendering_pipeline_layout = createComputePipeline(
         &render_code,
         null,
         descriptor_sets[0..],
@@ -769,9 +768,9 @@ fn createRendingPipeline() InitError!void {
     );
 }
 
-fn createColoringPipeline() InitError!void {
-    const vert_shader_module = try createShaderModule(&vert_code);
-    const frag_shader_module = try createShaderModule(&frag_code);
+fn createColoringPipeline() void {
+    const vert_shader_module = createShaderModule(&dummy_vert_code);
+    const frag_shader_module = createShaderModule(&color_code);
     defer _ = c.vkDestroyShaderModule(common.device, vert_shader_module, null);
     defer _ = c.vkDestroyShaderModule(common.device, frag_shader_module, null);
 
@@ -886,7 +885,7 @@ fn createColoringPipeline() InitError!void {
         .pPushConstantRanges = &push_constant_range,
     };
     if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.coloring_pipeline_layout) != c.VK_SUCCESS) {
-        return InitError.pipeline_layout_creation_failed;
+        std.debug.panic("Pipeline layout creation failed!", .{});
     }
 
     const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
@@ -909,11 +908,11 @@ fn createColoringPipeline() InitError!void {
     };
 
     if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.coloring_pipeline) != c.VK_SUCCESS) {
-        return InitError.graphics_pipeline_creation_failed;
+        std.debug.panic("Graphics pipeline creation failed!", .{});
     }
 }
 
-fn createShaderModule(code: []align(4) const u8) InitError!c.VkShaderModule {
+fn createShaderModule(code: []align(4) const u8) c.VkShaderModule {
     //std.debug.print("shader module at: {x}\n", .{@intFromPtr(code.ptr)});
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -922,12 +921,12 @@ fn createShaderModule(code: []align(4) const u8) InitError!c.VkShaderModule {
     };
     var shader_module: c.VkShaderModule = undefined;
     if (c.vkCreateShaderModule(common.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
-        return InitError.shader_module_creation_failed;
+        std.debug.panic("shader module creation failed!", .{});
     }
     return shader_module;
 }
 
-fn createImageViews(alloc: Allocator) InitError!void {
+fn createImageViews(alloc: Allocator) Allocator.Error!void {
     common.swap_chain_image_views = try alloc.alloc(c.VkImageView, common.swap_chain_images.len);
 
     for (common.swap_chain_images, 0..) |image, i| {
@@ -952,14 +951,14 @@ fn createImageViews(alloc: Allocator) InitError!void {
         };
 
         if (c.vkCreateImageView(common.device, &create_info, null, &common.swap_chain_image_views[i]) != c.VK_SUCCESS) {
-            return InitError.image_views_creation_failed;
+            std.debug.panic("Image views creation failed!", .{});
         }
     }
 }
 
-fn createInstance(alloc: Allocator) InitError!void {
+fn createInstance(alloc: Allocator) Allocator.Error!void {
     if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc)) {
-        return InitError.validation_layer_unavailible;
+        std.debug.panic("Validation layer unavailible!", .{});
     }
 
     const app_info = c.VkApplicationInfo{
@@ -997,7 +996,7 @@ fn createInstance(alloc: Allocator) InitError!void {
 
     const result = c.vkCreateInstance(&create_info, null, &common.instance);
     if (result != c.VK_SUCCESS) {
-        return InitError.instance_creation_failed;
+        std.debug.panic("Instance creation failed!", .{});
     }
 }
 
@@ -1040,7 +1039,7 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
     return out;
 }
 
-fn createLogicalDevice(alloc: Allocator) InitError!void {
+fn createLogicalDevice(alloc: Allocator) Allocator.Error!void {
     var unique_queue_families = [_]u32{
         common.queue_families.graphics_family.?,
         common.queue_families.compute_family.?,
@@ -1127,7 +1126,7 @@ fn createLogicalDevice(alloc: Allocator) InitError!void {
     }
 
     if (c.vkCreateDevice(common.physical_device, &createInfo, null, &common.device) != c.VK_SUCCESS) {
-        return InitError.logical_device_creation_failed;
+        std.debug.panic("Logical device creation failed!", .{});
     }
 
     c.vkGetDeviceQueue(common.device, common.queue_families.graphics_family.?, 0, &common.graphics_queue);
@@ -1141,12 +1140,12 @@ fn createLogicalDevice(alloc: Allocator) InitError!void {
     }
 }
 
-fn pickPhysicalDevice(alloc: Allocator) InitError!void {
+fn pickPhysicalDevice(alloc: Allocator) Allocator.Error!void {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, null);
 
     if (device_count == 0) {
-        return InitError.gpu_with_vulkan_support_not_found;
+        std.debug.panic("Gpu with vulkan support not found!", .{});
     }
 
     const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
@@ -1159,7 +1158,7 @@ fn pickPhysicalDevice(alloc: Allocator) InitError!void {
             break;
         }
     } else {
-        return InitError.suitable_gpu_not_found;
+        std.debug.panic("Suitable gpu not found!", .{});
     }
 }
 
@@ -1198,7 +1197,7 @@ fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) All
     return true;
 }
 
-pub fn createRenderPass() InitError!void {
+pub fn createRenderPass() void {
     const color_attachment: c.VkAttachmentDescription = .{
         .format = common.swap_chain_image_format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
@@ -1241,11 +1240,11 @@ pub fn createRenderPass() InitError!void {
     };
 
     if (c.vkCreateRenderPass(common.device, &render_pass_info, null, &common.render_pass) != c.VK_SUCCESS) {
-        return InitError.render_pass_creation_failed;
+        std.debug.panic("Render pass creation failed", .{});
     }
 }
 
-fn createSwapChain(alloc: Allocator) InitError!void {
+fn createSwapChain(alloc: Allocator) Allocator.Error!void {
     const swap_chain_support = try querySwapChainSupport(common.surface, common.physical_device, alloc);
     defer alloc.free(swap_chain_support.formats);
     defer alloc.free(swap_chain_support.presentModes);
@@ -1291,7 +1290,7 @@ fn createSwapChain(alloc: Allocator) InitError!void {
     }
 
     if (c.vkCreateSwapchainKHR(common.device, &create_info, null, &common.swap_chain) != c.VK_SUCCESS) {
-        return InitError.logical_device_creation_failed;
+        std.debug.panic("Logical device creation failed", .{});
     }
 
     _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), null);
@@ -1351,7 +1350,7 @@ fn chooseSwapExtent(capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2
     }
 }
 
-fn createSyncObjects(alloc: Allocator) InitError!void {
+fn createSyncObjects(alloc: Allocator) Allocator.Error!void {
     common.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
     common.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, common.swap_chain_images.len);
     common.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
@@ -1366,12 +1365,12 @@ fn createSyncObjects(alloc: Allocator) InitError!void {
     };
 
     if (c.vkCreateFence(common.device, &fence_info, null, &common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        return InitError.fence_creation_failed;
+        std.debug.panic("Fence creation failed", .{});
     }
 
     for (&common.rendering_fences) |*fence| {
         if (c.vkCreateFence(common.device, &fence_info, null, fence) != c.VK_SUCCESS) {
-            return InitError.fence_creation_failed;
+            std.debug.panic("Fence creation failed", .{});
         }
     }
 
@@ -1379,18 +1378,18 @@ fn createSyncObjects(alloc: Allocator) InitError!void {
         if (c.vkCreateSemaphore(common.device, &semaphore_info, null, &common.image_availible_semaphores[i]) != c.VK_SUCCESS or
             c.vkCreateFence(common.device, &fence_info, null, &common.in_flight_fences[i]) != c.VK_SUCCESS)
         {
-            return InitError.semaphore_creation_failed;
+            std.debug.panic("Semaphore creation failed", .{});
         }
     }
 
     for (common.render_finished_semaphores) |*sem| {
         if (c.vkCreateSemaphore(common.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
-            return InitError.semaphore_creation_failed;
+            std.debug.panic("Semaphore creation failed!", .{});
         }
     }
 }
 
-fn createBuffers() InitError!void {
+fn createBuffers() void {
     const video_mode = c.glfwGetVideoMode(c.glfwGetPrimaryMonitor());
     common.escape_potential_buffer_block_num_x =
         @as(u32, @intCast(2 * video_mode.?.*.width)) / common.renderPatchSize(common.max_res_scale_exponent) + 2;
@@ -1409,35 +1408,35 @@ fn createBuffers() InitError!void {
     const render_patch_size: usize = @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
     const render_patch_buffer_size: usize = common.render_patch_descriptor_sets.len * render_patch_size;
 
-    common.render_patch_buffer, common.render_patch_buffer_memory = try createBuffer(
+    common.render_patch_buffer, common.render_patch_buffer_memory = createBuffer(
         render_patch_buffer_size,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         null,
     );
 
-    common.escape_potential_buffer, common.escape_potential_buffer_memory = try createBuffer(
+    common.escape_potential_buffer, common.escape_potential_buffer_memory = createBuffer(
         common.escape_potential_buffer_size * common.render_to_coloring_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         null,
     );
 
-    common.back_pb_buffer, common.back_pb_buffer_memory = try createBuffer(
+    common.back_pb_buffer, common.back_pb_buffer_memory = createBuffer(
         render_patch_size * common.back_r2c_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         null,
     );
 
-    common.perturbation_buffer, common.perturbation_buffer_memory = try createBuffer(
+    common.perturbation_buffer, common.perturbation_buffer_memory = createBuffer(
         common.allocated_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         null,
     );
 
-    common.perturbation_staging_buffer, common.perturbation_staging_buffer_memory = try createBuffer(
+    common.perturbation_staging_buffer, common.perturbation_staging_buffer_memory = createBuffer(
         common.allocated_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,

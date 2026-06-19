@@ -22,11 +22,10 @@ const big_float = @import("big_float.zig");
 const reference_calc = @import("reference_calc.zig");
 const gui = @import("gui.zig");
 
-const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
 const RenderPatch = common.RenderPatch;
 
-pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
+pub fn mainLoop(alloc: Allocator, io: std.Io) common.ACError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
         try gui.show(io, alloc);
@@ -44,7 +43,7 @@ pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
     common.gpu_interface_lock.unlock(io);
 }
 
-fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
+fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
     if (common.frame_buffer_just_resized) {
         _ = c.vkWaitForFences(
             common.device,
@@ -98,11 +97,11 @@ fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
         try vulkan.recreateSwapChain(alloc);
         return;
     } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
+        std.debug.panic("Swap chain image acquisition failed!", .{});
     } else if (result == c.VK_SUBOPTIMAL_KHR) {}
 
     _ = c.vkResetCommandBuffer(common.graphics_command_buffers[common.current_frame], 0);
-    try recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
+    recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
 
     const wait_semaphors = [_]c.VkSemaphore{common.image_availible_semaphores[common.current_frame]};
     const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -124,7 +123,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
         &submit_info,
         common.in_flight_fences[common.current_frame],
     ) != c.VK_SUCCESS) {
-        return MainLoopError.draw_command_buffer_submit_failed;
+        std.debug.panic("Color command buffer submission failed!", .{});
     }
 
     const swap_chains = [_]c.VkSwapchainKHR{common.swap_chain};
@@ -145,11 +144,11 @@ fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
         try vulkan.recreateSwapChain(alloc);
         return;
     } else if (result != c.VK_SUCCESS) {
-        return MainLoopError.swap_chain_image_acquisition_failed;
+        std.debug.panic("Swapchain image acquisition failed!", .{});
     }
 }
 
-pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
+pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
     for (0.., &common.resolutions_complete, &common.res_complete_tmp) |i, *res, *res_tmp| {
         const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
@@ -321,7 +320,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
 
         _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
         recordRenderingCommandBuffer(common.rendering_command_buffers[comp_index], render_params) catch {
-            @panic("compute manager failed to record buffer!");
+            std.debug.panic("compute manager failed to record buffer!", .{});
         };
 
         const wait_stages: u32 = 0;
@@ -337,7 +336,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
         };
 
         if (c.vkQueueSubmit(common.compute_queue, 1, &submit_info, common.rendering_fences[comp_index]) != c.VK_SUCCESS) {
-            @panic("compute manager failed to submit queue!");
+            std.debug.panic("compute manager failed to submit queue!", .{});
         }
     }
 
@@ -470,7 +469,7 @@ fn renderedBufferResolve(io: std.Io) void {
     }
 }
 
-fn renderedBufferDispatch(io: std.Io) MainLoopError!void {
+fn renderedBufferDispatch(io: std.Io) common.ACError!void {
     if (common.remap_needed) {
         common.remap_needed = false;
         try remap_buffer(io);
@@ -483,14 +482,14 @@ fn renderedBufferDispatch(io: std.Io) MainLoopError!void {
     }
 }
 
-fn remap_buffer(io: std.Io) MainLoopError!void {
+fn remap_buffer(io: std.Io) common.ACError!void {
     _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
 
     _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
-    try recordBufferRemapCommandBuffer();
+    recordBufferRemapCommandBuffer();
 
     const compute_wait_stages: u32 = 0;
     const compute_submit_info: c.VkSubmitInfo = .{
@@ -505,11 +504,11 @@ fn remap_buffer(io: std.Io) MainLoopError!void {
     };
 
     if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        @panic("patch placement failed to submit queue!");
+        std.debug.panic("patch placement failed to submit queue!", .{});
     }
 }
 
-fn place_patches(io: std.Io) MainLoopError!void {
+fn place_patches(io: std.Io) common.ACError!void {
     _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
 
     common.gpu_interface_lock.lockUncancelable(io);
@@ -517,7 +516,7 @@ fn place_patches(io: std.Io) MainLoopError!void {
 
     _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
     common.render_patches_saturated = false;
-    try recordPatchPlaceCommandBuffer();
+    recordPatchPlaceCommandBuffer();
 
     const compute_wait_stages: u32 = 0;
     const compute_submit_info: c.VkSubmitInfo = .{
@@ -532,7 +531,7 @@ fn place_patches(io: std.Io) MainLoopError!void {
     };
 
     if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        @panic("patch placement failed to submit queue!");
+        std.debug.panic("patch placement failed to submit queue!", .{});
     }
 }
 
@@ -810,7 +809,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     };
 }
 
-fn recordBufferRemapCommandBuffer() MainLoopError!void {
+fn recordBufferRemapCommandBuffer() void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -818,7 +817,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
     };
 
     if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_recording_begin_failed;
+        std.debug.panic("Command buffer recording begin failed!", .{});
     }
 
     c.vkCmdBindPipeline(
@@ -882,7 +881,7 @@ fn recordBufferRemapCommandBuffer() MainLoopError!void {
     );
 
     if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_record_failed;
+        std.debug.panic("Command buffer recording failed!", .{});
     }
 }
 
@@ -929,7 +928,7 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
     };
 }
 
-fn recordPatchPlaceCommandBuffer() MainLoopError!void {
+fn recordPatchPlaceCommandBuffer() void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -937,7 +936,7 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     };
 
     if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_recording_begin_failed;
+        std.debug.panic("Command buffer recording begin failed!", .{});
     }
 
     c.vkCmdBindPipeline(
@@ -994,7 +993,7 @@ fn recordPatchPlaceCommandBuffer() MainLoopError!void {
     }
 
     if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_record_failed;
+        std.debug.panic("Command buffer recording failed!", .{});
     }
 }
 
@@ -1006,7 +1005,7 @@ const RenderingParams = struct {
     active_ref: usize,
 };
 
-fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, params: RenderingParams) MainLoopError!void {
+fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, params: RenderingParams) common.ACError!void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -1014,7 +1013,7 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
     };
 
     if (c.vkBeginCommandBuffer(rendering_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_recording_begin_failed;
+        std.debug.panic("Command buffer recording begin failed!", .{});
     }
 
     const descriptor_sets = [_]c.VkDescriptorSet{
@@ -1061,11 +1060,11 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
     );
 
     if (c.vkEndCommandBuffer(rendering_command_buffer) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_record_failed;
+        std.debug.panic("Command buffer recording failed!", .{});
     }
 }
 
-fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) MainLoopError!void {
+fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) void {
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
@@ -1073,7 +1072,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     };
 
     if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_recording_begin_failed;
+        std.debug.panic("Command buffer recording begin failed!", .{});
     }
 
     const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
@@ -1180,7 +1179,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     c.vkCmdEndRenderPass(command_buffer);
 
     if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
-        return MainLoopError.command_buffer_record_failed;
+        std.debug.panic("Command buffer recording failed!", .{});
     }
 }
 

@@ -19,14 +19,13 @@ const common = @import("common_defs.zig");
 const c = common.c;
 const reference_calc = @import("reference_calc.zig");
 
-const InitWindowError = common.InitWindowError;
-
-pub fn initWindow() InitWindowError!void {
+pub fn initWindow() void {
     _ = c.glfwInit();
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    common.window = c.glfwCreateWindow(common.width, common.height, "BROT", null, null) orelse return InitWindowError.create_window_failed;
+    common.window = c.glfwCreateWindow(common.width, common.height, "BROT", null, null) orelse
+        std.debug.panic("Window creation failed!", .{});
     _ = c.glfwSetFramebufferSizeCallback(common.window, framebufferResizeCallback);
     _ = c.glfwSetScrollCallback(common.window, scrollCallback);
     _ = c.glfwSetKeyCallback(common.window, keyCallback);

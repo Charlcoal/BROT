@@ -27,8 +27,7 @@ const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
 const big_float = @import("big_float.zig");
 
-pub const Error = std.Io.ConcurrentError || common.InitWindowError ||
-    common.InitVulkanError || common.MainLoopError || std.Thread.SpawnError;
+pub const Error = std.Io.ConcurrentError || std.Thread.SpawnError || Allocator.Error || std.Io.Cancelable;
 
 const Allocator = std.mem.Allocator;
 
@@ -50,7 +49,7 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     c.mpf_init2(&common.ref_calc_x, 32);
     c.mpf_init2(&common.ref_calc_y, 32);
 
-    try window_init.initWindow();
+    window_init.initWindow();
     try vulkan.init(alloc);
     gui.init();
     try ref_calc.init(alloc);
