@@ -48,11 +48,11 @@ void main() {
         potential_val = potential_vals[true_loc.x + true_loc.y * ubo.buffer_size.x];
     }
 
-    // if (potential_val == 0.0) {
+    if (potential_val == 0.0) {
         if (back_loc.x >= 0 && back_loc.y >= 0 && back_loc.x < ubo.background_size.x && back_loc.y < ubo.background_size.y) {
             potential_val = background_potential_vals[back_loc.x + back_loc.y * ubo.background_size.x];
         } else potential_val = -1;
-    // }
+    }
     
     //ivec2 zoom_out_loc = ivec2((gl_FragCoord.xy - (vec2(ubo.cur_res)/2.0)) * ubo.zoom_diff) * 2 + ivec2(ubo.center_pos);
 

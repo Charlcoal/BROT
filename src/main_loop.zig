@@ -213,7 +213,6 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
                 fences_status[comp_index] = .unassigned;
             },
             .assigned_background => |index| {
-                std.debug.print("background rendered!\n", .{});
                 common.back_r2c_is_rendering[index] = false;
                 common.current_back_r2c_descriptor_index = index;
                 fences_status[comp_index] = .unassigned;
@@ -246,7 +245,6 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
 
             common.background_needs_render = false;
             common.back_r2c_is_rendering[bg_next_render_index] = true;
-            std.debug.print("rendering background...\n", .{});
             common.back_r2c_offset[bg_next_render_index] = .{ .x = 0, .y = 0, .zoom = -@as(i32, res_exp) };
             fences_status[comp_index] = .{ .assigned_background = bg_next_render_index };
 
@@ -261,9 +259,6 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeError!void {
                 .active_ref = common.current_cpu_to_render_descriptor_index,
             };
         } else blk: { // normal render patch
-            // TEMP to make things slow
-            // try io.sleep(.fromMilliseconds(100), .awake);
-
             const buffer_to_render_to: ?usize = for (0.., common.render_patches_status) |i, status| {
                 if (status == .empty) break i;
             } else null;
@@ -422,37 +417,13 @@ fn renderedBufferResolve(io: std.Io) void {
         defer common.render_patch_mutex.unlock(io);
 
         for (common.back_r2c_offset[0..]) |*offset| {
-            std.debug.print("remapping...\n\n", .{});
-
-            if (common.remap_exp != 0)
-                std.debug.print("exp change!\n\n", .{});
-
-            // const scale: f32 = @floatCast(1.0 / fractalToBlockScale());
+            if (common.remap_exp != 0) common.background_needs_render = true;
 
             offset.x /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
             offset.y /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
             offset.zoom += common.remap_exp;
             offset.x += @as(f32, @floatFromInt(common.remap_x)); // * scale;
             offset.y += @as(f32, @floatFromInt(common.remap_y)); // * scale;
-
-            std.debug.print(
-                \\x offset: {},
-                \\y offset: {},
-                \\zoom: {},
-                \\zoom_diff: {},
-                \\x_diff: {},
-                \\height: {},
-                \\patch_size: {}
-                \\
-            , .{
-                offset.x,
-                offset.y,
-                std.math.exp2(@as(f32, @floatFromInt(offset.zoom))),
-                common.fractal_pos.zoom_diff(),
-                common.fractal_pos.x_diff(),
-                common.height,
-                common.renderPatchSize(0),
-            });
         }
 
         moveUnplacedPatches();
