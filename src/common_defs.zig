@@ -485,20 +485,18 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
     c.vkDestroyBuffer(device, perturbation_staging_buffer, null);
     c.vkFreeMemory(device, perturbation_staging_buffer_memory, null);
 
-    try vulkan.createBuffer(
+    perturbation_buffer, perturbation_buffer_memory = try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &perturbation_buffer,
-        &perturbation_buffer_memory,
+        null,
     );
 
-    try vulkan.createBuffer(
+    perturbation_staging_buffer, perturbation_staging_buffer_memory = try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &perturbation_staging_buffer,
-        &perturbation_staging_buffer_memory,
+        null,
     );
 
     for (0..cpu_to_render_descriptor_sets.len) |i| {

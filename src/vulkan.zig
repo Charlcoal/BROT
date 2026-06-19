@@ -172,9 +172,8 @@ pub fn createBuffer(
     size: c.VkDeviceSize,
     usage: c.VkBufferUsageFlags,
     properties: c.VkMemoryPropertyFlags,
-    buffer: *c.VkBuffer,
-    buffer_memory: *c.VkDeviceMemory,
-) InitError!void {
+    vk_alloc: [*c]const c.struct_VkAllocationCallbacks,
+) InitError!@Tuple(&.{ c.VkBuffer, c.VkDeviceMemory }) {
     const buffer_info: c.VkBufferCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -182,12 +181,13 @@ pub fn createBuffer(
         .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    if (c.vkCreateBuffer(common.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+    var buffer: c.VkBuffer = undefined;
+    if (c.vkCreateBuffer(common.device, &buffer_info, vk_alloc, &buffer) != c.VK_SUCCESS) {
         return InitError.buffer_creation_failed;
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(common.device, buffer.*, &mem_requirements);
+    c.vkGetBufferMemoryRequirements(common.device, buffer, &mem_requirements);
 
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -195,11 +195,13 @@ pub fn createBuffer(
         .memoryTypeIndex = try findMemoryType(mem_requirements.memoryTypeBits, properties),
     };
 
-    if (c.vkAllocateMemory(common.device, &alloc_info, null, buffer_memory) != c.VK_SUCCESS) {
+    var buffer_mem: c.VkDeviceMemory = undefined;
+    if (c.vkAllocateMemory(common.device, &alloc_info, vk_alloc, &buffer_mem) != c.VK_SUCCESS) {
         return InitError.buffer_memory_allocation_failed;
     }
 
-    _ = c.vkBindBufferMemory(common.device, buffer.*, buffer_memory.*, 0);
+    _ = c.vkBindBufferMemory(common.device, buffer, buffer_mem, 0);
+    return .{ buffer, buffer_mem };
 }
 
 pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) InitError!u32 {
@@ -1407,43 +1409,38 @@ fn createBuffers() InitError!void {
     const render_patch_size: usize = @sizeOf(f32) * common.renderPatchSize(0) * common.renderPatchSize(0);
     const render_patch_buffer_size: usize = common.render_patch_descriptor_sets.len * render_patch_size;
 
-    try createBuffer(
+    common.render_patch_buffer, common.render_patch_buffer_memory = try createBuffer(
         render_patch_buffer_size,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.render_patch_buffer,
-        &common.render_patch_buffer_memory,
+        null,
     );
 
-    try createBuffer(
+    common.escape_potential_buffer, common.escape_potential_buffer_memory = try createBuffer(
         common.escape_potential_buffer_size * common.render_to_coloring_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.escape_potential_buffer,
-        &common.escape_potential_buffer_memory,
+        null,
     );
 
-    try createBuffer(
+    common.back_pb_buffer, common.back_pb_buffer_memory = try createBuffer(
         render_patch_size * common.back_r2c_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.back_pb_buffer,
-        &common.back_pb_buffer_memory,
+        null,
     );
 
-    try createBuffer(
+    common.perturbation_buffer, common.perturbation_buffer_memory = try createBuffer(
         common.allocated_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.perturbation_buffer,
-        &common.perturbation_buffer_memory,
+        null,
     );
 
-    try createBuffer(
+    common.perturbation_staging_buffer, common.perturbation_staging_buffer_memory = try createBuffer(
         common.allocated_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &common.perturbation_staging_buffer,
-        &common.perturbation_staging_buffer_memory,
+        null,
     );
 }
