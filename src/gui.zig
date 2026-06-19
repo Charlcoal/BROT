@@ -16,12 +16,14 @@
 
 const std = @import("std");
 const common = @import("common_defs.zig");
+const reference_calc = @import("reference_calc.zig");
 const c = common.c;
 
 const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 
 pub var context: *c.ImGuiContext = undefined;
 pub var frame_shown: bool = false;
+pub var descriptor_pool: c.VkDescriptorPool = undefined;
 
 fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
@@ -42,6 +44,7 @@ pub fn deinit() void {
     c.cImGui_ImplVulkan_Shutdown();
     c.cImGui_ImplGlfw_Shutdown();
     c.ImGui_DestroyContext(context);
+    c.vkDestroyDescriptorPool(common.device, descriptor_pool, null);
 }
 
 pub fn init() void {
@@ -62,7 +65,7 @@ pub fn init() void {
         .Device = common.device,
         .QueueFamily = common.queue_families.graphics_family.?,
         .Queue = common.graphics_queue,
-        .DescriptorPool = common.gui_descriptor_pool,
+        .DescriptorPool = descriptor_pool,
         .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .Allocator = null, // TODO
@@ -135,4 +138,44 @@ pub fn toolTip(desc: [:0]const u8) void {
         c.ImGui_PopTextWrapPos();
         c.ImGui_EndTooltip();
     }
+}
+
+/// deals with gui state, doesn't render on its own
+pub fn show(io: std.Io, alloc: std.mem.Allocator) !void {
+    if (frame_shown) return;
+    frame_shown = true;
+    c.cImGui_ImplVulkan_NewFrame();
+    c.cImGui_ImplGlfw_NewFrame();
+    c.ImGui_NewFrame();
+
+    defer c.ImGui_End();
+    c.ImGui_SetNextWindowSize(.{ .x = 300.0, .y = 400.0 }, c.ImGuiCond_FirstUseEver);
+    c.ImGui_SetNextWindowPos(.{ .x = 20.0, .y = 20.0 }, c.ImGuiCond_FirstUseEver);
+    if (!c.ImGui_Begin("BROT", null, 0)) return;
+
+    if (c.ImGui_CollapsingHeader("Bailout", 0)) {
+        if (scalarInput(
+            "Iterations",
+            "Caps the number of iterations before giving up",
+            common.max_iterations,
+            .{ .doubler_divider = true },
+        )) |new_max_iterations| {
+            common.reference_center_stale = true;
+            defer common.reference_center_stale = false;
+            if (new_max_iterations > common.allocated_iterations)
+                try common.reAllocPerturbation(io, alloc, new_max_iterations);
+            common.max_iterations = new_max_iterations;
+            common.buffer_invalidated = true;
+            reference_calc.update(io, new_max_iterations);
+        }
+    }
+}
+
+pub fn draw(command_buffer: c.VkCommandBuffer) void {
+    c.ImGui_Render();
+    c.cImGui_ImplVulkan_RenderDrawData(
+        c.ImGui_GetDrawData(),
+        command_buffer,
+    );
+    frame_shown = false;
 }

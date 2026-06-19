@@ -29,7 +29,7 @@ const RenderPatch = common.RenderPatch;
 pub fn mainLoop(alloc: Allocator, io: std.Io) MainLoopError!void {
     while (c.glfwWindowShouldClose(common.window) == 0) {
         c.glfwPollEvents();
-        try showGui(io, alloc);
+        try gui.show(io, alloc);
 
         const delta = get_update_delta_time(io);
         renderedBufferResolve(io);
@@ -1175,13 +1175,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         0,
     );
 
-    // draw gui
-    c.ImGui_Render();
-    c.cImGui_ImplVulkan_RenderDrawData(
-        c.ImGui_GetDrawData(),
-        command_buffer,
-    );
-    gui.frame_shown = false;
+    gui.draw(command_buffer);
 
     c.vkCmdEndRenderPass(command_buffer);
 
@@ -1196,118 +1190,6 @@ fn get_update_delta_time(io: std.Io) f64 {
     const delta_time: f64 = @as(f64, @floatFromInt(delta_dur.toMicroseconds())) / 1_000_000;
     common.prev_update_time = current_time;
     return delta_time;
-}
-
-/// deals with gui state, doesn't render on its own
-fn showGui(io: std.Io, alloc: Allocator) !void {
-    if (gui.frame_shown) return;
-    gui.frame_shown = true;
-    c.cImGui_ImplVulkan_NewFrame();
-    c.cImGui_ImplGlfw_NewFrame();
-    c.ImGui_NewFrame();
-
-    defer c.ImGui_End();
-    c.ImGui_SetNextWindowSize(.{ .x = 300.0, .y = 400.0 }, c.ImGuiCond_FirstUseEver);
-    c.ImGui_SetNextWindowPos(.{ .x = 20.0, .y = 20.0 }, c.ImGuiCond_FirstUseEver);
-    if (!c.ImGui_Begin("BROT", null, 0)) return;
-
-    if (c.ImGui_CollapsingHeader("Bailout", 0)) {
-        if (gui.scalarInput(
-            "Iterations",
-            "Caps the number of iterations before giving up",
-            common.max_iterations,
-            .{ .doubler_divider = true },
-        )) |new_max_iterations| {
-            common.reference_center_stale = true;
-            defer common.reference_center_stale = false;
-            if (new_max_iterations > common.allocated_iterations)
-                try reAllocPerturbation(io, alloc, new_max_iterations);
-            common.max_iterations = new_max_iterations;
-            common.buffer_invalidated = true;
-            reference_calc.update(io, new_max_iterations);
-        }
-    }
-}
-
-/// messes with render patches and reference calculation; should only be called
-/// with common.reference_center_stale set to true
-fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32) !void {
-    var new_alloc_iterations = common.allocated_iterations;
-    while (new_alloc_iterations < new_max_iterations) {
-        new_alloc_iterations <<= 1;
-    }
-
-    for (common.render_patches_status[0..]) |*status| {
-        if (status.* == .rendering) status.* = .cancelled;
-    }
-
-    // alloc before buffer check and after stale is set to hide latency
-    if (!alloc.resize(common.perturbation_vals, new_alloc_iterations)) {
-        alloc.free(common.perturbation_vals);
-        common.perturbation_vals = try alloc.alloc(@Vector(2, f32), new_alloc_iterations);
-    }
-
-    // destroying buffers is only safe when they are not in use
-    while (true) {
-        var buffers_referenced = false;
-        for (common.render_patches_status) |status| {
-            if (status == .rendering or status == .cancelled) buffers_referenced = true;
-        }
-        if (!buffers_referenced) break;
-        try io.sleep(.fromMicroseconds(100), .awake);
-    }
-
-    c.vkDestroyBuffer(common.device, common.perturbation_buffer, null);
-    c.vkFreeMemory(common.device, common.perturbation_buffer_memory, null);
-
-    c.vkDestroyBuffer(common.device, common.perturbation_staging_buffer, null);
-    c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
-
-    try vulkan.createBuffer(
-        new_alloc_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
-        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        &common.perturbation_buffer,
-        &common.perturbation_buffer_memory,
-    );
-
-    try vulkan.createBuffer(
-        new_alloc_iterations * 2 * @sizeOf(f32),
-        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &common.perturbation_staging_buffer,
-        &common.perturbation_staging_buffer_memory,
-    );
-
-    for (0..common.cpu_to_render_descriptor_sets.len) |i| {
-        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = common.perturbation_buffer,
-            .offset = new_alloc_iterations * 2 * @sizeOf(f32) * i,
-            .range = new_alloc_iterations * 2 * @sizeOf(f32),
-        };
-
-        const descriptor_writes = [_]c.VkWriteDescriptorSet{
-            .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = common.cpu_to_render_descriptor_sets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &perturbation_buffer_info,
-            },
-        };
-
-        c.vkUpdateDescriptorSets(
-            common.device,
-            @intCast(descriptor_writes.len),
-            &descriptor_writes,
-            0,
-            null,
-        );
-    }
-
-    common.allocated_iterations = new_alloc_iterations;
 }
 
 //fn updateUniformBuffer(current_image: u32) void {

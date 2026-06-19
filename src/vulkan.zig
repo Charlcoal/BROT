@@ -18,6 +18,7 @@ const std = @import("std");
 const common = @import("common_defs.zig");
 const cleanup = @import("cleanup.zig");
 const c = common.c;
+const gui = @import("gui.zig");
 const Allocator = std.mem.Allocator;
 
 const InitVulkanError = common.InitVulkanError;
@@ -386,7 +387,7 @@ fn createGuiDescriptorPool() InitVulkanError!void {
         .poolSizeCount = @intCast(pool_sizes.len),
     };
 
-    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.gui_descriptor_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &gui.descriptor_pool) != c.VK_SUCCESS) {
         return InitVulkanError.descriptor_pool_creation_failed;
     }
 }
