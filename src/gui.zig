@@ -20,6 +20,9 @@ const c = common.c;
 
 const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 
+pub var context: *c.ImGuiContext = undefined;
+pub var frame_shown: bool = false;
+
 fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
 }
@@ -38,11 +41,11 @@ fn checkVkResult(err: c.VkResult) callconv(.c) void {
 pub fn deinit() void {
     c.cImGui_ImplVulkan_Shutdown();
     c.cImGui_ImplGlfw_Shutdown();
-    c.ImGui_DestroyContext(common.gui.context);
+    c.ImGui_DestroyContext(context);
 }
 
 pub fn init() void {
-    common.gui.context = c.ImGui_CreateContext(null) orelse
+    context = c.ImGui_CreateContext(null) orelse
         std.debug.panic("imgui context creation failed!\n", .{});
 
     const gio = c.ImGui_GetIO();

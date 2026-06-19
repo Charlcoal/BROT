@@ -18,7 +18,7 @@ const std = @import("std");
 pub const c = @import("c");
 const big_float = @import("big_float.zig");
 const builtin = @import("builtin");
-const imgui = @import("imgui.zig");
+const gui = @import("gui.zig");
 
 // ------------------- settings -------------------------
 
@@ -281,11 +281,6 @@ pub var height: i32 = 600;
 pub var width: i32 = 800;
 pub var surface: c.VkSurfaceKHR = null;
 
-pub const CimguiData = struct {
-    context: *c.ImGuiContext,
-    frame_shown: bool = false,
-};
-pub var gui: CimguiData = undefined;
 pub var instance: c.VkInstance = null;
 pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
 pub var physical_device: c.VkPhysicalDevice = null;

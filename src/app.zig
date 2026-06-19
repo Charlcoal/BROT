@@ -20,8 +20,8 @@ const builtin = @import("builtin");
 const common = @import("common_defs.zig");
 
 const window_init = @import("window_init.zig");
-const vulkan_init = @import("vulkan_init.zig");
-const imgui = @import("imgui.zig");
+const vulkan = @import("vulkan.zig");
+const gui = @import("gui.zig");
 const ref_calc = @import("reference_calc.zig");
 const main_loop = @import("main_loop.zig");
 const clean_up = @import("cleanup.zig");
@@ -51,8 +51,8 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     c.mpf_init2(&common.ref_calc_y, 32);
 
     try window_init.initWindow();
-    try vulkan_init.initVulkan(alloc);
-    imgui.init();
+    try vulkan.initVulkan(alloc);
+    gui.init();
     try ref_calc.init(alloc);
     ref_calc.update(io, common.max_iterations);
     common.compute_manager_future = try io.concurrent(

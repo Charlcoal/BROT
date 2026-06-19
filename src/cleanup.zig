@@ -16,7 +16,7 @@
 
 const std = @import("std");
 const common = @import("common_defs.zig");
-const imgui = @import("imgui.zig");
+const gui = @import("gui.zig");
 const c = common.c;
 const Allocator = std.mem.Allocator;
 
@@ -40,7 +40,7 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
     common.compute_manager_future.await(io) catch {};
 
     // cimgui
-    imgui.deinit();
+    gui.deinit();
 
     // vulkan
     for (0..common.max_frames_in_flight) |i| {

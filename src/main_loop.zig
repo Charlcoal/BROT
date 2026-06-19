@@ -16,11 +16,11 @@
 
 const std = @import("std");
 const common = @import("common_defs.zig");
-const vulkan_init = @import("vulkan_init.zig");
+const vulkan = @import("vulkan.zig");
 const c = common.c;
 const big_float = @import("big_float.zig");
 const reference_calc = @import("reference_calc.zig");
-const imgui = @import("imgui.zig");
+const gui = @import("gui.zig");
 
 const MainLoopError = common.MainLoopError;
 const Allocator = std.mem.Allocator;
@@ -95,7 +95,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
     defer common.gpu_interface_lock.unlock(io);
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
-        try vulkan_init.recreateSwapChain(alloc);
+        try vulkan.recreateSwapChain(alloc);
         return;
     } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
         return MainLoopError.swap_chain_image_acquisition_failed;
@@ -142,7 +142,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) MainLoopError!void {
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or common.frame_buffer_needs_resize) {
         common.frame_buffer_needs_resize = false;
-        try vulkan_init.recreateSwapChain(alloc);
+        try vulkan.recreateSwapChain(alloc);
         return;
     } else if (result != c.VK_SUCCESS) {
         return MainLoopError.swap_chain_image_acquisition_failed;
@@ -1181,7 +1181,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         c.ImGui_GetDrawData(),
         command_buffer,
     );
-    common.gui.frame_shown = false;
+    gui.frame_shown = false;
 
     c.vkCmdEndRenderPass(command_buffer);
 
@@ -1200,8 +1200,8 @@ fn get_update_delta_time(io: std.Io) f64 {
 
 /// deals with gui state, doesn't render on its own
 fn showGui(io: std.Io, alloc: Allocator) !void {
-    if (common.gui.frame_shown) return;
-    common.gui.frame_shown = true;
+    if (gui.frame_shown) return;
+    gui.frame_shown = true;
     c.cImGui_ImplVulkan_NewFrame();
     c.cImGui_ImplGlfw_NewFrame();
     c.ImGui_NewFrame();
@@ -1212,7 +1212,7 @@ fn showGui(io: std.Io, alloc: Allocator) !void {
     if (!c.ImGui_Begin("BROT", null, 0)) return;
 
     if (c.ImGui_CollapsingHeader("Bailout", 0)) {
-        if (imgui.scalarInput(
+        if (gui.scalarInput(
             "Iterations",
             "Caps the number of iterations before giving up",
             common.max_iterations,
@@ -1263,7 +1263,7 @@ fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32) !v
     c.vkDestroyBuffer(common.device, common.perturbation_staging_buffer, null);
     c.vkFreeMemory(common.device, common.perturbation_staging_buffer_memory, null);
 
-    try vulkan_init.createBuffer(
+    try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32) * common.cpu_to_render_descriptor_sets.len,
         c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1271,7 +1271,7 @@ fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32) !v
         &common.perturbation_buffer_memory,
     );
 
-    try vulkan_init.createBuffer(
+    try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32),
         c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
