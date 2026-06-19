@@ -14,12 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const common = @import("common_defs.zig");
-const gui = @import("gui.zig");
-const c = common.c;
-const Allocator = std.mem.Allocator;
-
 pub fn cleanupSwapChain(alloc: Allocator) void {
     for (common.swap_chain_framebuffers) |framebuffer| {
         c.vkDestroyFramebuffer(common.device, framebuffer, null);
@@ -101,13 +95,13 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
         destroyDebugUtilsMessengerEXT(common.instance, common.debug_messenger, null);
     }
 
-    c.vkDestroySurfaceKHR(common.instance, common.surface, null);
+    c.vkDestroySurfaceKHR(common.instance, window.surface, null);
     c.vkDestroyInstance(common.instance, null);
 
     // ---------------------------------------------------------------------------------------------
 
     // glfw
-    c.glfwDestroyWindow(common.window);
+    c.glfwDestroyWindow(window.glfw);
     c.glfwTerminate();
 
     // gmp
@@ -134,3 +128,10 @@ fn destroyDebugUtilsMessengerEXT(
         );
     }
 }
+
+const std = @import("std");
+const common = @import("common_defs.zig");
+const window = @import("window.zig");
+const gui = @import("gui.zig");
+const c = @import("c");
+const Allocator = std.mem.Allocator;

@@ -14,26 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const common = @import("common_defs.zig");
-const cleanup = @import("cleanup.zig");
-const c = common.c;
-const gui = @import("gui.zig");
-const Allocator = std.mem.Allocator;
-
-pub const log = std.log.scoped(.vulkan);
-
-const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
-const color_code align(4) = @embedFile("triangle_frag_shader").*;
-const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
-const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
-const buffer_remap_code align(4) = @embedFile("buffer_remap_comp_shader").*;
-
 pub fn init(alloc: Allocator) Allocator.Error!void {
     try createInstance(alloc);
     setupDebugMessenger();
 
-    if (c.glfwCreateWindowSurface(common.instance, common.window, null, &common.surface) != c.VK_SUCCESS) {
+    if (c.glfwCreateWindowSurface(common.instance, window.glfw, null, &window.surface) != c.VK_SUCCESS) {
         std.debug.panic("Window surface creation failed!", .{});
     }
 
@@ -72,10 +57,10 @@ pub fn recreateSwapChain(alloc: Allocator) Allocator.Error!void {
 
     var width: c_int = 0;
     var height: c_int = 0;
-    c.glfwGetFramebufferSize(common.window, &width, &height);
+    c.glfwGetFramebufferSize(window.glfw, &width, &height);
     while (width == 0 or height == 0) {
-        if (c.glfwWindowShouldClose(common.window) != 0) return; // for closing while minimized
-        c.glfwGetFramebufferSize(common.window, &width, &height);
+        if (c.glfwWindowShouldClose(window.glfw) != 0) return; // for closing while minimized
+        c.glfwGetFramebufferSize(window.glfw, &width, &height);
         c.glfwWaitEvents();
     }
 
@@ -135,7 +120,7 @@ fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Err
         }
 
         var present_support: c.VkBool32 = c.VK_FALSE;
-        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), common.surface, &present_support);
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), window.surface, &present_support);
 
         if ((present_support != c.VK_FALSE) and indices.present_family == null) {
             indices.present_family = @intCast(i);
@@ -1165,7 +1150,7 @@ fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Erro
 
     var swap_chain_adequate: bool = false;
     if (extensions_supported) {
-        const swap_chain_support = try querySwapChainSupport(common.surface, device, alloc);
+        const swap_chain_support = try querySwapChainSupport(window.surface, device, alloc);
         defer alloc.free(swap_chain_support.presentModes);
         defer alloc.free(swap_chain_support.formats);
         swap_chain_adequate = (swap_chain_support.formats.len != 0) and
@@ -1241,7 +1226,7 @@ pub fn createRenderPass() void {
 }
 
 fn createSwapChain(alloc: Allocator) Allocator.Error!void {
-    const swap_chain_support = try querySwapChainSupport(common.surface, common.physical_device, alloc);
+    const swap_chain_support = try querySwapChainSupport(window.surface, common.physical_device, alloc);
     defer alloc.free(swap_chain_support.formats);
     defer alloc.free(swap_chain_support.presentModes);
 
@@ -1256,7 +1241,7 @@ fn createSwapChain(alloc: Allocator) Allocator.Error!void {
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
         .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = common.surface,
+        .surface = window.surface,
         .minImageCount = @intCast(common.swap_chain_images.len),
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
@@ -1324,7 +1309,7 @@ fn chooseSwapExtent(capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2
     } else {
         var height: c_int = undefined;
         var width: c_int = undefined;
-        c.glfwGetFramebufferSize(common.window, &width, &height);
+        c.glfwGetFramebufferSize(window.glfw, &width, &height);
 
         var actualExtent: c.VkExtent2D = .{
             .height = @intCast(height),
@@ -1439,3 +1424,19 @@ fn createBuffers() void {
         null,
     );
 }
+
+const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
+const color_code align(4) = @embedFile("triangle_frag_shader").*;
+const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
+const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
+const buffer_remap_code align(4) = @embedFile("buffer_remap_comp_shader").*;
+
+pub const log = std.log.scoped(.vulkan);
+const Allocator = std.mem.Allocator;
+
+const std = @import("std");
+const common = @import("common_defs.zig");
+const cleanup = @import("cleanup.zig");
+const window = @import("window.zig");
+const c = @import("c");
+const gui = @import("gui.zig");

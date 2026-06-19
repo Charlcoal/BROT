@@ -14,12 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const c = @import("c");
-const common = @import("common_defs.zig");
-const Allocator = std.mem.Allocator;
-const big_float = @import("big_float.zig");
-
 pub fn init(alloc: Allocator) Allocator.Error!void {
     common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.allocated_iterations);
 }
@@ -133,3 +127,10 @@ fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize, options: C
         &command_buffer,
     );
 }
+
+const Allocator = std.mem.Allocator;
+
+const std = @import("std");
+const c = @import("c");
+const common = @import("common_defs.zig");
+const big_float = @import("big_float.zig");

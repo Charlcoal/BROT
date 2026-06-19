@@ -14,32 +14,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const common = @import("common_defs.zig");
-const c = common.c;
-const reference_calc = @import("reference_calc.zig");
+pub var glfw: *c.GLFWwindow = undefined;
+pub var height: i32 = 600;
+pub var width: i32 = 800;
+pub var surface: c.VkSurfaceKHR = null;
 
-pub fn initWindow() void {
+pub fn init() void {
     _ = c.glfwInit();
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
-    common.window = c.glfwCreateWindow(common.width, common.height, "BROT", null, null) orelse
+    glfw = c.glfwCreateWindow(width, height, "BROT", null, null) orelse
         std.debug.panic("Window creation failed!", .{});
-    _ = c.glfwSetFramebufferSizeCallback(common.window, framebufferResizeCallback);
-    _ = c.glfwSetScrollCallback(common.window, scrollCallback);
-    _ = c.glfwSetKeyCallback(common.window, keyCallback);
+    _ = c.glfwSetFramebufferSizeCallback(glfw, framebufferResizeCallback);
+    _ = c.glfwSetScrollCallback(glfw, scrollCallback);
+    _ = c.glfwSetKeyCallback(glfw, keyCallback);
 }
 
-fn framebufferResizeCallback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.c) void {
-    _ = window;
+fn framebufferResizeCallback(glfw_window: ?*c.GLFWwindow, new_width: c_int, new_height: c_int) callconv(.c) void {
+    _ = glfw_window;
     common.frame_buffer_needs_resize = true;
-    common.width = width;
-    common.height = height;
+    width = new_width;
+    height = new_height;
     common.buffer_invalidated = true;
 }
 
-fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.c) void {
+fn scrollCallback(glfw_window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.c) void {
     const gio = c.ImGui_GetIO();
     if (gio.*.WantCaptureMouse) return;
 
@@ -48,14 +48,14 @@ fn scrollCallback(window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callconv(.
 
     var mouse_pos_x: f64 = undefined;
     var mouse_pos_y: f64 = undefined;
-    c.glfwGetCursorPos(window, &mouse_pos_x, &mouse_pos_y);
+    c.glfwGetCursorPos(glfw_window, &mouse_pos_x, &mouse_pos_y);
 
-    mouse_pos_x -= @as(f64, @floatFromInt(common.width)) / 2.0;
-    mouse_pos_y -= @as(f64, @floatFromInt(common.height)) / 2.0;
+    mouse_pos_x -= @as(f64, @floatFromInt(width)) / 2.0;
+    mouse_pos_y -= @as(f64, @floatFromInt(height)) / 2.0;
 
     // normalize mouse_pos
-    mouse_pos_x = mouse_pos_x / @as(f64, @floatFromInt(common.height));
-    mouse_pos_y = mouse_pos_y / @as(f64, @floatFromInt(common.height));
+    mouse_pos_x = mouse_pos_x / @as(f64, @floatFromInt(height));
+    mouse_pos_y = mouse_pos_y / @as(f64, @floatFromInt(height));
 
     common.fractal_pos.update_target(mouse_pos_x, mouse_pos_y, scroll_factor);
 }
@@ -80,3 +80,7 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
         c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
     }
 }
+
+const std = @import("std");
+const common = @import("common_defs.zig");
+const c = @import("c");

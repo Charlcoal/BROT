@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const app = @import("app.zig");
-const common = @import("common_defs.zig");
+pub fn main(init: std.process.Init) !void {
+    try app.run(init.gpa, init.io);
+}
 
 pub const std_options: std.Options = .{
     .log_level = std.log.default_level,
@@ -25,6 +25,5 @@ pub const std_options: std.Options = .{
     },
 };
 
-pub fn main(init: std.process.Init) !void {
-    try app.run(init.gpa, init.io);
-}
+const std = @import("std");
+const app = @import("app.zig");

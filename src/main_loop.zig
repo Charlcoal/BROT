@@ -14,21 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const common = @import("common_defs.zig");
-const vulkan = @import("vulkan.zig");
-const c = common.c;
-const big_float = @import("big_float.zig");
-const reference_calc = @import("reference_calc.zig");
-const gui = @import("gui.zig");
-
-const patch_log = std.log.scoped(.render_patch);
-
-const Allocator = std.mem.Allocator;
-const RenderPatch = common.RenderPatch;
-
 pub fn mainLoop(alloc: Allocator, io: std.Io) common.ACError!void {
-    while (c.glfwWindowShouldClose(common.window) == 0) {
+    while (c.glfwWindowShouldClose(window.glfw) == 0) {
         c.glfwPollEvents();
         try gui.show(io, alloc);
 
@@ -237,7 +224,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
             !common.back_r2c_is_rendering[bg_next_render_index])
         blk: {
             const res_exp: u5 = 3 + std.math.log2_int(u32, @divTrunc(
-                @as(u32, @intCast(@max(common.height, common.width))),
+                @as(u32, @intCast(@max(window.height, window.width))),
                 common.renderPatchSize(0),
             ));
 
@@ -347,7 +334,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
 
 fn fractalToBlockScale() f64 {
     const block_size = common.renderPatchSize(common.max_res_scale_exponent);
-    return @as(f64, @floatFromInt(common.height)) / @as(f64, @floatFromInt(block_size));
+    return @as(f64, @floatFromInt(window.height)) / @as(f64, @floatFromInt(block_size));
 }
 
 fn updateFractalPosition(delta_time: f64) void {
@@ -640,10 +627,10 @@ fn patchVisible(patch: RenderPatch) bool {
 
     const screen_center = common.getScreenCenter();
 
-    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(common.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(common.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(common.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(common.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
 
     if (patch_size * patch.x_pos > screen_right_edge) return false;
     if (patch_size * (patch.x_pos + 1) < screen_left_edge) return false;
@@ -687,13 +674,13 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
 
     var mouse_x_flt: f64 = undefined;
     var mouse_y_flt: f64 = undefined;
-    c.glfwGetCursorPos(common.window, &mouse_x_flt, &mouse_y_flt);
+    c.glfwGetCursorPos(window.glfw, &mouse_x_flt, &mouse_y_flt);
 
-    mouse_x_flt = std.math.clamp(mouse_x_flt, 0.0, @as(f64, @floatFromInt(common.width)));
-    mouse_y_flt = std.math.clamp(mouse_y_flt, 0.0, @as(f64, @floatFromInt(common.height)));
+    mouse_x_flt = std.math.clamp(mouse_x_flt, 0.0, @as(f64, @floatFromInt(window.width)));
+    mouse_y_flt = std.math.clamp(mouse_y_flt, 0.0, @as(f64, @floatFromInt(window.height)));
 
-    var mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(common.width)) / 2.0);
-    var mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(common.height)) / 2.0);
+    var mouse_x_from_screen_center: f64 = (mouse_x_flt - @as(f64, @floatFromInt(window.width)) / 2.0);
+    var mouse_y_from_screen_center: f64 = (mouse_y_flt - @as(f64, @floatFromInt(window.height)) / 2.0);
 
     // to buffer coordinates
     mouse_x_from_screen_center = mouse_x_from_screen_center * common.fractal_pos.zoom_diff();
@@ -1017,7 +1004,7 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
             .max_iterations = common.max_iterations,
             .height_scale_exp = params.zoom_exp,
             .resolution_scale_exponent = params.res_exp,
-            .cur_height = @intCast(common.height),
+            .cur_height = @intCast(window.height),
         },
     );
 
@@ -1102,10 +1089,10 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
 
     const background_offset = @Vector(2, f32){
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].x * offset_factor +
-            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) +
+            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(window.height)) +
             @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].y * offset_factor +
-            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(common.height)) +
+            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(window.height)) +
             @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
     };
 
@@ -1116,7 +1103,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         0,
         @sizeOf(common.ColoringConstants),
         &common.ColoringConstants{
-            .cur_resolution = @Vector(2, u32){ @intCast(common.width), @intCast(common.height) },
+            .cur_resolution = @Vector(2, u32){ @intCast(window.width), @intCast(window.height) },
             .center_position = @Vector(2, u32){
                 @intFromFloat(screen_center.x),
                 @intFromFloat(screen_center.y),
@@ -1160,15 +1147,16 @@ fn get_update_delta_time(io: std.Io) f64 {
     return delta_time;
 }
 
-//fn updateUniformBuffer(current_image: u32) void {
-//    @memcpy(
-//        @as(
-//            [*]common.ComputeConstants,
-//            @ptrCast(common.REPLACE[@intCast(current_image)]),
-//        ),
-//        @as(
-//            *const [1]common.ComputeConstants,
-//            @ptrCast(&common.current_uniform_state),
-//        ),
-//    );
-//}
+const patch_log = std.log.scoped(.render_patch);
+
+const Allocator = std.mem.Allocator;
+const RenderPatch = common.RenderPatch;
+
+const std = @import("std");
+const common = @import("common_defs.zig");
+const vulkan = @import("vulkan.zig");
+const window = @import("window.zig");
+const c = @import("c");
+const big_float = @import("big_float.zig");
+const reference_calc = @import("reference_calc.zig");
+const gui = @import("gui.zig");

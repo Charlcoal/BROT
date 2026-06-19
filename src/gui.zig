@@ -14,19 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const common = @import("common_defs.zig");
-const reference_calc = @import("reference_calc.zig");
-const c = common.c;
-const vulkan = @import("vulkan.zig");
-
-const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
-
 pub var context: *c.ImGuiContext = undefined;
 pub var frame_shown: bool = false;
 pub var descriptor_pool: c.VkDescriptorPool = undefined;
 
-fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
+fn vk_loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
 }
 
@@ -54,11 +46,11 @@ pub fn init() void {
     const gio = c.ImGui_GetIO();
     gio.*.IniFilename = null;
 
-    _ = c.cImGui_ImplGlfw_InitForVulkan(common.window, true);
+    _ = c.cImGui_ImplGlfw_InitForVulkan(window.glfw, true);
     const style = c.ImGui_GetStyle();
     _ = c.ImGui_StyleColorsDark(style);
 
-    _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, loader);
+    _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, vk_loader);
     var info: c.struct_ImGui_ImplVulkan_InitInfo_t = .{
         .Instance = common.instance,
         .PhysicalDevice = common.physical_device,
@@ -141,7 +133,7 @@ pub fn toolTip(desc: [:0]const u8) void {
 }
 
 /// deals with gui state, doesn't render on its own
-pub fn show(io: std.Io, alloc: std.mem.Allocator) !void {
+pub fn show(io: std.Io, alloc: Allocator) !void {
     if (frame_shown) return;
     frame_shown = true;
     c.cImGui_ImplVulkan_NewFrame();
@@ -179,3 +171,13 @@ pub fn draw(command_buffer: c.VkCommandBuffer) void {
     );
     frame_shown = false;
 }
+
+const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
+const Allocator = std.mem.Allocator;
+
+const std = @import("std");
+const common = @import("common_defs.zig");
+const window = @import("window.zig");
+const reference_calc = @import("reference_calc.zig");
+const c = @import("c");
+const vulkan = @import("vulkan.zig");

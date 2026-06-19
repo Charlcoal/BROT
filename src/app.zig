@@ -14,29 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const c = @import("c");
-const std = @import("std");
-const builtin = @import("builtin");
-const common = @import("common_defs.zig");
-
-const window_init = @import("window_init.zig");
-const vulkan = @import("vulkan.zig");
-const gui = @import("gui.zig");
-const ref_calc = @import("reference_calc.zig");
-const main_loop = @import("main_loop.zig");
-const clean_up = @import("cleanup.zig");
-const big_float = @import("big_float.zig");
-
-pub const Error = std.Io.ConcurrentError || std.Thread.SpawnError || Allocator.Error || std.Io.Cancelable;
-
-const Allocator = std.mem.Allocator;
-
-//result of following OOP-based tutorial, change in future
-const AppData = common.AppData;
-
 pub fn run(alloc: Allocator, io: std.Io) Error!void {
-    common.width = 1600;
-    common.height = 1000;
+    window.width = 1600;
+    window.height = 1000;
 
     common.fractal_pos.x = big_float.string_init("-0.5");
     common.fractal_pos.y = big_float.string_init("-0.0");
@@ -49,7 +29,7 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     c.mpf_init2(&common.ref_calc_x, 32);
     c.mpf_init2(&common.ref_calc_y, 32);
 
-    window_init.initWindow();
+    window.init();
     try vulkan.init(alloc);
     gui.init();
     try ref_calc.init(alloc);
@@ -61,3 +41,19 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     try main_loop.mainLoop(alloc, io);
     clean_up.cleanup(alloc, io);
 }
+
+pub const Error = std.Io.ConcurrentError || std.Thread.SpawnError || Allocator.Error || std.Io.Cancelable;
+const Allocator = std.mem.Allocator;
+
+const c = @import("c");
+const std = @import("std");
+const builtin = @import("builtin");
+const common = @import("common_defs.zig");
+
+const window = @import("window.zig");
+const vulkan = @import("vulkan.zig");
+const gui = @import("gui.zig");
+const ref_calc = @import("reference_calc.zig");
+const main_loop = @import("main_loop.zig");
+const clean_up = @import("cleanup.zig");
+const big_float = @import("big_float.zig");

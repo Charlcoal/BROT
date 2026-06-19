@@ -14,10 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-const c = @import("c");
-const Allocator = std.mem.Allocator;
-
 pub fn string_init(str: [:0]const u8) c.mpf_t {
     const e_pos = std.mem.indexOfScalar(u8, str, 'e');
     const e_pos_flt: f64 = @floatFromInt(e_pos orelse str.len);
@@ -98,3 +94,8 @@ test "string test" {
     std.testing.allocator.free(a_str);
     //try std.testing.expect(false);
 }
+
+const Allocator = std.mem.Allocator;
+
+const std = @import("std");
+const c = @import("c");

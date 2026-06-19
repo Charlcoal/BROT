@@ -14,12 +14,242 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const std = @import("std");
-pub const c = @import("c");
-const big_float = @import("big_float.zig");
-const builtin = @import("builtin");
-const vulkan = @import("vulkan.zig");
+pub var instance: c.VkInstance = null;
+pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
+pub var physical_device: c.VkPhysicalDevice = null;
+pub var device: c.VkDevice = null;
 
+pub var queue_families: QueueFamilyIndices = undefined;
+pub var graphics_queue: c.VkQueue = null;
+pub var compute_queue: c.VkQueue = null;
+pub var present_queue: c.VkQueue = null;
+
+pub var render_pass: c.VkRenderPass = undefined;
+pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var buffer_remap_pipeline_layout: c.VkPipelineLayout = undefined;
+pub var coloring_pipeline: c.VkPipeline = undefined;
+pub var rendering_pipeline: c.VkPipeline = undefined;
+pub var patch_place_pipeline: c.VkPipeline = undefined;
+pub var buffer_remap_pipeline: c.VkPipeline = undefined;
+
+pub var graphics_command_pool: c.VkCommandPool = undefined;
+pub var compute_command_pool: c.VkCommandPool = undefined;
+pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
+pub var rendering_command_buffers: [num_active_render_patches]c.VkCommandBuffer = undefined;
+pub var rnd_buffer_write_command_buffer: c.VkCommandBuffer = undefined;
+
+pub var swap_chain: c.VkSwapchainKHR = null;
+pub var swap_chain_images: []c.VkImage = undefined;
+pub var swap_chain_image_format: c.VkFormat = undefined;
+pub var swap_chain_extent: c.VkExtent2D = undefined;
+pub var swap_chain_image_views: []c.VkImageView = undefined;
+pub var swap_chain_framebuffers: []c.VkFramebuffer = undefined;
+pub var current_frame: u32 = 0;
+pub var frame_buffer_needs_resize: bool = false;
+pub var frame_buffer_just_resized: bool = false;
+
+pub var image_availible_semaphores: []c.VkSemaphore = undefined;
+pub var render_finished_semaphores: []c.VkSemaphore = undefined;
+pub var in_flight_fences: []c.VkFence = undefined;
+pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
+pub var render_buffer_write_fence: c.VkFence = undefined;
+
+pub var compute_manager_future: std.Io.Future(ACError!void) = undefined;
+pub var gpu_interface_lock: std.Io.Mutex = .init;
+pub var compute_manager_should_close: bool = false;
+
+pub var render_patch_mutex: std.Io.Mutex = .init;
+pub var resolutions_complete: [num_distinct_res_scales][][]bool = undefined;
+pub var res_complete_tmp: [num_distinct_res_scales][][]bool = undefined;
+pub var render_patches_saturated: bool = false;
+pub var buffer_invalidated: bool = true;
+pub var reference_center_stale: bool = false;
+pub var remap_needed: bool = false;
+
+pub var escape_potential_buffer_block_num_x: u32 = undefined;
+pub var escape_potential_buffer_block_num_y: u32 = undefined;
+
+pub var escape_potential_buffer_size: u32 = undefined;
+pub var escape_potential_buffer: c.VkBuffer = undefined;
+pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var render_patch_buffer: c.VkBuffer = undefined;
+pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var back_pb_buffer: c.VkBuffer = undefined;
+pub var back_pb_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var placing_patches: bool = false;
+pub var remapping_buffer: bool = false;
+
+pub var perturbation_vals: []@Vector(2, f32) = undefined;
+pub var max_iterations: u32 = 1 << 13;
+pub var allocated_iterations: u32 = 1 << 14;
+pub var perturbation_buffer: c.VkBuffer = undefined;
+pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
+pub var perturbation_staging_buffer: c.VkBuffer = undefined;
+pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
+
+pub var descriptor_pool: c.VkDescriptorPool = undefined;
+
+pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]c.VkDescriptorSet = undefined;
+
+pub var current_render_to_coloring_descriptor_index: usize = 0;
+pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
+pub const PanOffset = struct { x: f32, y: f32, zoom: i32 };
+pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0 }} ** 2;
+pub var back_r2c_is_rendering = [1]bool{false} ** 2;
+pub var background_needs_render = true;
+pub var current_back_r2c_descriptor_index: usize = 0;
+pub var back_r2c_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
+pub var current_cpu_to_render_descriptor_index: usize = 0;
+pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+
+pub var render_patches: [patch_buffer_factor * num_active_render_patches]RenderPatch = undefined;
+pub var render_patches_status = [1]RenderPatchStatus{.empty} **
+    (patch_buffer_factor * num_active_render_patches);
+
+pub var remap_x: i32 = 0;
+pub var remap_y: i32 = 0;
+pub var remap_exp: i32 = 0;
+
+pub var fractal_pos: FractalPosition = .{};
+
+pub var ref_calc_x: c.mpf_t = undefined;
+pub var ref_calc_y: c.mpf_t = undefined;
+pub var mpf_intermediates: [3]c.mpf_t = undefined;
+
+pub var time: std.Io.Clock = .awake;
+pub var prev_frame_time: std.Io.Timestamp = .zero;
+pub var prev_update_time: std.Io.Timestamp = .zero;
+
+pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
+    var i: usize = 0;
+    while (a[i] == b[i]) : (i += 1) {
+        if (a[i] == 0) return true;
+    }
+    return false;
+}
+
+pub fn interpolate_val(start: f32, target: f32, progress: f32) f32 {
+    if (progress > 1.0) {
+        return target;
+    }
+
+    const delta = target - start;
+    const travel = 1.0 - std.math.pow(f32, (1.0 - progress), 3);
+    return start + travel * delta;
+}
+
+// in terms of buffer coordinates
+pub fn getScreenCenter() struct { x: f32, y: f32 } {
+    return .{
+        .x = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            escape_potential_buffer_block_num_x) / 2)) +
+            @as(f32, @floatFromInt(window.height)) * fractal_pos.x_diff()),
+        .y = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            escape_potential_buffer_block_num_y) / 2)) +
+            @as(f32, @floatFromInt(window.height)) * fractal_pos.y_diff()),
+    };
+}
+
+pub const max_res_scale_exponent = 3;
+pub const num_distinct_res_scales = max_res_scale_exponent + 1;
+/// per workgroup, needs to be same as compute shader
+pub const sqrt_invocation_num = 8;
+pub const sqrt_workgroup_num = 8;
+
+pub fn renderPatchSize(mip_map_exp: u5) u32 {
+    var render_patch_size: u32 = @as(u32, 1) << mip_map_exp;
+    render_patch_size *= sqrt_invocation_num;
+    render_patch_size *= sqrt_workgroup_num;
+    return render_patch_size;
+}
+/// messes with render patches and reference calculation; should only be called
+/// with common.reference_center_stale set to true
+pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32) !void {
+    var new_alloc_iterations = allocated_iterations;
+    while (new_alloc_iterations < new_max_iterations) {
+        new_alloc_iterations <<= 1;
+    }
+
+    for (render_patches_status[0..]) |*status| {
+        if (status.* == .rendering) status.* = .cancelled;
+    }
+
+    // alloc before buffer check and after stale is set to hide latency
+    if (!alloc.resize(perturbation_vals, new_alloc_iterations)) {
+        alloc.free(perturbation_vals);
+        perturbation_vals = try alloc.alloc(@Vector(2, f32), new_alloc_iterations);
+    }
+
+    // destroying buffers is only safe when they are not in use
+    while (true) {
+        var buffers_referenced = false;
+        for (render_patches_status) |status| {
+            if (status == .rendering or status == .cancelled) buffers_referenced = true;
+        }
+        if (!buffers_referenced) break;
+        try io.sleep(.fromMicroseconds(100), .awake);
+    }
+
+    c.vkDestroyBuffer(device, perturbation_buffer, null);
+    c.vkFreeMemory(device, perturbation_buffer_memory, null);
+
+    c.vkDestroyBuffer(device, perturbation_staging_buffer, null);
+    c.vkFreeMemory(device, perturbation_staging_buffer_memory, null);
+
+    perturbation_buffer, perturbation_buffer_memory = vulkan.createBuffer(
+        new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
+        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        null,
+    );
+
+    perturbation_staging_buffer, perturbation_staging_buffer_memory = vulkan.createBuffer(
+        new_alloc_iterations * 2 * @sizeOf(f32),
+        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        null,
+    );
+
+    for (0..cpu_to_render_descriptor_sets.len) |i| {
+        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
+            .buffer = perturbation_buffer,
+            .offset = new_alloc_iterations * 2 * @sizeOf(f32) * i,
+            .range = new_alloc_iterations * 2 * @sizeOf(f32),
+        };
+
+        const descriptor_writes = [_]c.VkWriteDescriptorSet{
+            .{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = cpu_to_render_descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &perturbation_buffer_info,
+            },
+        };
+
+        c.vkUpdateDescriptorSets(
+            device,
+            @intCast(descriptor_writes.len),
+            &descriptor_writes,
+            0,
+            null,
+        );
+    }
+
+    allocated_iterations = new_alloc_iterations;
+}
 // ------------------- settings -------------------------
 
 pub const vk_version = c.VK_API_VERSION_1_3;
@@ -239,248 +469,11 @@ pub const RenderPatchStatus = enum {
 };
 
 pub const ACError = Allocator.Error || std.Io.Cancelable;
-
 const Allocator = std.mem.Allocator;
-// result of following OOP-based tutorial, maybe change in future.
-// globals...
-pub var window: *c.GLFWwindow = undefined;
-pub var height: i32 = 600;
-pub var width: i32 = 800;
-pub var surface: c.VkSurfaceKHR = null;
 
-pub var instance: c.VkInstance = null;
-pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
-pub var physical_device: c.VkPhysicalDevice = null;
-pub var device: c.VkDevice = null;
-
-pub var queue_families: QueueFamilyIndices = undefined;
-pub var graphics_queue: c.VkQueue = null;
-pub var compute_queue: c.VkQueue = null;
-pub var present_queue: c.VkQueue = null;
-
-pub var render_pass: c.VkRenderPass = undefined;
-pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var buffer_remap_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var coloring_pipeline: c.VkPipeline = undefined;
-pub var rendering_pipeline: c.VkPipeline = undefined;
-pub var patch_place_pipeline: c.VkPipeline = undefined;
-pub var buffer_remap_pipeline: c.VkPipeline = undefined;
-
-pub var graphics_command_pool: c.VkCommandPool = undefined;
-pub var compute_command_pool: c.VkCommandPool = undefined;
-pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
-pub var rendering_command_buffers: [num_active_render_patches]c.VkCommandBuffer = undefined;
-pub var rnd_buffer_write_command_buffer: c.VkCommandBuffer = undefined;
-
-pub var swap_chain: c.VkSwapchainKHR = null;
-pub var swap_chain_images: []c.VkImage = undefined;
-pub var swap_chain_image_format: c.VkFormat = undefined;
-pub var swap_chain_extent: c.VkExtent2D = undefined;
-pub var swap_chain_image_views: []c.VkImageView = undefined;
-pub var swap_chain_framebuffers: []c.VkFramebuffer = undefined;
-pub var current_frame: u32 = 0;
-pub var frame_buffer_needs_resize: bool = false;
-pub var frame_buffer_just_resized: bool = false;
-
-pub var image_availible_semaphores: []c.VkSemaphore = undefined;
-pub var render_finished_semaphores: []c.VkSemaphore = undefined;
-pub var in_flight_fences: []c.VkFence = undefined;
-pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
-pub var render_buffer_write_fence: c.VkFence = undefined;
-
-pub var compute_manager_future: std.Io.Future(ACError!void) = undefined;
-pub var gpu_interface_lock: std.Io.Mutex = .init;
-pub var compute_manager_should_close: bool = false;
-
-pub var render_patch_mutex: std.Io.Mutex = .init;
-pub var resolutions_complete: [num_distinct_res_scales][][]bool = undefined;
-pub var res_complete_tmp: [num_distinct_res_scales][][]bool = undefined;
-pub var render_patches_saturated: bool = false;
-pub var buffer_invalidated: bool = true;
-pub var reference_center_stale: bool = false;
-pub var remap_needed: bool = false;
-
-pub var escape_potential_buffer_block_num_x: u32 = undefined;
-pub var escape_potential_buffer_block_num_y: u32 = undefined;
-
-pub var escape_potential_buffer_size: u32 = undefined;
-pub var escape_potential_buffer: c.VkBuffer = undefined;
-pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
-
-pub var render_patch_buffer: c.VkBuffer = undefined;
-pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
-
-pub var back_pb_buffer: c.VkBuffer = undefined;
-pub var back_pb_buffer_memory: c.VkDeviceMemory = undefined;
-
-pub var placing_patches: bool = false;
-pub var remapping_buffer: bool = false;
-
-pub var perturbation_vals: []@Vector(2, f32) = undefined;
-pub var max_iterations: u32 = 1 << 13;
-pub var allocated_iterations: u32 = 1 << 14;
-pub var perturbation_buffer: c.VkBuffer = undefined;
-pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
-pub var perturbation_staging_buffer: c.VkBuffer = undefined;
-pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
-
-pub var descriptor_pool: c.VkDescriptorPool = undefined;
-
-pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]c.VkDescriptorSet = undefined;
-
-pub var current_render_to_coloring_descriptor_index: usize = 0;
-pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
-
-pub const PanOffset = struct { x: f32, y: f32, zoom: i32 };
-pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0 }} ** 2;
-pub var back_r2c_is_rendering = [1]bool{false} ** 2;
-pub var background_needs_render = true;
-pub var current_back_r2c_descriptor_index: usize = 0;
-pub var back_r2c_descriptor_sets: [2]c.VkDescriptorSet = undefined;
-
-pub var current_cpu_to_render_descriptor_index: usize = 0;
-pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
-
-pub var render_patches: [patch_buffer_factor * num_active_render_patches]RenderPatch = undefined;
-pub var render_patches_status = [1]RenderPatchStatus{.empty} **
-    (patch_buffer_factor * num_active_render_patches);
-
-pub var remap_x: i32 = 0;
-pub var remap_y: i32 = 0;
-pub var remap_exp: i32 = 0;
-
-pub var fractal_pos: FractalPosition = .{};
-
-pub var ref_calc_x: c.mpf_t = undefined;
-pub var ref_calc_y: c.mpf_t = undefined;
-pub var mpf_intermediates: [3]c.mpf_t = undefined;
-
-pub var time: std.Io.Clock = .awake;
-pub var prev_frame_time: std.Io.Timestamp = .zero;
-pub var prev_update_time: std.Io.Timestamp = .zero;
-
-pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
-    var i: usize = 0;
-    while (a[i] == b[i]) : (i += 1) {
-        if (a[i] == 0) return true;
-    }
-    return false;
-}
-
-pub fn interpolate_val(start: f32, target: f32, progress: f32) f32 {
-    if (progress > 1.0) {
-        return target;
-    }
-
-    const delta = target - start;
-    const travel = 1.0 - std.math.pow(f32, (1.0 - progress), 3);
-    return start + travel * delta;
-}
-
-// in terms of buffer coordinates
-pub fn getScreenCenter() struct { x: f32, y: f32 } {
-    return .{
-        .x = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
-            escape_potential_buffer_block_num_x) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_pos.x_diff()),
-        .y = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
-            escape_potential_buffer_block_num_y) / 2)) +
-            @as(f32, @floatFromInt(height)) * fractal_pos.y_diff()),
-    };
-}
-
-pub const max_res_scale_exponent = 3;
-pub const num_distinct_res_scales = max_res_scale_exponent + 1;
-/// per workgroup, needs to be same as compute shader
-pub const sqrt_invocation_num = 8;
-pub const sqrt_workgroup_num = 8;
-
-pub fn renderPatchSize(mip_map_exp: u5) u32 {
-    var render_patch_size: u32 = @as(u32, 1) << mip_map_exp;
-    render_patch_size *= sqrt_invocation_num;
-    render_patch_size *= sqrt_workgroup_num;
-    return render_patch_size;
-}
-/// messes with render patches and reference calculation; should only be called
-/// with common.reference_center_stale set to true
-pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32) !void {
-    var new_alloc_iterations = allocated_iterations;
-    while (new_alloc_iterations < new_max_iterations) {
-        new_alloc_iterations <<= 1;
-    }
-
-    for (render_patches_status[0..]) |*status| {
-        if (status.* == .rendering) status.* = .cancelled;
-    }
-
-    // alloc before buffer check and after stale is set to hide latency
-    if (!alloc.resize(perturbation_vals, new_alloc_iterations)) {
-        alloc.free(perturbation_vals);
-        perturbation_vals = try alloc.alloc(@Vector(2, f32), new_alloc_iterations);
-    }
-
-    // destroying buffers is only safe when they are not in use
-    while (true) {
-        var buffers_referenced = false;
-        for (render_patches_status) |status| {
-            if (status == .rendering or status == .cancelled) buffers_referenced = true;
-        }
-        if (!buffers_referenced) break;
-        try io.sleep(.fromMicroseconds(100), .awake);
-    }
-
-    c.vkDestroyBuffer(device, perturbation_buffer, null);
-    c.vkFreeMemory(device, perturbation_buffer_memory, null);
-
-    c.vkDestroyBuffer(device, perturbation_staging_buffer, null);
-    c.vkFreeMemory(device, perturbation_staging_buffer_memory, null);
-
-    perturbation_buffer, perturbation_buffer_memory = vulkan.createBuffer(
-        new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
-        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        null,
-    );
-
-    perturbation_staging_buffer, perturbation_staging_buffer_memory = vulkan.createBuffer(
-        new_alloc_iterations * 2 * @sizeOf(f32),
-        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        null,
-    );
-
-    for (0..cpu_to_render_descriptor_sets.len) |i| {
-        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = perturbation_buffer,
-            .offset = new_alloc_iterations * 2 * @sizeOf(f32) * i,
-            .range = new_alloc_iterations * 2 * @sizeOf(f32),
-        };
-
-        const descriptor_writes = [_]c.VkWriteDescriptorSet{
-            .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = cpu_to_render_descriptor_sets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &perturbation_buffer_info,
-            },
-        };
-
-        c.vkUpdateDescriptorSets(
-            device,
-            @intCast(descriptor_writes.len),
-            &descriptor_writes,
-            0,
-            null,
-        );
-    }
-
-    allocated_iterations = new_alloc_iterations;
-}
+const std = @import("std");
+pub const c = @import("c");
+const big_float = @import("big_float.zig");
+const builtin = @import("builtin");
+const vulkan = @import("vulkan.zig");
+const window = @import("window.zig");
