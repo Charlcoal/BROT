@@ -90,7 +90,7 @@ pub var current_render_to_coloring_descriptor_index: usize = 0;
 pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
 
-pub const PanOffset = struct { x: f32, y: f32, zoom: i32 };
+pub const PanOffset = struct { x: f64, y: f64, zoom: i32 };
 pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0 }} ** 2;
 pub var back_r2c_is_rendering = [1]bool{false} ** 2;
 pub var background_needs_render = true;
@@ -126,25 +126,25 @@ pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
     return false;
 }
 
-pub fn interpolate_val(start: f32, target: f32, progress: f32) f32 {
+pub fn interpolate_val(start: f64, target: f64, progress: f64) f64 {
     if (progress > 1.0) {
         return target;
     }
 
     const delta = target - start;
-    const travel = 1.0 - std.math.pow(f32, (1.0 - progress), 3);
+    const travel = 1.0 - std.math.pow(f64, (1.0 - progress), 3);
     return start + travel * delta;
 }
 
 // in terms of buffer coordinates
-pub fn getScreenCenter() struct { x: f32, y: f32 } {
+pub fn getScreenCenter() struct { x: f64, y: f64 } {
     return .{
-        .x = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+        .x = @max(0, @as(f64, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_x) / 2)) +
-            @as(f32, @floatFromInt(window.height)) * fractal_pos.x_diff()),
-        .y = @max(0, @as(f32, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
+            @as(f64, @floatFromInt(window.height)) * fractal_pos.x_diff()),
+        .y = @max(0, @as(f64, @floatFromInt((renderPatchSize(max_res_scale_exponent) *
             escape_potential_buffer_block_num_y) / 2)) +
-            @as(f32, @floatFromInt(window.height)) * fractal_pos.y_diff()),
+            @as(f64, @floatFromInt(window.height)) * fractal_pos.y_diff()),
     };
 }
 
@@ -293,25 +293,25 @@ pub const FractalPosition = struct {
     y: c.mpf_t = undefined,
 
     // the position of the screen relative to the render buffer
-    target_zoom_diff: f32 = 1.0,
-    target_x_diff: f32 = 0.0,
-    target_y_diff: f32 = 0.0,
-    last_zoom_diff: f32 = 1.0,
-    last_x_diff: f32 = 0.0,
-    last_y_diff: f32 = 0.0,
+    target_zoom_diff: f64 = 1.0,
+    target_x_diff: f64 = 0.0,
+    target_y_diff: f64 = 0.0,
+    last_zoom_diff: f64 = 1.0,
+    last_x_diff: f64 = 0.0,
+    last_y_diff: f64 = 0.0,
 
-    interp_prog: f32 = 1.0,
-    interp_len: f32 = 0.5,
+    interp_prog: f64 = 1.0,
+    interp_len: f64 = 0.5,
 
-    pub fn x_diff(self: @This()) f32 {
+    pub fn x_diff(self: @This()) f64 {
         const prog = self.interp_prog / self.interp_len;
         return interpolate_val(self.last_x_diff, self.target_x_diff, prog);
     }
-    pub fn y_diff(self: @This()) f32 {
+    pub fn y_diff(self: @This()) f64 {
         const prog = self.interp_prog / self.interp_len;
         return interpolate_val(self.last_y_diff, self.target_y_diff, prog);
     }
-    pub fn zoom_diff(self: @This()) f32 {
+    pub fn zoom_diff(self: @This()) f64 {
         const prog = self.interp_prog / self.interp_len;
         return interpolate_val(self.last_zoom_diff, self.target_zoom_diff, prog);
     }
@@ -334,9 +334,9 @@ pub const FractalPosition = struct {
         const diff_x: f64 = (1.0 - scale_diff_factor) * mandel_screen_x;
         const diff_y: f64 = (1.0 - scale_diff_factor) * mandel_screen_y;
 
-        self.target_x_diff = x_diff_v + @as(f32, @floatCast(diff_x));
-        self.target_y_diff = y_diff_v + @as(f32, @floatCast(diff_y));
-        self.target_zoom_diff *= @as(f32, @floatCast(zoom_delta));
+        self.target_x_diff = x_diff_v + @as(f64, @floatCast(diff_x));
+        self.target_y_diff = y_diff_v + @as(f64, @floatCast(diff_y));
+        self.target_zoom_diff *= @as(f64, @floatCast(zoom_delta));
 
         self.last_x_diff = x_diff_v;
         self.last_y_diff = y_diff_v;
@@ -359,7 +359,7 @@ pub const FractalPosition = struct {
         mpf_intermediate_2: *c.mpf_t,
     ) void {
         self.zoom_exp += exp;
-        const factor = std.math.exp2(@as(f32, @floatFromInt(-exp)));
+        const factor = std.math.exp2(@as(f64, @floatFromInt(-exp)));
         self.last_zoom_diff *= factor;
         self.target_zoom_diff *= factor;
         self.last_x_diff *= factor;
@@ -370,13 +370,10 @@ pub const FractalPosition = struct {
         const adjustment_x: f64 = @as(f64, @floatFromInt(x)) / fractal_to_block_scale;
         const adjustment_y: f64 = @as(f64, @floatFromInt(y)) / fractal_to_block_scale;
 
-        const adjustment_x_32: f32 = @floatCast(adjustment_x);
-        const adjustment_y_32: f32 = @floatCast(adjustment_y);
-
-        self.last_x_diff -= adjustment_x_32;
-        self.last_y_diff -= adjustment_y_32;
-        self.target_x_diff -= adjustment_x_32;
-        self.target_y_diff -= adjustment_y_32;
+        self.last_x_diff -= adjustment_x;
+        self.last_y_diff -= adjustment_y;
+        self.target_x_diff -= adjustment_x;
+        self.target_y_diff -= adjustment_y;
 
         var tmp: c.mpf_t = undefined;
         c.mpf_init2(&tmp, 32);

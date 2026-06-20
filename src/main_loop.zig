@@ -402,11 +402,11 @@ fn renderedBufferResolve(io: std.Io) void {
         for (common.back_r2c_offset[0..]) |*offset| {
             if (common.remap_exp != 0) common.background_needs_render = true;
 
-            offset.x /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
-            offset.y /= std.math.exp2(@as(f32, @floatFromInt(common.remap_exp)));
+            offset.x /= std.math.exp2(@as(f64, @floatFromInt(common.remap_exp)));
+            offset.y /= std.math.exp2(@as(f64, @floatFromInt(common.remap_exp)));
             offset.zoom += common.remap_exp;
-            offset.x += @as(f32, @floatFromInt(common.remap_x)); // * scale;
-            offset.y += @as(f32, @floatFromInt(common.remap_y)); // * scale;
+            offset.x += @as(f64, @floatFromInt(common.remap_x)); // * scale;
+            offset.y += @as(f64, @floatFromInt(common.remap_y)); // * scale;
         }
 
         moveUnplacedPatches();
@@ -624,10 +624,10 @@ fn patchVisible(patch: RenderPatch) bool {
 
     const screen_center = common.getScreenCenter();
 
-    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f32, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f32, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f32, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
-    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f32, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_left_edge: u32 = @intFromFloat(@max(screen_center.x - @as(f64, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_right_edge: u32 = @intFromFloat(@max(screen_center.x + @as(f64, @floatFromInt(window.width)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_top_edge: u32 = @intFromFloat(@max(screen_center.y - @as(f64, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
+    const screen_bottom_edge: u32 = @intFromFloat(@max(screen_center.y + @as(f64, @floatFromInt(window.height)) * common.fractal_pos.zoom_diff() / 2, 0.0));
 
     if (patch_size * patch.x_pos > screen_right_edge) return false;
     if (patch_size * (patch.x_pos + 1) < screen_left_edge) return false;
@@ -686,7 +686,7 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     const buffer_target_pos_x: u32 = @intFromFloat(@max(0, mouse_x_from_screen_center + screen_center.x));
     const buffer_target_pos_y: u32 = @intFromFloat(@max(0, mouse_y_from_screen_center + screen_center.y));
 
-    var running_dists: [common.num_distinct_res_scales]f32 = [1]f32{std.math.floatMax(f32)} ** common.num_distinct_res_scales;
+    var running_dists: [common.num_distinct_res_scales]f64 = [1]f64{std.math.floatMax(f64)} ** common.num_distinct_res_scales;
     var min_dist_poss: [common.num_distinct_res_scales]common.Pos = [1]common.Pos{.{}} ** common.num_distinct_res_scales;
     var res_incompletes: [common.num_distinct_res_scales]bool = [1]bool{false} ** common.num_distinct_res_scales;
     for (0..common.num_distinct_res_scales) |res_scale_exp| {
@@ -705,10 +705,10 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
 
                     res_incompletes[res_scale_exp] = true;
 
-                    const dist_x: f32 = @as(f32, @floatFromInt(buffer_target_pos_x)) -
-                        @as(f32, @floatFromInt(i * patch_size + patch_size / 2));
-                    const dist_y: f32 = @as(f32, @floatFromInt(buffer_target_pos_y)) -
-                        @as(f32, @floatFromInt(j * patch_size + patch_size / 2));
+                    const dist_x: f64 = @as(f64, @floatFromInt(buffer_target_pos_x)) -
+                        @as(f64, @floatFromInt(i * patch_size + patch_size / 2));
+                    const dist_y: f64 = @as(f64, @floatFromInt(buffer_target_pos_y)) -
+                        @as(f64, @floatFromInt(j * patch_size + patch_size / 2));
                     const patch_dist = std.math.sqrt(dist_x * dist_x + dist_y * dist_y);
 
                     if (patch_dist < running_dists[res_scale_exp]) {
@@ -734,18 +734,18 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
         };
     }
 
-    var min_dist: f32 = std.math.floatMax(f32);
+    var min_dist: f64 = std.math.floatMax(f64);
     var min_dist_exp: u32 = 0;
     for (0..common.max_res_scale_exponent) |exp| {
         if (!res_incompletes[exp]) continue;
-        if (running_dists[exp] / @as(f32, @floatFromInt(1 + exp)) < min_dist) {
-            min_dist = running_dists[exp] / @as(f32, @floatFromInt(1 + exp));
+        if (running_dists[exp] / @as(f64, @floatFromInt(1 + exp)) < min_dist) {
+            min_dist = running_dists[exp] / @as(f64, @floatFromInt(1 + exp));
             min_dist_exp = @intCast(exp);
         }
     }
 
     // all complete
-    if (min_dist == std.math.floatMax(f32)) return null;
+    if (min_dist == std.math.floatMax(f64)) return null;
 
     const pos: common.Pos = min_dist_poss[min_dist_exp];
     resolutions_complete[min_dist_exp][pos.x][pos.y] = true;
@@ -1078,19 +1078,19 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     );
 
     const screen_center = common.getScreenCenter();
-    const zoom_mult = @exp2(@as(f32, @floatFromInt(
+    const zoom_mult = @exp2(@as(f64, @floatFromInt(
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].zoom,
     )));
-    const offset_factor = zoom_mult * @as(f32, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent)));
+    const offset_factor = zoom_mult * @as(f64, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent)));
     const background_zoom = (common.fractal_pos.zoom_diff() * zoom_mult);
 
-    const background_offset = @Vector(2, f32){
+    const background_offset = @Vector(2, f64){
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].x * offset_factor +
-            common.fractal_pos.x_diff() * zoom_mult * @as(f32, @floatFromInt(window.height)) +
-            @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
+            common.fractal_pos.x_diff() * zoom_mult * @as(f64, @floatFromInt(window.height)) +
+            @as(f64, @floatFromInt(common.renderPatchSize(0))) / 2.0,
         common.back_r2c_offset[common.current_back_r2c_descriptor_index].y * offset_factor +
-            common.fractal_pos.y_diff() * zoom_mult * @as(f32, @floatFromInt(window.height)) +
-            @as(f32, @floatFromInt(common.renderPatchSize(0))) / 2.0,
+            common.fractal_pos.y_diff() * zoom_mult * @as(f64, @floatFromInt(window.height)) +
+            @as(f64, @floatFromInt(common.renderPatchSize(0))) / 2.0,
     };
 
     c.vkCmdPushConstants(
@@ -1109,13 +1109,16 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_x,
                 common.renderPatchSize(common.max_res_scale_exponent) * common.escape_potential_buffer_block_num_y,
             },
-            .background_offset = background_offset,
+            .background_offset = .{
+                @floatCast(background_offset[0]),
+                @floatCast(background_offset[1]),
+            },
             .background_size = .{
                 common.renderPatchSize(0),
                 common.renderPatchSize(0),
             },
-            .zoom_diff = common.fractal_pos.zoom_diff(),
-            .background_zoom = background_zoom,
+            .zoom_diff = @floatCast(common.fractal_pos.zoom_diff()),
+            .background_zoom = @floatCast(background_zoom),
         },
     );
 
