@@ -19,8 +19,8 @@ pub fn init(alloc: Allocator) Allocator.Error!void {
 }
 
 pub fn update(io: std.Io, max_iterations: u32) void {
-    _ = big_float.ensure_precision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
-    _ = big_float.ensure_precision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
+    _ = big_float.ensurePrecision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
+    _ = big_float.ensurePrecision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
 
     c.mpf_set_d(&common.ref_calc_x, 0.0);
     c.mpf_set_d(&common.ref_calc_y, 0.0);

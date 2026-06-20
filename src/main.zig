@@ -25,5 +25,9 @@ pub const std_options: std.Options = .{
     },
 };
 
+test "includeAllTests" {
+    std.testing.refAllDecls(@import("big_float.zig"));
+}
+
 const std = @import("std");
 const app = @import("app.zig");

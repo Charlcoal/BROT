@@ -384,10 +384,10 @@ pub const FractalPosition = struct {
 
         const needed_prec: usize = 32 + @abs(self.zoom_exp);
         var resized: bool = false;
-        resized |= big_float.ensure_precision(&self.x, needed_prec);
-        resized |= big_float.ensure_precision(&self.y, needed_prec);
-        _ = big_float.ensure_precision(mpf_intermediate_1, needed_prec);
-        _ = big_float.ensure_precision(mpf_intermediate_2, needed_prec);
+        resized |= big_float.ensurePrecision(&self.x, needed_prec);
+        resized |= big_float.ensurePrecision(&self.y, needed_prec);
+        _ = big_float.ensurePrecision(mpf_intermediate_1, needed_prec);
+        _ = big_float.ensurePrecision(mpf_intermediate_2, needed_prec);
 
         c.mpf_set_d(&tmp, adjustment_x);
         if (self.zoom_exp < 0) {

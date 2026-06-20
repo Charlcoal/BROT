@@ -18,8 +18,10 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     window.width = 1600;
     window.height = 1000;
 
-    common.fractal_pos.x = big_float.string_init("-0.5");
-    common.fractal_pos.y = big_float.string_init("-0.0");
+    big_float.setAllocator(alloc);
+
+    common.fractal_pos.x = big_float.stringInit("-0.5");
+    common.fractal_pos.y = big_float.stringInit("-0.0");
     defer c.mpf_clear(&common.fractal_pos.x);
     defer c.mpf_clear(&common.fractal_pos.y);
 
