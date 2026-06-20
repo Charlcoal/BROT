@@ -18,7 +18,8 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     window.width = 1600;
     window.height = 1000;
 
-    big_float.setAllocator(alloc);
+    // Uncomment to test mpf number leaks. Extremely slow with debug allocator for some reason.
+    // big_float.setAllocator(alloc);
 
     common.fractal_pos.x = big_float.stringInit("-0.5");
     common.fractal_pos.y = big_float.stringInit("-0.0");
