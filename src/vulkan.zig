@@ -44,7 +44,7 @@ pub const max_frames_in_flight: u32 = 2;
 
 // -----------------------------------------------
 
-pub fn init(alloc: Allocator) Allocator.Error!void {
+pub fn init(alloc: Allocator) !void {
     try createInstance(alloc);
     setupDebugMessenger();
 
@@ -62,10 +62,10 @@ pub fn init(alloc: Allocator) Allocator.Error!void {
     createRenderPatchDescriptorSetLayout();
     createCpuToRndDescriptorSetLayout();
     createRndToClrDescriptorSetLayout();
-    createBufferRemapPipeline();
-    createPatchPlacePipeline();
-    createColoringPipeline();
-    createRendingPipeline();
+    try createBufferRemapPipeline(alloc);
+    try createPatchPlacePipeline(alloc);
+    try createColoringPipeline(alloc);
+    try createRendingPipeline(alloc);
     try createFrameBuffers(alloc);
     createGraphicsCommandPool();
     createComputeCommandPool();
@@ -660,7 +660,7 @@ fn createFrameBuffers(alloc: Allocator) Allocator.Error!void {
     }
 }
 
-fn createBufferRemapPipeline() void {
+fn createBufferRemapPipeline(alloc: Allocator) !void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.BufferRemapConstants),
@@ -672,8 +672,10 @@ fn createBufferRemapPipeline() void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
+    const module = try createShaderModule(alloc, null, c.GLSLANG_STAGE_COMPUTE, buffer_remap_glsl, "buffer_remap.comp", true);
+    defer c.vkDestroyShaderModule(device, module, null);
     common.buffer_remap_pipeline, common.buffer_remap_pipeline_layout = createComputePipeline(
-        &buffer_remap_code,
+        module,
         null,
         descriptor_sets[0..],
         .{ .push_constant_ranges = &.{push_constant_range} },
@@ -685,14 +687,11 @@ const ComputePipelineOptions = struct {
 };
 
 fn createComputePipeline(
-    shader_spirv: []align(4) const u8,
+    shader_module: c.VkShaderModule,
     vk_alloc: [*c]const c.struct_VkAllocationCallbacks,
     descriptor_set_layouts: []const c.VkDescriptorSetLayout,
     options: ComputePipelineOptions,
 ) @Tuple(&.{ c.VkPipeline, c.VkPipelineLayout }) {
-    const shader_module = createShaderModule(shader_spirv);
-    defer _ = c.vkDestroyShaderModule(device, shader_module, vk_alloc);
-
     const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = c.VK_SHADER_STAGE_COMPUTE_BIT,
@@ -739,7 +738,7 @@ fn createComputePipeline(
     return .{ pipeline, pipeline_layout };
 }
 
-fn createPatchPlacePipeline() void {
+fn createPatchPlacePipeline(alloc: Allocator) !void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.PatchPlaceConstants),
@@ -751,15 +750,17 @@ fn createPatchPlacePipeline() void {
         common.render_to_coloring_descriptor_set_layout,
     };
 
+    const module = try createShaderModule(alloc, null, c.GLSLANG_STAGE_COMPUTE, patch_place_glsl, "patch_place.comp", true);
+    defer c.vkDestroyShaderModule(device, module, null);
     common.patch_place_pipeline, common.patch_place_pipeline_layout = createComputePipeline(
-        &patch_place_code,
+        module,
         null,
         descriptor_sets[0..],
         .{ .push_constant_ranges = &.{push_constant_range} },
     );
 }
 
-fn createRendingPipeline() void {
+fn createRendingPipeline(alloc: Allocator) !void {
     const push_constant_range: c.VkPushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.RenderingConstants),
@@ -771,17 +772,19 @@ fn createRendingPipeline() void {
         common.cpu_to_render_descriptor_set_layout,
     };
 
+    const module = try createShaderModule(alloc, null, c.GLSLANG_STAGE_COMPUTE, render_glsl, "render.comp", true);
+    defer c.vkDestroyShaderModule(device, module, null);
     common.rendering_pipeline, common.rendering_pipeline_layout = createComputePipeline(
-        &render_code,
+        module,
         null,
         descriptor_sets[0..],
         .{ .push_constant_ranges = &.{push_constant_range} },
     );
 }
 
-fn createColoringPipeline() void {
-    const vert_shader_module = createShaderModule(&dummy_vert_code);
-    const frag_shader_module = createShaderModule(&color_code);
+fn createColoringPipeline(alloc: Allocator) !void {
+    const vert_shader_module = try createShaderModule(alloc, null, c.GLSLANG_STAGE_VERTEX, dummy_vert_glsl, "triangle.vert", true);
+    const frag_shader_module = try createShaderModule(alloc, null, c.GLSLANG_STAGE_FRAGMENT, color_glsl, "triangle.frag", true);
     defer _ = c.vkDestroyShaderModule(device, vert_shader_module, null);
     defer _ = c.vkDestroyShaderModule(device, frag_shader_module, null);
 
@@ -923,15 +926,93 @@ fn createColoringPipeline() void {
     }
 }
 
-fn createShaderModule(code: []align(4) const u8) c.VkShaderModule {
+const ShaderCreationError = error{ preprocessing_failed, parsing_failed, linking_failed, vulkan_module_creation_failed } || Allocator.Error;
+/// Compiles glsl source code. If expect_success is true, a message will be
+/// printed to log.err on glsl compile error.
+fn createShaderModule(
+    alloc: Allocator,
+    vk_alloc: [*c]const c.VkAllocationCallbacks,
+    stage: c.glslang_stage_t,
+    shader_source: [:0]const u8,
+    file_name_for_debug: []const u8,
+    expect_success: bool,
+) ShaderCreationError!c.VkShaderModule {
+    const input: c.glslang_input_t = .{
+        .language = c.GLSLANG_SOURCE_GLSL,
+        .stage = stage,
+        .client = c.GLSLANG_CLIENT_VULKAN,
+        .client_version = c.GLSLANG_TARGET_VULKAN_1_3,
+        .target_language = c.GLSLANG_TARGET_SPV,
+        .target_language_version = c.GLSLANG_TARGET_SPV_1_5,
+        .code = shader_source.ptr,
+        .default_version = 450,
+        .default_profile = c.GLSLANG_NO_PROFILE,
+        .force_default_version_and_profile = c.false,
+        .forward_compatible = c.false,
+        .messages = c.GLSLANG_MSG_DEFAULT_BIT,
+        .resource = c.glslang_default_resource(),
+    };
+
+    const shader: ?*c.glslang_shader_t = c.glslang_shader_create(&input);
+    defer c.glslang_shader_delete(shader);
+
+    if (c.glslang_shader_preprocess(shader, &input) == c.false) {
+        if (expect_success)
+            log.err("GLSL preprocessing failed {s}\n{s}\n{s}\n{s}", .{
+                file_name_for_debug,
+                c.glslang_shader_get_info_log(shader),
+                c.glslang_shader_get_info_debug_log(shader),
+                input.code,
+            });
+
+        return ShaderCreationError.preprocessing_failed;
+    }
+
+    if (c.glslang_shader_parse(shader, &input) == c.false) {
+        if (expect_success)
+            log.err("GLSL parsing failed {s}\n{s}\n{s}\n{s}", .{
+                file_name_for_debug,
+                c.glslang_shader_get_info_log(shader),
+                c.glslang_shader_get_info_debug_log(shader),
+                c.glslang_shader_get_preprocessed_code(shader),
+            });
+        return ShaderCreationError.parsing_failed;
+    }
+
+    const program: ?*c.glslang_program_t = c.glslang_program_create();
+    defer c.glslang_program_delete(program);
+    c.glslang_program_add_shader(program, shader);
+
+    if (c.glslang_program_link(program, c.GLSLANG_MSG_SPV_RULES_BIT | c.GLSLANG_MSG_VULKAN_RULES_BIT) == c.false) {
+        if (expect_success)
+            log.err("GLSL linking failed {s}\n{s}\n{s}", .{
+                file_name_for_debug,
+                c.glslang_shader_get_info_log(shader),
+                c.glslang_shader_get_info_debug_log(shader),
+            });
+        return ShaderCreationError.linking_failed;
+    }
+
+    c.glslang_program_SPIRV_generate(program, stage);
+
+    const out_size: usize = c.glslang_program_SPIRV_get_size(program);
+    const spirv_code = try alloc.alloc(u32, out_size);
+    defer alloc.free(spirv_code);
+    c.glslang_program_SPIRV_get(program, spirv_code.ptr);
+
+    const spirv_messages = c.glslang_program_SPIRV_get_messages(program);
+    if (spirv_messages != null)
+        std.log.info("({s}) {s}", .{ file_name_for_debug, spirv_messages });
+
     const create_info: c.VkShaderModuleCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = code.len,
-        .pCode = @ptrCast(code.ptr),
+        .codeSize = spirv_code.len * @sizeOf(u32),
+        .pCode = @ptrCast(spirv_code.ptr),
     };
     var shader_module: c.VkShaderModule = undefined;
-    if (c.vkCreateShaderModule(device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
-        std.debug.panic("shader module creation failed!", .{});
+    if (c.vkCreateShaderModule(device, &create_info, vk_alloc, &shader_module) != c.VK_SUCCESS) {
+        log.err("shader module creation failed!", .{});
+        return ShaderCreationError.vulkan_module_creation_failed;
     }
     return shader_module;
 }
@@ -1467,11 +1548,11 @@ pub const QueueFamilyIndices = struct {
     }
 };
 
-const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
-const color_code align(4) = @embedFile("triangle_frag_shader").*;
-const render_code align(4) = @embedFile("mandelbrot_comp_shader").*;
-const patch_place_code align(4) = @embedFile("patch_place_comp_shader").*;
-const buffer_remap_code align(4) = @embedFile("buffer_remap_comp_shader").*;
+const dummy_vert_glsl = @embedFile("shaders/triangle.vert");
+const color_glsl = @embedFile("shaders/triangle.frag");
+const render_glsl = @embedFile("shaders/mandelbrot.comp");
+const patch_place_glsl = @embedFile("shaders/patch_place.comp");
+const buffer_remap_glsl = @embedFile("shaders/buffer_remap.comp");
 
 pub const log = std.log.scoped(.vulkan);
 const Allocator = std.mem.Allocator;

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub fn run(alloc: Allocator, io: std.Io) Error!void {
+pub fn run(alloc: Allocator, io: std.Io) !void {
     window.width = 1600;
     window.height = 1000;
 
@@ -45,7 +45,6 @@ pub fn run(alloc: Allocator, io: std.Io) Error!void {
     clean_up.cleanup(alloc, io);
 }
 
-pub const Error = std.Io.ConcurrentError || std.Thread.SpawnError || Allocator.Error || std.Io.Cancelable;
 const Allocator = std.mem.Allocator;
 
 const c = @import("c");

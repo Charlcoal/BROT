@@ -123,10 +123,6 @@ pub fn build(b: *std.Build) !void {
         .use_llvm = true,
     });
 
-    b.installArtifact(exe);
-
-    compile_shaders(b, exe);
-
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
