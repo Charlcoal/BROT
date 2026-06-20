@@ -81,6 +81,11 @@ pub fn build(b: *std.Build) !void {
         .renderers = &[_]cimgui.Renderer{.Vulkan},
     });
 
+    const glslang = b.dependency("glslang", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const gmp = b.dependency("gmp", .{});
 
     const translate_c = b.addTranslateC(.{
@@ -92,11 +97,13 @@ pub fn build(b: *std.Build) !void {
     translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
     translate_c.addIncludePath(gmp.path("."));
+    translate_c.addIncludePath(glslang.builder.dependency("glslang", .{}).path("."));
 
     const cimgui_lib = cimgui_dep.artifact("cimgui");
     addIncludePathsToTranslateC(translate_c, cimgui_lib);
     const c_module = translate_c.createModule();
     c_module.linkLibrary(cimgui_lib);
+    c_module.linkLibrary(glslang.artifact("glslang"));
 
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),

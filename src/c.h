@@ -21,3 +21,5 @@
 #include "backends/dcimgui_impl_glfw.h"
 #include "backends/dcimgui_impl_vulkan.h"
 #include "gmp.h"
+#include "glslang/Include/glslang_c_interface.h"
+#include "glslang/Public/resource_limits_c.h"
