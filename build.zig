@@ -33,43 +33,6 @@ fn addIncludePathsToTranslateC(translate_c: *std.Build.Step.TranslateC, lib: *st
     }
 }
 
-/// compile shaders at build time
-/// (e.g.  "triangle.frag" -> "triangle_frag_shader" (internally "triangle_frag.spv"))
-fn compile_shaders(b: *std.Build, exe: *std.Build.Step.Compile) void {
-    var spv_buffer: [256]u8 = undefined;
-    var fullpath_buffer: [256]u8 = undefined;
-    var final_name_buf: [resources.shaders.len][256]u8 = undefined;
-    for (resources.shaders, &final_name_buf) |shader_name, *final_name| {
-        // create "___.spv" file name
-        const spv_extension = ".spv";
-        @memcpy(spv_buffer[0..shader_name.len], shader_name);
-        for (spv_buffer[0..shader_name.len]) |*char| {
-            if (char.* == '.') char.* = '_';
-        }
-        @memcpy(spv_buffer[shader_name.len .. shader_name.len + spv_extension.len], spv_extension);
-
-        const glslc_cmd = b.addSystemCommand(&.{
-            "glslc",
-            "--target-env=vulkan1.3",
-            "-o",
-        });
-        const shader_spv = glslc_cmd.addOutputFileArg(spv_buffer[0 .. shader_name.len + spv_extension.len]);
-
-        // create "shaders/___" name
-        const shader_path = "shaders/";
-        @memcpy(fullpath_buffer[0..shader_path.len], shader_path);
-        @memcpy(fullpath_buffer[shader_path.len .. shader_path.len + shader_name.len], shader_name);
-        glslc_cmd.addFileArg(b.path(fullpath_buffer[0 .. shader_path.len + shader_name.len]));
-
-        std.mem.copyForwards(u8, final_name, shader_name);
-        for (final_name[0..shader_name.len]) |*char| {
-            if (char.* == '.') char.* = '_';
-        }
-        std.mem.copyForwards(u8, final_name[shader_name.len..256], "_shader");
-        exe.root_module.addAnonymousImport(final_name[0..(shader_name.len + 7)], .{ .root_source_file = shader_spv });
-    }
-}
-
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -122,6 +85,11 @@ pub fn build(b: *std.Build) !void {
         .root_module = root_module,
         .use_llvm = true,
     });
+
+    const install_artifact = b.addInstallArtifact(exe, .{
+        .dest_dir = .{ .override = .prefix },
+    });
+    b.getInstallStep().dependOn(&install_artifact.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

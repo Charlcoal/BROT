@@ -15,6 +15,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 pub fn main(init: std.process.Init) !void {
+    var args = init.minimal.args.iterate();
+    defer args.deinit();
+    std.debug.print("running at: {s}\n", .{args.next().?});
     try app.run(init.gpa, init.io);
 }
 
