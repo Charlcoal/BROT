@@ -28,14 +28,14 @@ pub fn mainLoop(alloc: Allocator, io: std.Io) common.ACError!void {
     }
 
     common.gpu_interface_lock.lockUncancelable(io);
-    _ = c.vkDeviceWaitIdle(common.device);
+    _ = c.vkDeviceWaitIdle(vulkan.device);
     common.gpu_interface_lock.unlock(io);
 }
 
 fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
     if (common.frame_buffer_just_resized) {
         _ = c.vkWaitForFences(
-            common.device,
+            vulkan.device,
             1,
             &common.in_flight_fences[common.current_frame],
             c.VK_TRUE,
@@ -44,7 +44,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
         common.frame_buffer_just_resized = false;
     } else {
         _ = c.vkWaitForFences(
-            common.device,
+            vulkan.device,
             1,
             &common.in_flight_fences[common.current_frame],
             c.VK_TRUE,
@@ -52,23 +52,23 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
         );
     }
     _ = c.vkResetFences(
-        common.device,
+        vulkan.device,
         1,
         &common.in_flight_fences[common.current_frame],
     );
 
-    var delta_dur = common.prev_frame_time.untilNow(io, common.time);
-    const target_delta: i96 = @intFromFloat(1e9 / common.target_frame_rate);
+    var delta_dur = common.prev_frame_time.untilNow(io, common.clock);
+    const target_delta: i96 = @intFromFloat(1e9 / vulkan.target_frame_rate);
     if (delta_dur.nanoseconds < target_delta) {
         const sleep_nanosecs = target_delta - delta_dur.nanoseconds;
-        try io.sleep(.fromNanoseconds(sleep_nanosecs), common.time);
-        delta_dur = common.prev_frame_time.untilNow(io, common.time);
+        try io.sleep(.fromNanoseconds(sleep_nanosecs), .boot);
+        delta_dur = common.prev_frame_time.untilNow(io, common.clock);
     }
-    common.prev_frame_time = common.time.now(io);
+    common.prev_frame_time = common.clock.now(io);
 
     var image_index: u32 = undefined;
     const result = c.vkAcquireNextImageKHR(
-        common.device,
+        vulkan.device,
         common.swap_chain,
         std.math.maxInt(u64),
         common.image_availible_semaphores[common.current_frame],
@@ -104,7 +104,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
     };
 
     if (c.vkQueueSubmit(
-        common.graphics_queue,
+        vulkan.graphics_queue,
         1,
         &submit_info,
         common.in_flight_fences[common.current_frame],
@@ -123,7 +123,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
         .pResults = null,
     };
 
-    _ = c.vkQueuePresentKHR(common.present_queue, &present_info);
+    _ = c.vkQueuePresentKHR(vulkan.present_queue, &present_info);
 
     if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or common.frame_buffer_needs_resize) {
         common.frame_buffer_needs_resize = false;
@@ -169,7 +169,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
     while (!common.compute_manager_should_close) {
         // wait for a rendering task to complete
         _ = c.vkWaitForFences(
-            common.device,
+            vulkan.device,
             common.rendering_fences.len,
             &common.rendering_fences,
             c.VK_FALSE,
@@ -180,7 +180,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
             for (common.rendering_fences) |_| {
                 round_robin_index += 1;
                 round_robin_index %= common.rendering_fences.len;
-                if (c.vkGetFenceStatus(common.device, common.rendering_fences[round_robin_index]) == c.VK_SUCCESS) {
+                if (c.vkGetFenceStatus(vulkan.device, common.rendering_fences[round_robin_index]) == c.VK_SUCCESS) {
                     break :label round_robin_index;
                 }
             }
@@ -214,7 +214,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
 
         // waiting on reference to be ready
         if (common.reference_center_stale) {
-            try io.sleep(.fromMicroseconds(500), common.time);
+            try io.sleep(.fromMicroseconds(500), .boot);
             continue;
         }
 
@@ -252,7 +252,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
 
             // waiting on render queue to empty patch buffers
             if (buffer_to_render_to == null) {
-                try io.sleep(.fromMicroseconds(500), common.time);
+                try io.sleep(.fromMicroseconds(500), .boot);
                 continue;
             }
 
@@ -264,7 +264,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
             } else {
                 common.render_patch_mutex.unlock(io);
                 common.render_patches_saturated = true;
-                try io.sleep(.fromMicroseconds(500), common.time);
+                try io.sleep(.fromMicroseconds(500), .boot);
                 continue;
             }
 
@@ -299,7 +299,7 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
         try common.gpu_interface_lock.lock(io);
         defer common.gpu_interface_lock.unlock(io);
 
-        _ = c.vkResetFences(common.device, 1, &common.rendering_fences[comp_index]);
+        _ = c.vkResetFences(vulkan.device, 1, &common.rendering_fences[comp_index]);
 
         _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
         recordRenderingCommandBuffer(common.rendering_command_buffers[comp_index], render_params) catch {
@@ -318,13 +318,13 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
             .pSignalSemaphores = null,
         };
 
-        if (c.vkQueueSubmit(common.compute_queue, 1, &submit_info, common.rendering_fences[comp_index]) != c.VK_SUCCESS) {
+        if (c.vkQueueSubmit(vulkan.compute_queue, 1, &submit_info, common.rendering_fences[comp_index]) != c.VK_SUCCESS) {
             std.debug.panic("compute manager failed to submit queue!", .{});
         }
     }
 
     _ = c.vkWaitForFences(
-        common.device,
+        vulkan.device,
         common.rendering_fences.len,
         &common.rendering_fences,
         c.VK_TRUE,
@@ -379,7 +379,7 @@ fn updateFractalPosition(delta_time: f64) void {
 
 fn renderedBufferResolve(io: std.Io) void {
     _ = c.vkWaitForFences(
-        common.device,
+        vulkan.device,
         1,
         &common.render_buffer_write_fence,
         c.VK_TRUE,
@@ -436,10 +436,7 @@ fn renderedBufferResolve(io: std.Io) void {
             }
             c.mpf_set_prec(&common.ref_calc_x, needed_prec);
             c.mpf_set_prec(&common.ref_calc_y, needed_prec);
-            std.log.debug(
-                "set precision to: {}\n",
-                .{needed_prec},
-            );
+            std.log.debug("set precision to: {}", .{needed_prec});
         }
         common.reference_center_stale = true;
         reference_calc.update(io, common.max_iterations);
@@ -465,7 +462,7 @@ fn renderedBufferDispatch(io: std.Io) common.ACError!void {
 }
 
 fn remap_buffer(io: std.Io) common.ACError!void {
-    _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
+    _ = c.vkResetFences(vulkan.device, 1, &common.render_buffer_write_fence);
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
@@ -485,13 +482,13 @@ fn remap_buffer(io: std.Io) common.ACError!void {
         .pSignalSemaphores = null,
     };
 
-    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
+    if (c.vkQueueSubmit(vulkan.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
         std.debug.panic("patch placement failed to submit queue!", .{});
     }
 }
 
 fn place_patches(io: std.Io) common.ACError!void {
-    _ = c.vkResetFences(common.device, 1, &common.render_buffer_write_fence);
+    _ = c.vkResetFences(vulkan.device, 1, &common.render_buffer_write_fence);
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
@@ -512,7 +509,7 @@ fn place_patches(io: std.Io) common.ACError!void {
         .pSignalSemaphores = null,
     };
 
-    if (c.vkQueueSubmit(common.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
+    if (c.vkQueueSubmit(vulkan.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
         std.debug.panic("patch placement failed to submit queue!", .{});
     }
 }
@@ -1034,7 +1031,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
     const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
     const render_pass_info: c.VkRenderPassBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = common.render_pass,
+        .renderPass = vulkan.render_pass,
         .framebuffer = common.swap_chain_framebuffers[image_index],
         .renderArea = .{
             .offset = .{ .x = 0, .y = 0 },
@@ -1140,7 +1137,7 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
 }
 
 fn get_update_delta_time(io: std.Io) f64 {
-    const current_time = common.time.now(io);
+    const current_time = common.clock.now(io);
     const delta_dur = common.prev_update_time.durationTo(current_time);
     const delta_time: f64 = @as(f64, @floatFromInt(delta_dur.toMicroseconds())) / 1_000_000;
     common.prev_update_time = current_time;

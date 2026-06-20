@@ -36,7 +36,7 @@ pub fn deinit() void {
     c.cImGui_ImplVulkan_Shutdown();
     c.cImGui_ImplGlfw_Shutdown();
     c.ImGui_DestroyContext(context);
-    c.vkDestroyDescriptorPool(common.device, descriptor_pool, null);
+    c.vkDestroyDescriptorPool(vulkan.device, descriptor_pool, null);
 }
 
 pub fn init() void {
@@ -52,17 +52,17 @@ pub fn init() void {
 
     _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, vk_loader);
     var info: c.struct_ImGui_ImplVulkan_InitInfo_t = .{
-        .Instance = common.instance,
-        .PhysicalDevice = common.physical_device,
-        .Device = common.device,
-        .QueueFamily = common.queue_families.graphics_family.?,
-        .Queue = common.graphics_queue,
+        .Instance = vulkan.instance,
+        .PhysicalDevice = vulkan.physical_device,
+        .Device = vulkan.device,
+        .QueueFamily = vulkan.queue_families.graphics_family.?,
+        .Queue = vulkan.graphics_queue,
         .DescriptorPool = descriptor_pool,
         .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .Allocator = null, // TODO
         .PipelineInfoMain = .{
-            .RenderPass = common.render_pass,
+            .RenderPass = vulkan.render_pass,
             .Subpass = 0,
             .MSAASamples = c.VK_SAMPLE_COUNT_1_BIT,
         },

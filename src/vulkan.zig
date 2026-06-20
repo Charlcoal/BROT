@@ -14,16 +14,46 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+pub var instance: c.VkInstance = null;
+pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
+pub var physical_device: c.VkPhysicalDevice = null;
+pub var device: c.VkDevice = null;
+
+pub var queue_families: QueueFamilyIndices = undefined;
+pub var graphics_queue: c.VkQueue = null;
+pub var compute_queue: c.VkQueue = null;
+pub var present_queue: c.VkQueue = null;
+
+pub var render_pass: c.VkRenderPass = undefined;
+
+// -------------- comptime settings --------------
+
+pub const vk_version = c.VK_API_VERSION_1_3;
+pub const enable_validation_layers = common.dbg;
+
+pub const validation_layers = [_][*:0]const u8{
+    "VK_LAYER_KHRONOS_validation",
+};
+
+pub const device_extensions = [_][*:0]const u8{
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+pub const target_frame_rate: f64 = 60;
+pub const max_frames_in_flight: u32 = 2;
+
+// -----------------------------------------------
+
 pub fn init(alloc: Allocator) Allocator.Error!void {
     try createInstance(alloc);
     setupDebugMessenger();
 
-    if (c.glfwCreateWindowSurface(common.instance, window.glfw, null, &window.surface) != c.VK_SUCCESS) {
+    if (c.glfwCreateWindowSurface(instance, window.glfw, null, &window.surface) != c.VK_SUCCESS) {
         std.debug.panic("Window surface creation failed!", .{});
     }
 
     try pickPhysicalDevice(alloc);
-    common.queue_families = try findQueueFamilies(common.physical_device, alloc);
+    queue_families = try findQueueFamilies(physical_device, alloc);
     try createLogicalDevice(alloc);
     try createSwapChain(alloc);
     try createImageViews(alloc);
@@ -64,7 +94,7 @@ pub fn recreateSwapChain(alloc: Allocator) Allocator.Error!void {
         c.glfwWaitEvents();
     }
 
-    _ = c.vkDeviceWaitIdle(common.device);
+    _ = c.vkDeviceWaitIdle(device);
 
     cleanup.cleanupSwapChain(alloc);
 
@@ -89,8 +119,8 @@ fn populateDebugMessengerCreateInfo(create_info: *c.VkDebugUtilsMessengerCreateI
     };
 }
 
-fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!common.QueueFamilyIndices {
-    var indices = common.QueueFamilyIndices{
+fn findQueueFamilies(prospective_physical_device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!QueueFamilyIndices {
+    var indices = QueueFamilyIndices{
         .graphics_family = null,
         .compute_family = null,
         .present_family = null,
@@ -100,27 +130,27 @@ fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Err
     };
 
     var queue_family_count: u32 = 0;
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(prospective_physical_device, &queue_family_count, null);
 
-    const queue_families = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_count);
-    defer alloc.free(queue_families);
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.ptr);
+    const all_queue_families = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_count);
+    defer alloc.free(all_queue_families);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(prospective_physical_device, &queue_family_count, all_queue_families.ptr);
 
-    for (queue_families, 0..) |queueFamily, i| {
+    for (all_queue_families, 0..) |queueFamily, i| {
         if ((queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) and indices.graphics_family == null) {
             indices.graphics_family = @intCast(i);
             indices.graphics_max_queues = queueFamily.queueCount;
         }
 
         if ((queueFamily.queueFlags & c.VK_QUEUE_COMPUTE_BIT != 0) and (indices.compute_family == null or
-            ((queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT == 0) and (queue_families[indices.compute_family.?].queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0))))
+            ((queueFamily.queueFlags & c.VK_QUEUE_GRAPHICS_BIT == 0) and (all_queue_families[indices.compute_family.?].queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0))))
         {
             indices.compute_family = @intCast(i);
             indices.compute_max_queues = queueFamily.queueCount;
         }
 
         var present_support: c.VkBool32 = c.VK_FALSE;
-        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(i), window.surface, &present_support);
+        _ = c.vkGetPhysicalDeviceSurfaceSupportKHR(prospective_physical_device, @intCast(i), window.surface, &present_support);
 
         if ((present_support != c.VK_FALSE) and indices.present_family == null) {
             indices.present_family = @intCast(i);
@@ -130,26 +160,26 @@ fn findQueueFamilies(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Err
     return indices;
 }
 
-fn querySwapChainSupport(surface: c.VkSurfaceKHR, device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
+fn querySwapChainSupport(surface: c.VkSurfaceKHR, prospective_physical_device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!SwapChainSupportDetails {
     var details: SwapChainSupportDetails = .{
         .formats = undefined,
         .capabilities = undefined,
         .presentModes = undefined,
     };
 
-    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+    _ = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(prospective_physical_device, surface, &details.capabilities);
 
     var format_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, null);
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(prospective_physical_device, surface, &format_count, null);
 
     details.formats = try alloc.alloc(c.VkSurfaceFormatKHR, format_count);
-    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &format_count, details.formats.ptr);
+    _ = c.vkGetPhysicalDeviceSurfaceFormatsKHR(prospective_physical_device, surface, &format_count, details.formats.ptr);
 
     var present_mode_count: u32 = undefined;
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null);
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(prospective_physical_device, surface, &present_mode_count, null);
 
     details.presentModes = try alloc.alloc(c.VkPresentModeKHR, present_mode_count);
-    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.presentModes.ptr);
+    _ = c.vkGetPhysicalDeviceSurfacePresentModesKHR(prospective_physical_device, surface, &present_mode_count, details.presentModes.ptr);
 
     return details;
 }
@@ -168,12 +198,12 @@ pub fn createBuffer(
     };
 
     var buffer: c.VkBuffer = undefined;
-    if (c.vkCreateBuffer(common.device, &buffer_info, vk_alloc, &buffer) != c.VK_SUCCESS) {
+    if (c.vkCreateBuffer(device, &buffer_info, vk_alloc, &buffer) != c.VK_SUCCESS) {
         std.debug.panic("Buffer creation failed!", .{});
     }
 
     var mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(common.device, buffer, &mem_requirements);
+    c.vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
 
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -182,17 +212,17 @@ pub fn createBuffer(
     };
 
     var buffer_mem: c.VkDeviceMemory = undefined;
-    if (c.vkAllocateMemory(common.device, &alloc_info, vk_alloc, &buffer_mem) != c.VK_SUCCESS) {
+    if (c.vkAllocateMemory(device, &alloc_info, vk_alloc, &buffer_mem) != c.VK_SUCCESS) {
         std.debug.panic("Buffer memory allocation failed!", .{});
     }
 
-    _ = c.vkBindBufferMemory(common.device, buffer, buffer_mem, 0);
+    _ = c.vkBindBufferMemory(device, buffer, buffer_mem, 0);
     return .{ buffer, buffer_mem };
 }
 
 pub fn findMemoryType(type_filter: u32, properties: c.VkMemoryPropertyFlags) u32 {
     var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
-    c.vkGetPhysicalDeviceMemoryProperties(common.physical_device, &mem_properties);
+    c.vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
 
     for (0..mem_properties.memoryTypeCount) |i| {
         if (type_filter & (@as(u32, 1) << @intCast(i)) != 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
@@ -227,7 +257,7 @@ fn debugCallback(
 }
 
 fn createColoringCommandBuffers(alloc: Allocator) Allocator.Error!void {
-    common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, common.max_frames_in_flight);
+    common.graphics_command_buffers = try alloc.alloc(c.VkCommandBuffer, max_frames_in_flight);
 
     const alloc_info: c.VkCommandBufferAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -236,7 +266,7 @@ fn createColoringCommandBuffers(alloc: Allocator) Allocator.Error!void {
         .commandBufferCount = @intCast(common.graphics_command_buffers.len),
     };
 
-    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, common.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(device, &alloc_info, common.graphics_command_buffers.ptr) != c.VK_SUCCESS) {
         std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
@@ -249,7 +279,7 @@ fn createPatchPlaceCommandBuffer() void {
         .commandBufferCount = 1,
     };
 
-    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(device, &alloc_info, &common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
         std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
@@ -262,7 +292,7 @@ fn createRenderCommandBuffers() void {
         .commandBufferCount = common.rendering_command_buffers.len,
     };
 
-    if (c.vkAllocateCommandBuffers(common.device, &alloc_info, &common.rendering_command_buffers) != c.VK_SUCCESS) {
+    if (c.vkAllocateCommandBuffers(device, &alloc_info, &common.rendering_command_buffers) != c.VK_SUCCESS) {
         std.debug.panic("Command buffer allocation failed!", .{});
     }
 }
@@ -271,10 +301,10 @@ fn createGraphicsCommandPool() void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = common.queue_families.graphics_family.?,
+        .queueFamilyIndex = queue_families.graphics_family.?,
     };
 
-    if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(device, &pool_info, null, &common.graphics_command_pool) != c.VK_SUCCESS) {
         std.debug.panic("Command pool creation failed!", .{});
     }
 }
@@ -283,27 +313,26 @@ fn createComputeCommandPool() void {
     const pool_info: c.VkCommandPoolCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = common.queue_families.compute_family.?,
+        .queueFamilyIndex = queue_families.compute_family.?,
     };
 
-    if (c.vkCreateCommandPool(common.device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateCommandPool(device, &pool_info, null, &common.compute_command_pool) != c.VK_SUCCESS) {
         std.debug.panic("Command pool creation failed!", .{});
     }
 }
 
 fn setupDebugMessenger() void {
-    if (!common.enable_validation_layers) return;
+    if (!enable_validation_layers) return;
 
     var create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
     populateDebugMessengerCreateInfo(&create_info);
 
-    if (createDebugUtilsMessengerEXT(common.instance, &create_info, null, &common.debug_messenger) != c.VK_SUCCESS) {
+    if (createDebugUtilsMessengerEXT(&create_info, null, &debug_messenger) != c.VK_SUCCESS) {
         std.debug.panic("Debug messenger setup failed!", .{});
     }
 }
 
 fn createDebugUtilsMessengerEXT(
-    instance: c.VkInstance,
     p_create_info: [*c]const c.VkDebugUtilsMessengerCreateInfoEXT,
     p_vulkan_alloc: [*c]const c.VkAllocationCallbacks,
     p_debug_messenger: *c.VkDebugUtilsMessengerEXT,
@@ -346,7 +375,7 @@ fn createDescriptorPool() void {
             common.render_patch_descriptor_sets.len),
     };
 
-    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(device, &pool_info, null, &common.descriptor_pool) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor pool creation failed!", .{});
     }
 }
@@ -370,7 +399,7 @@ fn createGuiDescriptorPool() void {
         .poolSizeCount = @intCast(pool_sizes.len),
     };
 
-    if (c.vkCreateDescriptorPool(common.device, &pool_info, null, &gui.descriptor_pool) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorPool(device, &pool_info, null, &gui.descriptor_pool) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor pool creation failed!", .{});
     }
 }
@@ -390,7 +419,7 @@ fn createRenderPatchDescriptorSetLayout() void {
         .pBindings = &bindings,
     };
 
-    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_patch_descriptor_set_layout) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(device, &layout_info, null, &common.render_patch_descriptor_set_layout) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
@@ -410,7 +439,7 @@ fn createCpuToRndDescriptorSetLayout() void {
         .pBindings = &bindings,
     };
 
-    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.cpu_to_render_descriptor_set_layout) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(device, &layout_info, null, &common.cpu_to_render_descriptor_set_layout) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
@@ -430,7 +459,7 @@ fn createRndToClrDescriptorSetLayout() void {
         .pBindings = &bindings,
     };
 
-    if (c.vkCreateDescriptorSetLayout(common.device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
+    if (c.vkCreateDescriptorSetLayout(device, &layout_info, null, &common.render_to_coloring_descriptor_set_layout) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor set layout creation failed!", .{});
     }
 }
@@ -448,7 +477,7 @@ fn createRenderPatchDescriptorSets() void {
         .pSetLayouts = &layouts,
     };
 
-    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_patch_descriptor_sets) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(device, &alloc_info, &common.render_patch_descriptor_sets) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
@@ -474,7 +503,7 @@ fn createRenderPatchDescriptorSets() void {
             },
         };
 
-        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
     }
 }
 
@@ -491,7 +520,7 @@ pub fn createCpuToRndDescriptorSets() void {
         .pSetLayouts = &layouts,
     };
 
-    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.cpu_to_render_descriptor_sets) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(device, &alloc_info, &common.cpu_to_render_descriptor_sets) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
@@ -515,7 +544,7 @@ pub fn createCpuToRndDescriptorSets() void {
         };
 
         c.vkUpdateDescriptorSets(
-            common.device,
+            device,
             @intCast(descriptor_writes.len),
             &descriptor_writes,
             0,
@@ -537,7 +566,7 @@ fn createRndToClrDescriptorSets() void {
         .pSetLayouts = &layouts,
     };
 
-    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.render_to_coloring_descriptor_sets) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(device, &alloc_info, &common.render_to_coloring_descriptor_sets) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
@@ -560,7 +589,7 @@ fn createRndToClrDescriptorSets() void {
             },
         };
 
-        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
     }
 }
 
@@ -577,7 +606,7 @@ fn createBackR2CDescriptorSets() void {
         .pSetLayouts = &layouts,
     };
 
-    if (c.vkAllocateDescriptorSets(common.device, &alloc_info, &common.back_r2c_descriptor_sets) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(device, &alloc_info, &common.back_r2c_descriptor_sets) != c.VK_SUCCESS) {
         std.debug.panic("Descriptor sets allocation failed!", .{});
     }
 
@@ -603,7 +632,7 @@ fn createBackR2CDescriptorSets() void {
             },
         };
 
-        c.vkUpdateDescriptorSets(common.device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
+        c.vkUpdateDescriptorSets(device, @intCast(descriptor_writes.len), &descriptor_writes, 0, null);
     }
 }
 
@@ -617,7 +646,7 @@ fn createFrameBuffers(alloc: Allocator) Allocator.Error!void {
 
         const frame_buffer_info: c.VkFramebufferCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .renderPass = common.render_pass,
+            .renderPass = render_pass,
             .attachmentCount = @intCast(attachments.len),
             .pAttachments = &attachments,
             .width = common.swap_chain_extent.width,
@@ -625,7 +654,7 @@ fn createFrameBuffers(alloc: Allocator) Allocator.Error!void {
             .layers = 1,
         };
 
-        if (c.vkCreateFramebuffer(common.device, &frame_buffer_info, null, &common.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateFramebuffer(device, &frame_buffer_info, null, &common.swap_chain_framebuffers[i]) != c.VK_SUCCESS) {
             std.debug.panic("Framebuffer creation failed!", .{});
         }
     }
@@ -662,7 +691,7 @@ fn createComputePipeline(
     options: ComputePipelineOptions,
 ) @Tuple(&.{ c.VkPipeline, c.VkPipelineLayout }) {
     const shader_module = createShaderModule(shader_spirv);
-    defer _ = c.vkDestroyShaderModule(common.device, shader_module, vk_alloc);
+    defer _ = c.vkDestroyShaderModule(device, shader_module, vk_alloc);
 
     const shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -681,7 +710,7 @@ fn createComputePipeline(
 
     var pipeline_layout: c.VkPipelineLayout = undefined;
     if (c.vkCreatePipelineLayout(
-        common.device,
+        device,
         &pipeline_layout_info,
         vk_alloc,
         &pipeline_layout,
@@ -697,7 +726,7 @@ fn createComputePipeline(
 
     var pipeline: c.VkPipeline = undefined;
     if (c.vkCreateComputePipelines(
-        common.device,
+        device,
         @ptrCast(c.VK_NULL_HANDLE),
         1,
         &pipeline_info,
@@ -753,8 +782,8 @@ fn createRendingPipeline() void {
 fn createColoringPipeline() void {
     const vert_shader_module = createShaderModule(&dummy_vert_code);
     const frag_shader_module = createShaderModule(&color_code);
-    defer _ = c.vkDestroyShaderModule(common.device, vert_shader_module, null);
-    defer _ = c.vkDestroyShaderModule(common.device, frag_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(device, vert_shader_module, null);
+    defer _ = c.vkDestroyShaderModule(device, frag_shader_module, null);
 
     const vert_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -866,7 +895,7 @@ fn createColoringPipeline() void {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
-    if (c.vkCreatePipelineLayout(common.device, &pipeline_layout_info, null, &common.coloring_pipeline_layout) != c.VK_SUCCESS) {
+    if (c.vkCreatePipelineLayout(device, &pipeline_layout_info, null, &common.coloring_pipeline_layout) != c.VK_SUCCESS) {
         std.debug.panic("Pipeline layout creation failed!", .{});
     }
 
@@ -883,13 +912,13 @@ fn createColoringPipeline() void {
         .pColorBlendState = &color_blending,
         .pDynamicState = &dynamic_state,
         .layout = common.coloring_pipeline_layout,
-        .renderPass = common.render_pass,
+        .renderPass = render_pass,
         .subpass = 0,
         .basePipelineHandle = @ptrCast(c.VK_NULL_HANDLE),
         .basePipelineIndex = -1,
     };
 
-    if (c.vkCreateGraphicsPipelines(common.device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.coloring_pipeline) != c.VK_SUCCESS) {
+    if (c.vkCreateGraphicsPipelines(device, @ptrCast(c.VK_NULL_HANDLE), 1, &pipeline_info, null, &common.coloring_pipeline) != c.VK_SUCCESS) {
         std.debug.panic("Graphics pipeline creation failed!", .{});
     }
 }
@@ -901,7 +930,7 @@ fn createShaderModule(code: []align(4) const u8) c.VkShaderModule {
         .pCode = @ptrCast(code.ptr),
     };
     var shader_module: c.VkShaderModule = undefined;
-    if (c.vkCreateShaderModule(common.device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
+    if (c.vkCreateShaderModule(device, &create_info, null, &shader_module) != c.VK_SUCCESS) {
         std.debug.panic("shader module creation failed!", .{});
     }
     return shader_module;
@@ -931,14 +960,14 @@ fn createImageViews(alloc: Allocator) Allocator.Error!void {
             },
         };
 
-        if (c.vkCreateImageView(common.device, &create_info, null, &common.swap_chain_image_views[i]) != c.VK_SUCCESS) {
+        if (c.vkCreateImageView(device, &create_info, null, &common.swap_chain_image_views[i]) != c.VK_SUCCESS) {
             std.debug.panic("Image views creation failed!", .{});
         }
     }
 }
 
 fn createInstance(alloc: Allocator) Allocator.Error!void {
-    if (common.enable_validation_layers and !try checkValidationLayerSupport(alloc)) {
+    if (enable_validation_layers and !try checkValidationLayerSupport(alloc)) {
         std.debug.panic("Validation layer unavailible!", .{});
     }
 
@@ -948,7 +977,7 @@ fn createInstance(alloc: Allocator) Allocator.Error!void {
         .applicationVersion = c.VK_MAKE_API_VERSION(0, 0, 0, 0),
         .pEngineName = "No Engine",
         .engineVersion = c.VK_MAKE_API_VERSION(0, 0, 0, 0),
-        .apiVersion = common.vk_version,
+        .apiVersion = vk_version,
     };
 
     var create_info = c.VkInstanceCreateInfo{
@@ -963,9 +992,9 @@ fn createInstance(alloc: Allocator) Allocator.Error!void {
     create_info.ppEnabledExtensionNames = extensions.ptr;
 
     var debug_create_info: c.VkDebugUtilsMessengerCreateInfoEXT = undefined;
-    if (common.enable_validation_layers) {
-        create_info.enabledLayerCount = common.validation_layers.len;
-        create_info.ppEnabledLayerNames = &common.validation_layers;
+    if (enable_validation_layers) {
+        create_info.enabledLayerCount = validation_layers.len;
+        create_info.ppEnabledLayerNames = &validation_layers;
 
         populateDebugMessengerCreateInfo(&debug_create_info);
         create_info.pNext = @ptrCast(&debug_create_info);
@@ -975,7 +1004,7 @@ fn createInstance(alloc: Allocator) Allocator.Error!void {
         create_info.pNext = null;
     }
 
-    const result = c.vkCreateInstance(&create_info, null, &common.instance);
+    const result = c.vkCreateInstance(&create_info, null, &instance);
     if (result != c.VK_SUCCESS) {
         std.debug.panic("Instance creation failed!", .{});
     }
@@ -989,7 +1018,7 @@ fn checkValidationLayerSupport(alloc: Allocator) Allocator.Error!bool {
     defer alloc.free(availible_layers);
     _ = c.vkEnumerateInstanceLayerProperties(&layer_count, availible_layers.ptr);
 
-    for (common.validation_layers) |v_layer| {
+    for (validation_layers) |v_layer| {
         var layer_found: bool = false;
 
         for (availible_layers) |a_layer| {
@@ -1009,11 +1038,11 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
     var glfw_extension_count: u32 = 0;
     const glfw_extensions: [*c]const [*c]const u8 = c.glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
-    const out = try alloc.alloc([*c]const u8, glfw_extension_count + if (common.enable_validation_layers) 1 else 0);
+    const out = try alloc.alloc([*c]const u8, glfw_extension_count + if (enable_validation_layers) 1 else 0);
     for (0..glfw_extension_count) |i| {
         out[i] = glfw_extensions[i];
     }
-    if (common.enable_validation_layers) {
+    if (enable_validation_layers) {
         out[glfw_extension_count] = c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     }
 
@@ -1022,26 +1051,26 @@ fn getRequiredExtensions(alloc: Allocator) Allocator.Error![][*c]const u8 {
 
 fn createLogicalDevice(alloc: Allocator) Allocator.Error!void {
     var unique_queue_families = [_]u32{
-        common.queue_families.graphics_family.?,
-        common.queue_families.compute_family.?,
-        common.queue_families.present_family.?,
+        queue_families.graphics_family.?,
+        queue_families.compute_family.?,
+        queue_families.present_family.?,
     };
     const max_queues = [unique_queue_families.len]u32{
-        common.queue_families.graphics_max_queues,
-        common.queue_families.compute_max_queues,
-        common.queue_families.present_max_queues,
+        queue_families.graphics_max_queues,
+        queue_families.compute_max_queues,
+        queue_families.present_max_queues,
     };
     var num_required_queues = [unique_queue_families.len]u32{ 1, 1, 1 };
     var unique_queue_num: u32 = 0;
 
     var queue_family_property_count: u32 = 0;
-    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(common.physical_device, &queue_family_property_count, null);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_property_count, null);
 
     const queue_family_properties = try alloc.alloc(c.VkQueueFamilyProperties, queue_family_property_count);
     defer alloc.free(queue_family_properties);
 
     _ = c.vkGetPhysicalDeviceQueueFamilyProperties(
-        common.physical_device,
+        physical_device,
         &queue_family_property_count,
         queue_family_properties.ptr,
     );
@@ -1080,8 +1109,8 @@ fn createLogicalDevice(alloc: Allocator) Allocator.Error!void {
             .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = queue_family,
             .queueCount = num_queues,
-            .pQueuePriorities = if (queue_family == common.queue_families.compute_family and
-                queue_family != common.queue_families.graphics_family)
+            .pQueuePriorities = if (queue_family == queue_families.compute_family and
+                queue_family != queue_families.graphics_family)
                 &queue_priority[1]
             else
                 &queue_priority,
@@ -1095,35 +1124,35 @@ fn createLogicalDevice(alloc: Allocator) Allocator.Error!void {
         .pQueueCreateInfos = queue_create_infos.ptr,
         .queueCreateInfoCount = unique_queue_num,
         .pEnabledFeatures = &device_features,
-        .ppEnabledExtensionNames = &common.device_extensions,
-        .enabledExtensionCount = @intCast(common.device_extensions.len),
+        .ppEnabledExtensionNames = &device_extensions,
+        .enabledExtensionCount = @intCast(device_extensions.len),
     };
 
-    if (common.enable_validation_layers) {
-        createInfo.enabledLayerCount = @intCast(common.validation_layers.len);
-        createInfo.ppEnabledLayerNames = &common.validation_layers;
+    if (enable_validation_layers) {
+        createInfo.enabledLayerCount = @intCast(validation_layers.len);
+        createInfo.ppEnabledLayerNames = &validation_layers;
     } else {
         createInfo.enabledLayerCount = 0;
     }
 
-    if (c.vkCreateDevice(common.physical_device, &createInfo, null, &common.device) != c.VK_SUCCESS) {
+    if (c.vkCreateDevice(physical_device, &createInfo, null, &device) != c.VK_SUCCESS) {
         std.debug.panic("Logical device creation failed!", .{});
     }
 
-    c.vkGetDeviceQueue(common.device, common.queue_families.graphics_family.?, 0, &common.graphics_queue);
-    c.vkGetDeviceQueue(common.device, common.queue_families.present_family.?, 0, &common.present_queue);
-    if (common.queue_families.graphics_family.? == common.queue_families.compute_family.? and
-        common.queue_families.graphics_max_queues >= 2)
+    c.vkGetDeviceQueue(device, queue_families.graphics_family.?, 0, &graphics_queue);
+    c.vkGetDeviceQueue(device, queue_families.present_family.?, 0, &present_queue);
+    if (queue_families.graphics_family.? == queue_families.compute_family.? and
+        queue_families.graphics_max_queues >= 2)
     {
-        c.vkGetDeviceQueue(common.device, common.queue_families.compute_family.?, 1, &common.compute_queue);
+        c.vkGetDeviceQueue(device, queue_families.compute_family.?, 1, &compute_queue);
     } else {
-        c.vkGetDeviceQueue(common.device, common.queue_families.compute_family.?, 0, &common.compute_queue);
+        c.vkGetDeviceQueue(device, queue_families.compute_family.?, 0, &compute_queue);
     }
 }
 
 fn pickPhysicalDevice(alloc: Allocator) Allocator.Error!void {
     var device_count: u32 = 0;
-    _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, null);
+    _ = c.vkEnumeratePhysicalDevices(instance, &device_count, null);
 
     if (device_count == 0) {
         std.debug.panic("Gpu with vulkan support not found!", .{});
@@ -1131,11 +1160,11 @@ fn pickPhysicalDevice(alloc: Allocator) Allocator.Error!void {
 
     const devices = try alloc.alloc(c.VkPhysicalDevice, device_count);
     defer alloc.free(devices);
-    _ = c.vkEnumeratePhysicalDevices(common.instance, &device_count, devices.ptr);
+    _ = c.vkEnumeratePhysicalDevices(instance, &device_count, devices.ptr);
 
-    for (devices) |device| {
-        if (try deviceIsSuitable(device, alloc)) {
-            common.physical_device = device;
+    for (devices) |prospective_physical_device| {
+        if (try deviceIsSuitable(prospective_physical_device, alloc)) {
+            physical_device = prospective_physical_device;
             break;
         }
     } else {
@@ -1143,14 +1172,14 @@ fn pickPhysicalDevice(alloc: Allocator) Allocator.Error!void {
     }
 }
 
-fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
-    const indices = try findQueueFamilies(device, alloc);
+fn deviceIsSuitable(prospective_physical_device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+    const indices = try findQueueFamilies(prospective_physical_device, alloc);
 
-    const extensions_supported: bool = try checkDeviceExtensionSupport(device, alloc);
+    const extensions_supported: bool = try checkDeviceExtensionSupport(prospective_physical_device, alloc);
 
     var swap_chain_adequate: bool = false;
     if (extensions_supported) {
-        const swap_chain_support = try querySwapChainSupport(window.surface, device, alloc);
+        const swap_chain_support = try querySwapChainSupport(window.surface, prospective_physical_device, alloc);
         defer alloc.free(swap_chain_support.presentModes);
         defer alloc.free(swap_chain_support.formats);
         swap_chain_adequate = (swap_chain_support.formats.len != 0) and
@@ -1160,15 +1189,15 @@ fn deviceIsSuitable(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Erro
     return indices.isComplete() and extensions_supported and swap_chain_adequate;
 }
 
-fn checkDeviceExtensionSupport(device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
+fn checkDeviceExtensionSupport(prospective_physical_device: c.VkPhysicalDevice, alloc: Allocator) Allocator.Error!bool {
     var extension_count: u32 = undefined;
-    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null);
+    _ = c.vkEnumerateDeviceExtensionProperties(prospective_physical_device, null, &extension_count, null);
 
     const availibleExtensions = try alloc.alloc(c.VkExtensionProperties, extension_count);
     defer alloc.free(availibleExtensions);
-    _ = c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, availibleExtensions.ptr);
+    _ = c.vkEnumerateDeviceExtensionProperties(prospective_physical_device, null, &extension_count, availibleExtensions.ptr);
 
-    outer: for (common.device_extensions) |extension| {
+    outer: for (device_extensions) |extension| {
         for (availibleExtensions) |availible| {
             if (common.str_eq(extension, @ptrCast(&availible.extensionName))) continue :outer;
         }
@@ -1220,13 +1249,13 @@ pub fn createRenderPass() void {
         .pDependencies = &dependency,
     };
 
-    if (c.vkCreateRenderPass(common.device, &render_pass_info, null, &common.render_pass) != c.VK_SUCCESS) {
+    if (c.vkCreateRenderPass(device, &render_pass_info, null, &render_pass) != c.VK_SUCCESS) {
         std.debug.panic("Render pass creation failed", .{});
     }
 }
 
 fn createSwapChain(alloc: Allocator) Allocator.Error!void {
-    const swap_chain_support = try querySwapChainSupport(window.surface, common.physical_device, alloc);
+    const swap_chain_support = try querySwapChainSupport(window.surface, physical_device, alloc);
     defer alloc.free(swap_chain_support.formats);
     defer alloc.free(swap_chain_support.presentModes);
 
@@ -1255,11 +1284,11 @@ fn createSwapChain(alloc: Allocator) Allocator.Error!void {
     };
 
     const queue_family_indices = [_]u32{
-        common.queue_families.graphics_family.?,
-        common.queue_families.present_family.?,
+        queue_families.graphics_family.?,
+        queue_families.present_family.?,
     };
 
-    if (common.queue_families.graphics_family != common.queue_families.present_family) {
+    if (queue_families.graphics_family != queue_families.present_family) {
         create_info.imageSharingMode = c.VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices = &queue_family_indices;
@@ -1270,13 +1299,13 @@ fn createSwapChain(alloc: Allocator) Allocator.Error!void {
         create_info.oldSwapchain = @ptrCast(c.VK_NULL_HANDLE);
     }
 
-    if (c.vkCreateSwapchainKHR(common.device, &create_info, null, &common.swap_chain) != c.VK_SUCCESS) {
+    if (c.vkCreateSwapchainKHR(device, &create_info, null, &common.swap_chain) != c.VK_SUCCESS) {
         std.debug.panic("Logical device creation failed", .{});
     }
 
-    _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), null);
+    _ = c.vkGetSwapchainImagesKHR(device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), null);
     common.swap_chain_images = try alloc.alloc(c.VkImage, common.swap_chain_images.len);
-    _ = c.vkGetSwapchainImagesKHR(common.device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), common.swap_chain_images.ptr);
+    _ = c.vkGetSwapchainImagesKHR(device, common.swap_chain, @ptrCast(&common.swap_chain_images.len), common.swap_chain_images.ptr);
 
     common.swap_chain_image_format = surface_format.format;
     common.swap_chain_extent = extent;
@@ -1332,9 +1361,9 @@ fn chooseSwapExtent(capabilities: *const c.VkSurfaceCapabilitiesKHR) c.VkExtent2
 }
 
 fn createSyncObjects(alloc: Allocator) Allocator.Error!void {
-    common.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, common.max_frames_in_flight);
+    common.image_availible_semaphores = try alloc.alloc(c.VkSemaphore, max_frames_in_flight);
     common.render_finished_semaphores = try alloc.alloc(c.VkSemaphore, common.swap_chain_images.len);
-    common.in_flight_fences = try alloc.alloc(c.VkFence, common.max_frames_in_flight);
+    common.in_flight_fences = try alloc.alloc(c.VkFence, max_frames_in_flight);
 
     const semaphore_info: c.VkSemaphoreCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1345,26 +1374,26 @@ fn createSyncObjects(alloc: Allocator) Allocator.Error!void {
         .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    if (c.vkCreateFence(common.device, &fence_info, null, &common.render_buffer_write_fence) != c.VK_SUCCESS) {
+    if (c.vkCreateFence(device, &fence_info, null, &common.render_buffer_write_fence) != c.VK_SUCCESS) {
         std.debug.panic("Fence creation failed", .{});
     }
 
     for (&common.rendering_fences) |*fence| {
-        if (c.vkCreateFence(common.device, &fence_info, null, fence) != c.VK_SUCCESS) {
+        if (c.vkCreateFence(device, &fence_info, null, fence) != c.VK_SUCCESS) {
             std.debug.panic("Fence creation failed", .{});
         }
     }
 
-    for (0..common.max_frames_in_flight) |i| {
-        if (c.vkCreateSemaphore(common.device, &semaphore_info, null, &common.image_availible_semaphores[i]) != c.VK_SUCCESS or
-            c.vkCreateFence(common.device, &fence_info, null, &common.in_flight_fences[i]) != c.VK_SUCCESS)
+    for (0..max_frames_in_flight) |i| {
+        if (c.vkCreateSemaphore(device, &semaphore_info, null, &common.image_availible_semaphores[i]) != c.VK_SUCCESS or
+            c.vkCreateFence(device, &fence_info, null, &common.in_flight_fences[i]) != c.VK_SUCCESS)
         {
             std.debug.panic("Semaphore creation failed", .{});
         }
     }
 
     for (common.render_finished_semaphores) |*sem| {
-        if (c.vkCreateSemaphore(common.device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
+        if (c.vkCreateSemaphore(device, &semaphore_info, null, sem) != c.VK_SUCCESS) {
             std.debug.panic("Semaphore creation failed!", .{});
         }
     }
@@ -1424,6 +1453,19 @@ fn createBuffers() void {
         null,
     );
 }
+
+pub const QueueFamilyIndices = struct {
+    graphics_family: ?u32,
+    graphics_max_queues: u32,
+    compute_family: ?u32,
+    compute_max_queues: u32,
+    present_family: ?u32,
+    present_max_queues: u32,
+
+    pub fn isComplete(self: QueueFamilyIndices) bool {
+        return self.graphics_family != null and self.present_family != null and self.compute_family != null;
+    }
+};
 
 const dummy_vert_code align(4) = @embedFile("triangle_vert_shader").*;
 const color_code align(4) = @embedFile("triangle_frag_shader").*;

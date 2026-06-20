@@ -52,7 +52,7 @@ pub fn update(io: std.Io, max_iterations: u32) void {
 
     var mapped_data: [*]@Vector(2, f32) = undefined;
     _ = c.vkMapMemory(
-        common.device,
+        vulkan.device,
         common.perturbation_staging_buffer_memory,
         0,
         2 * @sizeOf(f32) * common.allocated_iterations,
@@ -60,7 +60,7 @@ pub fn update(io: std.Io, max_iterations: u32) void {
         @ptrCast(&mapped_data),
     );
     @memcpy(mapped_data, common.perturbation_vals);
-    _ = c.vkUnmapMemory(common.device, common.perturbation_staging_buffer_memory);
+    _ = c.vkUnmapMemory(vulkan.device, common.perturbation_staging_buffer_memory);
 
     const next_index: usize = (common.current_cpu_to_render_descriptor_index + 1) % 2;
 
@@ -89,7 +89,7 @@ fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize, options: C
     };
 
     var command_buffer: c.VkCommandBuffer = undefined;
-    _ = c.vkAllocateCommandBuffers(common.device, &alloc_info, &command_buffer);
+    _ = c.vkAllocateCommandBuffers(vulkan.device, &alloc_info, &command_buffer);
 
     const begin_info: c.VkCommandBufferBeginInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -117,11 +117,11 @@ fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize, options: C
         .commandBufferCount = 1,
         .pCommandBuffers = &command_buffer,
     };
-    _ = c.vkQueueSubmit(common.graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
-    _ = c.vkQueueWaitIdle(common.graphics_queue);
+    _ = c.vkQueueSubmit(vulkan.graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
+    _ = c.vkQueueWaitIdle(vulkan.graphics_queue);
 
     c.vkFreeCommandBuffers(
-        common.device,
+        vulkan.device,
         common.graphics_command_pool,
         1,
         &command_buffer,
@@ -133,4 +133,5 @@ const Allocator = std.mem.Allocator;
 const std = @import("std");
 const c = @import("c");
 const common = @import("common_defs.zig");
+const vulkan = @import("vulkan.zig");
 const big_float = @import("big_float.zig");

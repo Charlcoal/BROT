@@ -14,17 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub var instance: c.VkInstance = null;
-pub var debug_messenger: c.VkDebugUtilsMessengerEXT = null;
-pub var physical_device: c.VkPhysicalDevice = null;
-pub var device: c.VkDevice = null;
-
-pub var queue_families: QueueFamilyIndices = undefined;
-pub var graphics_queue: c.VkQueue = null;
-pub var compute_queue: c.VkQueue = null;
-pub var present_queue: c.VkQueue = null;
-
-pub var render_pass: c.VkRenderPass = undefined;
 pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
@@ -126,7 +115,6 @@ pub var ref_calc_x: c.mpf_t = undefined;
 pub var ref_calc_y: c.mpf_t = undefined;
 pub var mpf_intermediates: [3]c.mpf_t = undefined;
 
-pub var time: std.Io.Clock = .awake;
 pub var prev_frame_time: std.Io.Timestamp = .zero;
 pub var prev_update_time: std.Io.Timestamp = .zero;
 
@@ -200,11 +188,11 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
         try io.sleep(.fromMicroseconds(100), .awake);
     }
 
-    c.vkDestroyBuffer(device, perturbation_buffer, null);
-    c.vkFreeMemory(device, perturbation_buffer_memory, null);
+    c.vkDestroyBuffer(vulkan.device, perturbation_buffer, null);
+    c.vkFreeMemory(vulkan.device, perturbation_buffer_memory, null);
 
-    c.vkDestroyBuffer(device, perturbation_staging_buffer, null);
-    c.vkFreeMemory(device, perturbation_staging_buffer_memory, null);
+    c.vkDestroyBuffer(vulkan.device, perturbation_staging_buffer, null);
+    c.vkFreeMemory(vulkan.device, perturbation_staging_buffer_memory, null);
 
     perturbation_buffer, perturbation_buffer_memory = vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
@@ -240,7 +228,7 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
         };
 
         c.vkUpdateDescriptorSets(
-            device,
+            vulkan.device,
             @intCast(descriptor_writes.len),
             &descriptor_writes,
             0,
@@ -250,21 +238,9 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
 
     allocated_iterations = new_alloc_iterations;
 }
-// ------------------- settings -------------------------
+// ------------------- comptime settings -------------------------
 
-pub const vk_version = c.VK_API_VERSION_1_3;
-pub const enable_validation_layers = dbg;
-
-pub const validation_layers = [_][*:0]const u8{
-    "VK_LAYER_KHRONOS_validation",
-};
-
-pub const device_extensions = [_][*:0]const u8{
-    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
-pub const target_frame_rate: f64 = 60;
-pub const max_frames_in_flight: u32 = 2;
+pub const clock: std.Io.Clock = .boot;
 pub const num_active_render_patches = 6;
 const patch_buffer_factor = 4; // should be >= 3
 
@@ -308,19 +284,6 @@ pub const RenderPatch = struct {
     resolution_scale_exponent: u32,
     x_pos: u32,
     y_pos: u32,
-};
-
-pub const QueueFamilyIndices = struct {
-    graphics_family: ?u32,
-    graphics_max_queues: u32,
-    compute_family: ?u32,
-    compute_max_queues: u32,
-    present_family: ?u32,
-    present_max_queues: u32,
-
-    pub fn isComplete(self: QueueFamilyIndices) bool {
-        return self.graphics_family != null and self.present_family != null and self.compute_family != null;
-    }
 };
 
 pub const FractalPosition = struct {
