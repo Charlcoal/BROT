@@ -9,7 +9,6 @@ perturbation, with foveated rendering around the cursor.
 
 BROT is currently only tested on x86_64 linux, but should
 theoretically work for other common targets. The build script
-**requires glslc** to be installed on the host system, and
 should work with a simple ```zig build run```.
 
 ## Running
