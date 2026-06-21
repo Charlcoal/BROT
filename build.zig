@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) !void {
     // translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
     translate_c.step.dependOn(gmp.step);
-    translate_c.addIncludePath(b.path(gmp.dir));
+    translate_c.addIncludePath(gmp.include);
     translate_c.addIncludePath(glslang.builder.dependency("glslang", .{}).path("."));
 
     const cimgui_lib = cimgui_dep.artifact("cimgui");
@@ -144,22 +144,39 @@ fn buildGmpStatic(
         \\set -e
         \\SRC="$1"
         \\BUILD="{s}"
-        \\OUTPATH="$2"
+        \\OUT_ARCHIVE="$2"
+        \\OUT_INCLUDE="$3"
         \\mkdir -p "$BUILD"
         \\cd "$BUILD"
         \\CC="{s}" AR="{s}" RANLIB="{s}" "$SRC/configure" \
         \\  --host={s} \
-        \\  --disable-shared --enable-static --with-pic --disable-cxx{s}
+        \\  --disable-shared --enable-static --with-pic --disable-cxx{s} \
+        //prevent warnings from making it to zig stdout/stderr
+        \\2> /dev/null
         \\make -j MAKEINFO=true PERL=true TEXI2DVI=true
-        \\mv .libs/libgmp.a "$OUTPATH"
+        \\mv .libs/libgmp.a "$OUT_ARCHIVE"
+        \\mv sieve_table.h "$OUT_INCLUDE"
+        \\mv trialdivtab.h "$OUT_INCLUDE"
+        \\mv gmp.h "$OUT_INCLUDE"
+        \\mv config.h "$OUT_INCLUDE"
+        \\mv fac_table.h "$OUT_INCLUDE"
+        \\mkdir "$OUT_INCLUDE/mpn"
+        \\mv mpn/perfsqr.h "$OUT_INCLUDE/mpn"
+        \\mv mpn/jacobitab.h "$OUT_INCLUDE/mpn"
+        \\mv gmp-mparam.h "$OUT_INCLUDE"
+        \\mv fat.h "$OUT_INCLUDE"
+        \\mv fib_table.h "$OUT_INCLUDE"
+        \\mv mp_bases.h "$OUT_INCLUDE"
     , .{ build_subdir, cc, ar, ranlib, info.gmp_triple, maybe_fat });
 
     const run = b.addSystemCommand(&.{ "sh", "-c", script, "sh" });
+    run.setCwd(gmp_path);
     run.addDirectoryArg(gmp_path);
     const libgmp = run.addOutputFileArg("libgmp.a"); // explicit output file allows caching
+    const include = run.addOutputDirectoryArg("libgmp_include");
     run.setName(b.fmt("configure + make gmp ({s})", .{info.zig_triple}));
 
-    return GmpArtifact{ .dir = build_subdir, .archive = libgmp, .step = &run.step };
+    return GmpArtifact{ .include = include, .archive = libgmp, .step = &run.step };
 }
 
 fn gmpTargetInfo(t: std.Target) !TargetInfo {
@@ -184,8 +201,7 @@ fn gmpTargetInfo(t: std.Target) !TargetInfo {
 }
 
 const GmpArtifact = struct {
-    /// Directory containing the target-specific generated gmp.h
-    dir: []const u8,
+    include: std.Build.LazyPath,
     /// actual library artifact (libgmp.a)
     archive: std.Build.LazyPath,
     step: *std.Build.Step,
