@@ -15,10 +15,20 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 pub fn main(init: std.process.Init) !void {
-    var args = init.minimal.args.iterate();
-    defer args.deinit();
-    std.debug.print("running at: {s}\n", .{args.next().?});
-    try app.run(init.gpa, init.io);
+    const cwd = std.Io.Dir.cwd();
+    const cache_path = if (builtin.mode == .Debug) // for easy removal when developing
+        "BROTEXE_cache"
+    else if (builtin.os.tag == .windows) // Appdata/Roaming/BROT/Temp
+        try std.fs.path.resolveWindows(init.gpa, &.{ init.environ_map.get("APPDATA").?, "BROT", "Temp" })
+    else if (builtin.os.tag == .linux) // ~/.cache/BROT
+        try std.fs.path.resolvePosix(init.gpa, &.{ init.environ_map.get("HOME").?, ".cache", "BROT" })
+    else
+        @compileError("OS cache location is not defined!!!");
+
+    const cache_dir = try cwd.createDirPathOpen(init.io, cache_path, .{});
+    defer cache_dir.close(init.io);
+
+    try app.run(init.gpa, init.io, cache_dir);
 }
 
 pub const std_options: std.Options = .{
@@ -32,5 +42,6 @@ test "includeAllTests" {
     std.testing.refAllDecls(@import("big_float.zig"));
 }
 
+const builtin = @import("builtin");
 const std = @import("std");
 const app = @import("app.zig");

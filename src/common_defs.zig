@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+pub var cache_dir: std.Io.Dir = undefined;
+
 pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
 pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;

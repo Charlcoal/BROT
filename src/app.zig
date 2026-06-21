@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub fn run(alloc: Allocator, io: std.Io) !void {
+pub fn run(alloc: Allocator, io: std.Io, cache_dir: std.Io.Dir) !void {
     window.width = 1600;
     window.height = 1000;
+
+    common.cache_dir = cache_dir;
 
     // Uncomment to test mpf number leaks. Extremely slow with debug allocator for some reason.
     // big_float.setAllocator(alloc);
@@ -33,7 +35,7 @@ pub fn run(alloc: Allocator, io: std.Io) !void {
     c.mpf_init2(&common.ref_calc_y, 32);
 
     window.init();
-    try vulkan.init(alloc);
+    try vulkan.init(alloc, io);
     gui.init();
     try ref_calc.init(alloc);
     ref_calc.update(io, common.max_iterations);
