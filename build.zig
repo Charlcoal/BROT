@@ -49,7 +49,21 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const gmp = b.dependency("gmp", .{});
+    const gmp = b.dependency("gmp", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const config_step = b.step("configure", "Configure GMP");
+
+    const config = b.addSystemCommand(&.{"./configure"});
+    config.addArg("--build=amd64-pc-linux-gnu");
+    config.setCwd(gmp.path("."));
+
+    const make = b.addSystemCommand(&.{"make"});
+    make.setCwd(gmp.path("."));
+
+    make.step.dependOn(&config.step);
+    config_step.dependOn(&make.step);
 
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
@@ -57,14 +71,16 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     translate_c.linkSystemLibrary("vulkan", .{});
-    translate_c.linkSystemLibrary("gmp", .{});
+    // translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
+    translate_c.step.dependOn(config_step);
     translate_c.addIncludePath(gmp.path("."));
     translate_c.addIncludePath(glslang.builder.dependency("glslang", .{}).path("."));
 
     const cimgui_lib = cimgui_dep.artifact("cimgui");
     addIncludePathsToTranslateC(translate_c, cimgui_lib);
     const c_module = translate_c.createModule();
+    c_module.linkLibrary(gmp.artifact("gmp"));
     c_module.linkLibrary(cimgui_lib);
     c_module.linkLibrary(glslang.artifact("glslang"));
 
