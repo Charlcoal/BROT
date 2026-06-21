@@ -155,18 +155,7 @@ fn buildGmpStatic(
         \\2> /dev/null
         \\make -j MAKEINFO=true PERL=true TEXI2DVI=true
         \\mv .libs/libgmp.a "$OUT_ARCHIVE"
-        \\mv sieve_table.h "$OUT_INCLUDE"
-        \\mv trialdivtab.h "$OUT_INCLUDE"
         \\mv gmp.h "$OUT_INCLUDE"
-        \\mv config.h "$OUT_INCLUDE"
-        \\mv fac_table.h "$OUT_INCLUDE"
-        \\mkdir "$OUT_INCLUDE/mpn"
-        \\mv mpn/perfsqr.h "$OUT_INCLUDE/mpn"
-        \\mv mpn/jacobitab.h "$OUT_INCLUDE/mpn"
-        \\mv gmp-mparam.h "$OUT_INCLUDE"
-        \\mv fat.h "$OUT_INCLUDE"
-        \\mv fib_table.h "$OUT_INCLUDE"
-        \\mv mp_bases.h "$OUT_INCLUDE"
     , .{ build_subdir, cc, ar, ranlib, info.gmp_triple, maybe_fat });
 
     const run = b.addSystemCommand(&.{ "sh", "-c", script, "sh" });
