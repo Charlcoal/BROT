@@ -1,17 +1,14 @@
 # BROT
 
 A mandelbrot set renderer, which ultimately aims to provide
-responsive thumbnail exploration at deep zooms, to the
+responsive exploration at deep zooms, to the
 fullest extent possible. BROT currently supports basic
 perturbation, with foveated rendering around the cursor.
 
 ## Building
 
 BROT is currently only tested on x86_64 linux, but should
-theoretically work for other common targets. The build script
-should work with a simple ```zig build run```.
-
-## Running
-
-BROT currently dynamically links to gnu gmp,
-which means you need to install gmp locally to run BROT.
+theoretically work for both x86_64 and aarm64 across
+linux, windows, and mac. **BROT statically links with GMP,
+using GMP's own configure script. This requires a POSIX
+shell, make, and m4 on the build system** (not the target).

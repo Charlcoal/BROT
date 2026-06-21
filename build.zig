@@ -49,21 +49,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const gmp = b.dependency("gmp", .{
+    const gmp_dep = b.dependency("gmp", .{
         .target = target,
         .optimize = optimize,
     });
-    const config_step = b.step("configure", "Configure GMP");
-
-    const config = b.addSystemCommand(&.{"./configure"});
-    config.addArg("--build=amd64-pc-linux-gnu");
-    config.setCwd(gmp.path("."));
-
-    const make = b.addSystemCommand(&.{"make"});
-    make.setCwd(gmp.path("."));
-
-    make.step.dependOn(&config.step);
-    config_step.dependOn(&make.step);
+    const gmp = try buildGmpStatic(b, gmp_dep.path("."), target);
 
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
@@ -73,14 +63,15 @@ pub fn build(b: *std.Build) !void {
     translate_c.linkSystemLibrary("vulkan", .{});
     // translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
-    translate_c.step.dependOn(config_step);
-    translate_c.addIncludePath(gmp.path("."));
+    translate_c.step.dependOn(gmp.step);
+    translate_c.addIncludePath(b.path(gmp.dir));
     translate_c.addIncludePath(glslang.builder.dependency("glslang", .{}).path("."));
 
     const cimgui_lib = cimgui_dep.artifact("cimgui");
     addIncludePathsToTranslateC(translate_c, cimgui_lib);
     const c_module = translate_c.createModule();
-    c_module.linkLibrary(gmp.artifact("gmp"));
+    // c_module.linkLibrary(gmp.artifact("gmp"));
+    c_module.addObjectFile(gmp.archive);
     c_module.linkLibrary(cimgui_lib);
     c_module.linkLibrary(glslang.artifact("glslang"));
 
@@ -127,3 +118,80 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
 }
+
+/// Shells out to GMP's own configure + make, using zig cc/zig ar/
+/// zig ranlib as the cross toolchain.
+///
+/// REQUIRES A POSIX SHELL, MAKE, AND M4 ON BUILD MACHINE!
+fn buildGmpStatic(
+    b: *std.Build,
+    gmp_path: std.Build.LazyPath,
+    resolved_target: std.Build.ResolvedTarget,
+) !GmpArtifact {
+    const info = try gmpTargetInfo(resolved_target.result);
+
+    const zig_exe = b.graph.zig_exe;
+
+    const build_subdir = b.fmt(".gmp-build/{s}", .{info.zig_triple});
+
+    const cc = b.fmt("{s} cc -target {s}", .{ zig_exe, info.zig_triple });
+    const ar = b.fmt("{s} ar", .{zig_exe});
+    const ranlib = b.fmt("{s} ranlib", .{zig_exe});
+    const maybe_fat = if (resolved_target.result.cpu.arch == .x86_64) " --enable-fat" else "";
+
+    // runs GMP's config / make using the zig toolchain for cross-compilation
+    const script = b.fmt(
+        \\set -e
+        \\SRC="$1"
+        \\BUILD="{s}"
+        \\OUTPATH="$2"
+        \\mkdir -p "$BUILD"
+        \\cd "$BUILD"
+        \\CC="{s}" AR="{s}" RANLIB="{s}" "$SRC/configure" \
+        \\  --host={s} \
+        \\  --disable-shared --enable-static --with-pic --disable-cxx{s}
+        \\make -j MAKEINFO=true PERL=true TEXI2DVI=true
+        \\mv .libs/libgmp.a "$OUTPATH"
+    , .{ build_subdir, cc, ar, ranlib, info.gmp_triple, maybe_fat });
+
+    const run = b.addSystemCommand(&.{ "sh", "-c", script, "sh" });
+    run.addDirectoryArg(gmp_path);
+    const libgmp = run.addOutputFileArg("libgmp.a"); // explicit output file allows caching
+    run.setName(b.fmt("configure + make gmp ({s})", .{info.zig_triple}));
+
+    return GmpArtifact{ .dir = build_subdir, .archive = libgmp, .step = &run.step };
+}
+
+fn gmpTargetInfo(t: std.Target) !TargetInfo {
+    return switch (t.os.tag) {
+        .linux => switch (t.cpu.arch) {
+            .x86_64 => TargetInfo{ .zig_triple = "x86_64-linux-gnu", .gmp_triple = "x86_64-unknown-linux-gnu" },
+            .aarch64 => TargetInfo{ .zig_triple = "aarch64-linux-gnu", .gmp_triple = "aarch64-unknown-linux-gnu" },
+            else => error.UnsupportedTarget,
+        },
+        .windows => switch (t.cpu.arch) {
+            .x86_64 => TargetInfo{ .zig_triple = "x86_64-windows-gnu", .gmp_triple = "x86_64-w64-mingw32" },
+            .aarch64 => TargetInfo{ .zig_triple = "aarch64-windows-gnu", .gmp_triple = "aarch64-w64-mingw32" },
+            else => error.UnsupportedTarget,
+        },
+        .macos => switch (t.cpu.arch) {
+            .x86_64 => TargetInfo{ .zig_triple = "x86_64-macos", .gmp_triple = "x86_64-apple-darwin" },
+            .aarch64 => TargetInfo{ .zig_triple = "aarch64-macos", .gmp_triple = "aarch64-apple-darwin" },
+            else => error.UnsupportedTarget,
+        },
+        else => error.UnsupportedTarget,
+    };
+}
+
+const GmpArtifact = struct {
+    /// Directory containing the target-specific generated gmp.h
+    dir: []const u8,
+    /// actual library artifact (libgmp.a)
+    archive: std.Build.LazyPath,
+    step: *std.Build.Step,
+};
+
+const TargetInfo = struct {
+    zig_triple: []const u8,
+    gmp_triple: []const u8,
+};
