@@ -15,6 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const pkg = @import("build.zig.zon");
 const cimgui = @import("cimgui_zig");
 const Resources = struct {
     shaders: [5][]const u8,
@@ -49,7 +50,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const vulkan_headers_dep = cimgui_dep.builder.dependency("vulkan_zig", .{
+    const vulkan_headers_dep = b.dependency("vulkan_headers", .{
         .target = target,
         .optimize = optimize,
     });
@@ -95,6 +96,10 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "vulkan", .module = vulkan_module },
         },
     });
+
+    const options = b.addOptions();
+    options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(pkg.version));
+    root_module.addOptions("build_options", options);
 
     const exe = b.addExecutable(.{
         .name = "BROT",

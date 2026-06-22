@@ -18,7 +18,7 @@ pub fn init(alloc: Allocator) Allocator.Error!void {
     common.perturbation_vals = try alloc.alloc(@Vector(2, f32), common.allocated_iterations);
 }
 
-pub fn update(io: std.Io, max_iterations: u32) void {
+pub fn update(io: std.Io, max_iterations: u32) !void {
     _ = big_float.ensurePrecision(&common.ref_calc_x, c.mpf_get_prec(&common.fractal_pos.x));
     _ = big_float.ensurePrecision(&common.ref_calc_y, c.mpf_get_prec(&common.fractal_pos.y));
 
@@ -50,23 +50,20 @@ pub fn update(io: std.Io, max_iterations: u32) void {
         c.mpf_swap(&common.mpf_intermediates[1], &common.ref_calc_y);
     }
 
-    var mapped_data: [*]@Vector(2, f32) = undefined;
-    _ = c.vkMapMemory(
-        vulkan.device,
+    const mapped_data: ?[*]@Vector(2, f32) = @ptrCast(@alignCast(try vulkan.device.mapMemory(
         common.perturbation_staging_buffer_memory,
         0,
         2 * @sizeOf(f32) * common.allocated_iterations,
-        0,
-        @ptrCast(&mapped_data),
-    );
-    @memcpy(mapped_data, common.perturbation_vals);
-    _ = c.vkUnmapMemory(vulkan.device, common.perturbation_staging_buffer_memory);
+        .{},
+    )));
+    @memcpy(mapped_data.?, common.perturbation_vals);
+    _ = vulkan.device.unmapMemory(common.perturbation_staging_buffer_memory);
 
     const next_index: usize = (common.current_cpu_to_render_descriptor_index + 1) % 2;
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
-    copyBuffer(
+    try copyBuffer(
         common.perturbation_buffer,
         common.perturbation_staging_buffer,
         2 * @sizeOf(f32) * common.allocated_iterations,
@@ -80,56 +77,40 @@ const CopyBufferOptions = struct {
     dst_offset: u64 = 0,
 };
 
-fn copyBuffer(dst: c.VkBuffer, src: c.VkBuffer, size: c.VkDeviceSize, options: CopyBufferOptions) void {
-    const alloc_info: c.VkCommandBufferAllocateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandPool = common.graphics_command_pool,
-        .commandBufferCount = 1,
-    };
+fn copyBuffer(dst: vk.Buffer, src: vk.Buffer, size: vk.DeviceSize, options: CopyBufferOptions) !void {
+    var command_buffer: vk.CommandBuffer = undefined;
+    try vulkan.device.allocateCommandBuffers(&.{
+        .level = .primary,
+        .command_pool = common.graphics_command_pool,
+        .command_buffer_count = 1,
+    }, (&command_buffer)[0..1]);
 
-    var command_buffer: c.VkCommandBuffer = undefined;
-    _ = c.vkAllocateCommandBuffers(vulkan.device, &alloc_info, &command_buffer);
+    defer vulkan.device.freeCommandBuffers(
+        common.graphics_command_pool,
+        (&command_buffer)[0..1],
+    );
 
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    _ = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+    try vulkan.device.beginCommandBuffer(command_buffer, &.{ .flags = .{ .one_time_submit_bit = true } });
 
-    const copy_region: c.VkBufferCopy = .{
-        .srcOffset = options.src_offset,
-        .dstOffset = options.dst_offset,
+    const copy_region: vk.BufferCopy = .{
+        .src_offset = options.src_offset,
+        .dst_offset = options.dst_offset,
         .size = size,
     };
-    c.vkCmdCopyBuffer(
-        command_buffer,
-        src,
-        dst,
-        1,
-        &copy_region,
-    );
+    vulkan.device.cmdCopyBuffer(command_buffer, src, dst, (&copy_region)[0..1]);
+    try vulkan.device.endCommandBuffer(command_buffer);
 
-    _ = c.vkEndCommandBuffer(command_buffer);
-
-    const submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &command_buffer,
+    const submit_info: vk.SubmitInfo = .{
+        .command_buffer_count = 1,
+        .p_command_buffers = (&command_buffer)[0..1],
     };
-    _ = c.vkQueueSubmit(vulkan.graphics_queue, 1, &submit_info, @ptrCast(c.VK_NULL_HANDLE));
-    _ = c.vkQueueWaitIdle(vulkan.graphics_queue);
-
-    c.vkFreeCommandBuffers(
-        vulkan.device,
-        common.graphics_command_pool,
-        1,
-        &command_buffer,
-    );
+    _ = try vulkan.device.queueSubmit(vulkan.graphics_queue, (&submit_info)[0..1], .null_handle);
+    _ = try vulkan.device.queueWaitIdle(vulkan.graphics_queue);
 }
 
 const Allocator = std.mem.Allocator;
 
+const vk = @import("vulkan");
 const std = @import("std");
 const c = @import("c");
 const common = @import("common_defs.zig");
