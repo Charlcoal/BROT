@@ -30,6 +30,10 @@
             .url = "git+https://codeberg.org/Games-by-Mason/glslang_zig.git#6908a280de643f27c6fd0ccfc5d8f636b25c88cf",
             .hash = "glslang-1.0.1+1.4.309-eMn68GHJCQDNzeSpilELiLfzDAVrjQGkGryaCcCzFTFY",
         },
+        .vulkan = .{
+            .url = "https://github.com/Snektron/vulkan-zig/archive/b496a6a.tar.gz",
+            .hash = "vulkan-0.0.0-r7Ytx7N9AwD7IZt5_XNHtkJ4G9qY0pCH-cpcOsbL8wzD",
+        },
     },
     .paths = .{
         "build.zig",
