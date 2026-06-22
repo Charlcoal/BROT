@@ -49,6 +49,17 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const vulkan_headers_dep = cimgui_dep.builder.dependency("vulkan_zig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const vulkan_dep = b.dependency("vulkan", .{
+        .registry = vulkan_headers_dep.path(b.pathJoin(&.{ "registry", "vk.xml" })),
+        .target = target,
+        .optimize = optimize,
+    });
+    const vulkan_module = vulkan_dep.module("vulkan-zig");
+
     const gmp_dep = b.dependency("gmp", .{
         .target = target,
         .optimize = optimize,
@@ -60,7 +71,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    translate_c.linkSystemLibrary("vulkan", .{});
+    // translate_c.linkSystemLibrary("vulkan", .{});
     // translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
     translate_c.step.dependOn(gmp.step);
@@ -80,10 +91,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{
-                .name = "c",
-                .module = c_module,
-            },
+            .{ .name = "c", .module = c_module },
+            .{ .name = "vulkan", .module = vulkan_module },
         },
     });
 
