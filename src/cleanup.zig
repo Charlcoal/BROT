@@ -16,16 +16,16 @@
 
 pub fn cleanupSwapChain(alloc: Allocator) void {
     for (common.swap_chain_framebuffers) |framebuffer| {
-        c.vkDestroyFramebuffer(vulkan.device, framebuffer, null);
+        vulkan.device.destroyFramebuffer(framebuffer, null);
     }
     alloc.free(common.swap_chain_framebuffers);
 
     for (common.swap_chain_image_views) |view| {
-        c.vkDestroyImageView(vulkan.device, view, null);
+        vulkan.device.destroyImageView(view, null);
     }
     alloc.free(common.swap_chain_image_views);
 
-    c.vkDestroySwapchainKHR(vulkan.device, common.swap_chain, null);
+    vulkan.device.destroySwapchainKHR(common.swap_chain, null);
     alloc.free(common.swap_chain_images);
 }
 
@@ -37,66 +37,68 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
 
     // vulkan
     for (0..vulkan.max_frames_in_flight) |i| {
-        c.vkDestroySemaphore(vulkan.device, common.image_availible_semaphores[i], null);
-        c.vkDestroyFence(vulkan.device, common.in_flight_fences[i], null);
+        vulkan.device.destroySemaphore(common.image_availible_semaphores[i], null);
+        vulkan.device.destroyFence(common.in_flight_fences[i], null);
     }
     for (common.rendering_fences) |fence| {
-        c.vkDestroyFence(vulkan.device, fence, null);
+        vulkan.device.destroyFence(fence, null);
     }
-    c.vkDestroyFence(vulkan.device, common.render_buffer_write_fence, null);
+    vulkan.device.destroyFence(common.render_buffer_write_fence, null);
 
     for (common.render_finished_semaphores) |sem| {
-        c.vkDestroySemaphore(vulkan.device, sem, null);
+        vulkan.device.destroySemaphore(sem, null);
     }
     alloc.free(common.image_availible_semaphores);
     alloc.free(common.render_finished_semaphores);
     alloc.free(common.in_flight_fences);
 
-    c.vkDestroyCommandPool(vulkan.device, common.graphics_command_pool, null);
-    c.vkDestroyCommandPool(vulkan.device, common.compute_command_pool, null);
+    vulkan.device.destroyCommandPool(common.graphics_command_pool, null);
+    vulkan.device.destroyCommandPool(common.compute_command_pool, null);
     alloc.free(common.graphics_command_buffers);
 
     cleanupSwapChain(alloc);
 
-    c.vkDestroyBuffer(vulkan.device, common.render_patch_buffer, null);
-    c.vkFreeMemory(vulkan.device, common.render_patch_buffer_memory, null);
+    vulkan.device.destroyBuffer(common.render_patch_buffer, null);
+    vulkan.device.freeMemory(common.render_patch_buffer_memory, null);
 
-    c.vkDestroyBuffer(vulkan.device, common.escape_potential_buffer, null);
-    c.vkFreeMemory(vulkan.device, common.escape_potential_buffer_memory, null);
+    vulkan.device.destroyBuffer(common.escape_potential_buffer, null);
+    vulkan.device.freeMemory(common.escape_potential_buffer_memory, null);
 
-    c.vkDestroyBuffer(vulkan.device, common.back_pb_buffer, null);
-    c.vkFreeMemory(vulkan.device, common.back_pb_buffer_memory, null);
+    vulkan.device.destroyBuffer(common.back_r2c_buffer, null);
+    vulkan.device.freeMemory(common.back_r2c_buffer_memory, null);
 
-    c.vkDestroyBuffer(vulkan.device, common.perturbation_buffer, null);
-    c.vkFreeMemory(vulkan.device, common.perturbation_buffer_memory, null);
+    vulkan.device.destroyBuffer(common.perturbation_buffer, null);
+    vulkan.device.freeMemory(common.perturbation_buffer_memory, null);
 
-    c.vkDestroyBuffer(vulkan.device, common.perturbation_staging_buffer, null);
-    c.vkFreeMemory(vulkan.device, common.perturbation_staging_buffer_memory, null);
+    vulkan.device.destroyBuffer(common.perturbation_staging_buffer, null);
+    vulkan.device.freeMemory(common.perturbation_staging_buffer_memory, null);
 
-    c.vkDestroyDescriptorPool(vulkan.device, common.descriptor_pool, null);
-    c.vkDestroyDescriptorSetLayout(vulkan.device, common.render_patch_descriptor_set_layout, null);
-    c.vkDestroyDescriptorSetLayout(vulkan.device, common.render_to_coloring_descriptor_set_layout, null);
-    c.vkDestroyDescriptorSetLayout(vulkan.device, common.cpu_to_render_descriptor_set_layout, null);
+    vulkan.device.destroyDescriptorPool(common.descriptor_pool, null);
+    vulkan.device.destroyDescriptorSetLayout(common.render_patch_descriptor_set_layout, null);
+    vulkan.device.destroyDescriptorSetLayout(common.render_to_coloring_descriptor_set_layout, null);
+    vulkan.device.destroyDescriptorSetLayout(common.cpu_to_render_descriptor_set_layout, null);
 
-    c.vkDestroyPipeline(vulkan.device, common.coloring_pipeline, null);
-    c.vkDestroyPipeline(vulkan.device, common.rendering_pipeline, null);
-    c.vkDestroyPipeline(vulkan.device, common.patch_place_pipeline, null);
-    c.vkDestroyPipeline(vulkan.device, common.buffer_remap_pipeline, null);
-    c.vkDestroyPipelineLayout(vulkan.device, common.coloring_pipeline_layout, null);
-    c.vkDestroyPipelineLayout(vulkan.device, common.rendering_pipeline_layout, null);
-    c.vkDestroyPipelineLayout(vulkan.device, common.patch_place_pipeline_layout, null);
-    c.vkDestroyPipelineLayout(vulkan.device, common.buffer_remap_pipeline_layout, null);
+    vulkan.device.destroyPipeline(common.coloring_pipeline, null);
+    vulkan.device.destroyPipeline(common.rendering_pipeline, null);
+    vulkan.device.destroyPipeline(common.patch_place_pipeline, null);
+    vulkan.device.destroyPipeline(common.buffer_remap_pipeline, null);
+    vulkan.device.destroyPipelineLayout(common.coloring_pipeline_layout, null);
+    vulkan.device.destroyPipelineLayout(common.rendering_pipeline_layout, null);
+    vulkan.device.destroyPipelineLayout(common.patch_place_pipeline_layout, null);
+    vulkan.device.destroyPipelineLayout(common.buffer_remap_pipeline_layout, null);
 
-    c.vkDestroyRenderPass(vulkan.device, vulkan.render_pass, null);
+    vulkan.device.destroyRenderPass(vulkan.render_pass, null);
 
-    c.vkDestroyDevice(vulkan.device, null);
+    vulkan.device.destroyDevice(null);
+    alloc.destroy(vulkan.device.wrapper);
 
     if (vulkan.enable_validation_layers) {
-        destroyDebugUtilsMessengerEXT(vulkan.instance, vulkan.debug_messenger, null);
+        vulkan.instance.destroyDebugUtilsMessengerEXT(vulkan.debug_messenger, null);
     }
 
-    c.vkDestroySurfaceKHR(vulkan.instance, window.surface, null);
-    c.vkDestroyInstance(vulkan.instance, null);
+    vulkan.instance.destroySurfaceKHR(window.surface, null);
+    vulkan.instance.destroyInstance(null);
+    alloc.destroy(vulkan.instance.wrapper);
 
     // ---------------------------------------------------------------------------------------------
 
@@ -112,21 +114,6 @@ pub fn cleanup(alloc: Allocator, io: std.Io) void {
     }
 
     alloc.free(common.perturbation_vals);
-}
-
-fn destroyDebugUtilsMessengerEXT(
-    instance: c.VkInstance,
-    debug_messenger: c.VkDebugUtilsMessengerEXT,
-    p_vulkan_alloc: [*c]const c.VkAllocationCallbacks,
-) void {
-    const func: c.PFN_vkDestroyDebugUtilsMessengerEXT = @ptrCast(c.vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
-    if (func) |fptr| {
-        fptr(
-            instance,
-            debug_messenger,
-            p_vulkan_alloc,
-        );
-    }
 }
 
 const std = @import("std");

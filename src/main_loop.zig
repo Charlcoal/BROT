@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pub fn mainLoop(alloc: Allocator, io: std.Io) common.ACError!void {
+pub fn mainLoop(alloc: Allocator, io: std.Io) !void {
     while (c.glfwWindowShouldClose(window.glfw) == 0) {
         c.glfwPollEvents();
         try gui.show(io, alloc);
 
         const delta = get_update_delta_time(io);
-        renderedBufferResolve(io);
+        try renderedBufferResolve(io);
         updateFractalPosition(delta);
         try renderedBufferDispatch(io);
 
@@ -28,34 +28,26 @@ pub fn mainLoop(alloc: Allocator, io: std.Io) common.ACError!void {
     }
 
     common.gpu_interface_lock.lockUncancelable(io);
-    _ = c.vkDeviceWaitIdle(vulkan.device);
+    try vulkan.device.deviceWaitIdle();
     common.gpu_interface_lock.unlock(io);
 }
 
-fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
+fn drawFrame(alloc: Allocator, io: std.Io) !void {
     if (common.frame_buffer_just_resized) {
-        _ = c.vkWaitForFences(
-            vulkan.device,
-            1,
-            &common.in_flight_fences[common.current_frame],
-            c.VK_TRUE,
+        _ = try vulkan.device.waitForFences(
+            (&common.in_flight_fences[common.current_frame])[0..1],
+            .true,
             60_000_000,
         );
         common.frame_buffer_just_resized = false;
     } else {
-        _ = c.vkWaitForFences(
-            vulkan.device,
-            1,
-            &common.in_flight_fences[common.current_frame],
-            c.VK_TRUE,
+        _ = try vulkan.device.waitForFences(
+            (&common.in_flight_fences[common.current_frame])[0..1],
+            .true,
             std.math.maxInt(u64),
         );
     }
-    _ = c.vkResetFences(
-        vulkan.device,
-        1,
-        &common.in_flight_fences[common.current_frame],
-    );
+    try vulkan.device.resetFences((&common.in_flight_fences[common.current_frame])[0..1]);
 
     var delta_dur = common.prev_frame_time.untilNow(io, common.clock);
     const target_delta: i96 = @intFromFloat(1e9 / vulkan.target_frame_rate);
@@ -66,75 +58,58 @@ fn drawFrame(alloc: Allocator, io: std.Io) common.ACError!void {
     }
     common.prev_frame_time = common.clock.now(io);
 
-    var image_index: u32 = undefined;
-    const result = c.vkAcquireNextImageKHR(
-        vulkan.device,
+    const image_khr_result = try vulkan.device.acquireNextImageKHR(
         common.swap_chain,
         std.math.maxInt(u64),
         common.image_availible_semaphores[common.current_frame],
-        @ptrCast(c.VK_NULL_HANDLE),
-        &image_index,
+        .null_handle,
     );
+    const result = image_khr_result.result;
+    const image_index = image_khr_result.image_index;
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
 
-    if (result == c.VK_ERROR_OUT_OF_DATE_KHR) {
+    if (result == .error_out_of_date_khr) {
         try vulkan.recreateSwapChain(alloc);
         return;
-    } else if (result != c.VK_SUCCESS and result != c.VK_SUBOPTIMAL_KHR) {
-        std.debug.panic("Swap chain image acquisition failed!", .{});
-    } else if (result == c.VK_SUBOPTIMAL_KHR) {}
+    } else if (result != .success and result != .suboptimal_khr) {
+        return error.imageAcquisitionFailed;
+    } else if (result == .suboptimal_khr) {}
 
-    _ = c.vkResetCommandBuffer(common.graphics_command_buffers[common.current_frame], 0);
-    recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
+    try vulkan.device.resetCommandBuffer(common.graphics_command_buffers[common.current_frame], .{});
+    try recordColoringCommandBuffer(common.graphics_command_buffers[common.current_frame], image_index);
 
-    const wait_semaphors = [_]c.VkSemaphore{common.image_availible_semaphores[common.current_frame]};
-    const wait_stages: u32 = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    const signal_semaphors = [_]c.VkSemaphore{common.render_finished_semaphores[image_index]};
-    const submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = @intCast(wait_semaphors.len),
-        .pWaitSemaphores = &wait_semaphors,
-        .pWaitDstStageMask = &wait_stages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &common.graphics_command_buffers[common.current_frame],
-        .signalSemaphoreCount = @intCast(signal_semaphors.len),
-        .pSignalSemaphores = &signal_semaphors,
-    };
+    const signal_semaphores = [_]vk.Semaphore{common.render_finished_semaphores[image_index]};
+    try vulkan.device.queueSubmit(vulkan.graphics_queue, &.{.{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = &.{common.image_availible_semaphores[common.current_frame]},
+        .p_wait_dst_stage_mask = &.{.{ .color_attachment_output_bit = true }},
+        .command_buffer_count = 1,
+        .p_command_buffers = &.{common.graphics_command_buffers[common.current_frame]},
+        .signal_semaphore_count = signal_semaphores.len,
+        .p_signal_semaphores = &signal_semaphores,
+    }}, common.in_flight_fences[common.current_frame]);
 
-    if (c.vkQueueSubmit(
-        vulkan.graphics_queue,
-        1,
-        &submit_info,
-        common.in_flight_fences[common.current_frame],
-    ) != c.VK_SUCCESS) {
-        std.debug.panic("Color command buffer submission failed!", .{});
-    }
+    _ = try vulkan.device.queuePresentKHR(vulkan.present_queue, &.{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = &signal_semaphores,
+        .swapchain_count = 1,
+        .p_swapchains = &.{common.swap_chain},
+        .p_image_indices = &.{image_index},
+        .p_results = null,
+    });
 
-    const swap_chains = [_]c.VkSwapchainKHR{common.swap_chain};
-    const present_info: c.VkPresentInfoKHR = .{
-        .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = @intCast(signal_semaphors.len),
-        .pWaitSemaphores = &signal_semaphors,
-        .swapchainCount = @intCast(swap_chains.len),
-        .pSwapchains = &swap_chains,
-        .pImageIndices = &image_index,
-        .pResults = null,
-    };
-
-    _ = c.vkQueuePresentKHR(vulkan.present_queue, &present_info);
-
-    if (result == c.VK_ERROR_OUT_OF_DATE_KHR or result == c.VK_SUBOPTIMAL_KHR or common.frame_buffer_needs_resize) {
+    if (result == .error_out_of_date_khr or result == .suboptimal_khr or common.frame_buffer_needs_resize) {
         common.frame_buffer_needs_resize = false;
         try vulkan.recreateSwapChain(alloc);
         return;
-    } else if (result != c.VK_SUCCESS) {
-        std.debug.panic("Swapchain image acquisition failed!", .{});
+    } else if (result != .success) {
+        return error.imageAcquisitionFailed;
     }
 }
 
-pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
+pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeManageError!void {
     for (0.., &common.resolutions_complete, &common.res_complete_tmp) |i, *res, *res_tmp| {
         const width = common.escape_potential_buffer_block_num_x * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
         const height = common.escape_potential_buffer_block_num_y * @as(u32, 1) << @as(u5, @intCast(common.max_res_scale_exponent - i));
@@ -146,16 +121,14 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
         }
     }
 
-    defer {
-        for (common.resolutions_complete, common.res_complete_tmp) |res, res_tmp| {
-            for (res, res_tmp) |col, col_tmp| {
-                alloc.free(col);
-                alloc.free(col_tmp);
-            }
-            alloc.free(res);
-            alloc.free(res_tmp);
+    defer for (common.resolutions_complete, common.res_complete_tmp) |res, res_tmp| {
+        for (res, res_tmp) |col, col_tmp| {
+            alloc.free(col);
+            alloc.free(col_tmp);
         }
-    }
+        alloc.free(res);
+        alloc.free(res_tmp);
+    };
 
     const FenceStatusTag = enum { unassigned, assigned_normal, assigned_background };
     const FenceStatus = union(FenceStatusTag) {
@@ -168,19 +141,13 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
 
     while (!common.compute_manager_should_close) {
         // wait for a rendering task to complete
-        _ = c.vkWaitForFences(
-            vulkan.device,
-            common.rendering_fences.len,
-            &common.rendering_fences,
-            c.VK_FALSE,
-            std.math.maxInt(u64),
-        );
+        _ = try vulkan.device.waitForFences(common.rendering_fences[0..], .false, std.math.maxInt(u64));
 
         const comp_index: usize = label: {
             for (common.rendering_fences) |_| {
                 round_robin_index += 1;
                 round_robin_index %= common.rendering_fences.len;
-                if (c.vkGetFenceStatus(vulkan.device, common.rendering_fences[round_robin_index]) == c.VK_SUCCESS) {
+                if (try vulkan.device.getFenceStatus(common.rendering_fences[round_robin_index]) == .success) {
                     break :label round_robin_index;
                 }
             }
@@ -299,37 +266,25 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ACError!void {
         try common.gpu_interface_lock.lock(io);
         defer common.gpu_interface_lock.unlock(io);
 
-        _ = c.vkResetFences(vulkan.device, 1, &common.rendering_fences[comp_index]);
+        _ = try vulkan.device.resetFences(common.rendering_fences[comp_index .. comp_index + 1]);
 
-        _ = c.vkResetCommandBuffer(common.rendering_command_buffers[comp_index], 0);
-        recordRenderingCommandBuffer(common.rendering_command_buffers[comp_index], render_params) catch {
-            std.debug.panic("compute manager failed to record buffer!", .{});
+        try vulkan.device.resetCommandBuffer(common.rendering_command_buffers[comp_index], .{});
+        try recordRenderingCommandBuffer(common.rendering_command_buffers[comp_index], render_params);
+
+        const submit_info: vk.SubmitInfo = .{
+            .wait_semaphore_count = 0,
+            .p_wait_semaphores = null,
+            .p_wait_dst_stage_mask = &.{},
+            .command_buffer_count = 1,
+            .p_command_buffers = (&common.rendering_command_buffers[comp_index])[0..1],
+            .signal_semaphore_count = 0,
+            .p_signal_semaphores = null,
         };
 
-        const wait_stages: u32 = 0;
-        const submit_info: c.VkSubmitInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 0,
-            .pWaitSemaphores = null,
-            .pWaitDstStageMask = &wait_stages,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &common.rendering_command_buffers[comp_index],
-            .signalSemaphoreCount = 0,
-            .pSignalSemaphores = null,
-        };
-
-        if (c.vkQueueSubmit(vulkan.compute_queue, 1, &submit_info, common.rendering_fences[comp_index]) != c.VK_SUCCESS) {
-            std.debug.panic("compute manager failed to submit queue!", .{});
-        }
+        try vulkan.device.queueSubmit(vulkan.compute_queue, (&submit_info)[0..1], common.rendering_fences[comp_index]);
     }
 
-    _ = c.vkWaitForFences(
-        vulkan.device,
-        common.rendering_fences.len,
-        &common.rendering_fences,
-        c.VK_TRUE,
-        std.math.maxInt(u64),
-    );
+    _ = try vulkan.device.waitForFences(common.rendering_fences[0..], .true, std.math.maxInt(u64));
 }
 
 fn fractalToBlockScale() f64 {
@@ -377,14 +332,8 @@ fn updateFractalPosition(delta_time: f64) void {
     }
 }
 
-fn renderedBufferResolve(io: std.Io) void {
-    _ = c.vkWaitForFences(
-        vulkan.device,
-        1,
-        &common.render_buffer_write_fence,
-        c.VK_TRUE,
-        std.math.maxInt(u64),
-    );
+fn renderedBufferResolve(io: std.Io) !void {
+    _ = try vulkan.device.waitForFences((&common.render_buffer_write_fence)[0..1], .true, std.math.maxInt(u64));
 
     if (common.placing_patches) {
         common.placing_patches = false;
@@ -439,7 +388,7 @@ fn renderedBufferResolve(io: std.Io) void {
             std.log.debug("set precision to: {}", .{needed_prec});
         }
         common.reference_center_stale = true;
-        reference_calc.update(io, common.max_iterations);
+        try reference_calc.update(io, common.max_iterations);
         common.reference_center_stale = false;
 
         var next_index = (common.current_render_to_coloring_descriptor_index + 1);
@@ -448,7 +397,7 @@ fn renderedBufferResolve(io: std.Io) void {
     }
 }
 
-fn renderedBufferDispatch(io: std.Io) common.ACError!void {
+fn renderedBufferDispatch(io: std.Io) common.ComputeManageError!void {
     if (common.remap_needed) {
         common.remap_needed = false;
         try remap_buffer(io);
@@ -461,57 +410,48 @@ fn renderedBufferDispatch(io: std.Io) common.ACError!void {
     }
 }
 
-fn remap_buffer(io: std.Io) common.ACError!void {
-    _ = c.vkResetFences(vulkan.device, 1, &common.render_buffer_write_fence);
+fn remap_buffer(io: std.Io) common.ComputeManageError!void {
+    try vulkan.device.resetFences((&common.render_buffer_write_fence)[0..1]);
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
 
-    _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
-    recordBufferRemapCommandBuffer();
+    try vulkan.device.resetCommandBuffer(common.rnd_buffer_write_command_buffer, .{});
+    try recordBufferRemapCommandBuffer();
 
-    const compute_wait_stages: u32 = 0;
-    const compute_submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = null,
-        .pWaitDstStageMask = &compute_wait_stages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &common.rnd_buffer_write_command_buffer,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = null,
+    const compute_submit_info: vk.SubmitInfo = .{
+        .wait_semaphore_count = 0,
+        .p_wait_semaphores = null,
+        .p_wait_dst_stage_mask = null,
+        .command_buffer_count = 1,
+        .p_command_buffers = (&common.rnd_buffer_write_command_buffer)[0..1],
+        .signal_semaphore_count = 0,
+        .p_signal_semaphores = null,
     };
 
-    if (c.vkQueueSubmit(vulkan.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        std.debug.panic("patch placement failed to submit queue!", .{});
-    }
+    try vulkan.device.queueSubmit(
+        vulkan.compute_queue,
+        (&compute_submit_info)[0..1],
+        common.render_buffer_write_fence,
+    );
 }
 
-fn place_patches(io: std.Io) common.ACError!void {
-    _ = c.vkResetFences(vulkan.device, 1, &common.render_buffer_write_fence);
+fn place_patches(io: std.Io) common.ComputeManageError!void {
+    try vulkan.device.resetFences((&common.render_buffer_write_fence)[0..1]);
 
     common.gpu_interface_lock.lockUncancelable(io);
     defer common.gpu_interface_lock.unlock(io);
 
-    _ = c.vkResetCommandBuffer(common.rnd_buffer_write_command_buffer, 0);
+    try vulkan.device.resetCommandBuffer(common.rnd_buffer_write_command_buffer, .{});
     common.render_patches_saturated = false;
-    recordPatchPlaceCommandBuffer();
+    try recordPatchPlaceCommandBuffer();
 
-    const compute_wait_stages: u32 = 0;
-    const compute_submit_info: c.VkSubmitInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = null,
-        .pWaitDstStageMask = &compute_wait_stages,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &common.rnd_buffer_write_command_buffer,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = null,
-    };
-
-    if (c.vkQueueSubmit(vulkan.compute_queue, 1, &compute_submit_info, common.render_buffer_write_fence) != c.VK_SUCCESS) {
-        std.debug.panic("patch placement failed to submit queue!", .{});
-    }
+    try vulkan.device.queueSubmit(vulkan.compute_queue, (&vk.SubmitInfo{
+        .wait_semaphore_count = 0,
+        .p_wait_semaphores = null,
+        .p_wait_dst_stage_mask = &.{.{}},
+        .p_command_buffers = (&common.rnd_buffer_write_command_buffer)[0..1],
+    })[0..1], common.render_buffer_write_fence);
 }
 
 fn numCompletePatches() u32 {
@@ -762,43 +702,30 @@ fn chooseRenderPatch(resolutions_complete: [common.num_distinct_res_scales][][]b
     };
 }
 
-fn recordBufferRemapCommandBuffer() void {
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = 0,
-        .pInheritanceInfo = null,
-    };
+fn recordBufferRemapCommandBuffer() !void {
+    try vulkan.device.beginCommandBuffer(common.rnd_buffer_write_command_buffer, &.{
+        .flags = .{},
+        .p_inheritance_info = null,
+    });
 
-    if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording begin failed!", .{});
-    }
+    vulkan.device.cmdBindPipeline(common.rnd_buffer_write_command_buffer, .compute, common.buffer_remap_pipeline);
 
-    c.vkCmdBindPipeline(
+    const next_index = (common.current_render_to_coloring_descriptor_index + 1) %
+        common.render_to_coloring_descriptor_sets.len;
+
+    vulkan.device.cmdBindDescriptorSets(
         common.rnd_buffer_write_command_buffer,
-        c.VK_PIPELINE_BIND_POINT_COMPUTE,
-        common.buffer_remap_pipeline,
-    );
-
-    const next_index = (common.current_render_to_coloring_descriptor_index + 1) % common.render_to_coloring_descriptor_sets.len;
-
-    const descriptor_sets = [_]c.VkDescriptorSet{
-        common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
-        common.render_to_coloring_descriptor_sets[next_index],
-    };
-
-    c.vkCmdBindDescriptorSets(
-        common.rnd_buffer_write_command_buffer,
-        c.VK_PIPELINE_BIND_POINT_COMPUTE,
+        .compute,
         common.buffer_remap_pipeline_layout,
         0,
-        descriptor_sets.len,
-        &descriptor_sets,
-        0,
-        0,
+        &.{
+            common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+            common.render_to_coloring_descriptor_sets[next_index],
+        },
+        null,
     );
 
     const remap_dims = calculateRemapDimensions();
-
     const half_patch_size: u32 = common.renderPatchSize(common.max_res_scale_exponent - 1);
 
     const buffer_src_offset_x: u32 = remap_dims.src_start.x * half_patch_size;
@@ -806,10 +733,10 @@ fn recordBufferRemapCommandBuffer() void {
     const buffer_dst_offset_x: u32 = remap_dims.dst_start.x * half_patch_size;
     const buffer_dst_offset_y: u32 = remap_dims.dst_start.y * half_patch_size;
 
-    c.vkCmdPushConstants(
+    vulkan.device.cmdPushConstants(
         common.rnd_buffer_write_command_buffer,
         common.buffer_remap_pipeline_layout,
-        c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .{ .compute_bit = true },
         0,
         @sizeOf(common.BufferRemapConstants),
         &common.BufferRemapConstants{
@@ -826,16 +753,14 @@ fn recordBufferRemapCommandBuffer() void {
 
     const sqrt_workgroups_per_patch: u32 = common.sqrt_workgroup_num << common.max_res_scale_exponent;
 
-    c.vkCmdDispatch(
+    vulkan.device.cmdDispatch(
         common.rnd_buffer_write_command_buffer,
         sqrt_workgroups_per_patch * common.escape_potential_buffer_block_num_x,
         sqrt_workgroups_per_patch * common.escape_potential_buffer_block_num_y,
         1,
     );
 
-    if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording failed!", .{});
-    }
+    try vulkan.device.endCommandBuffer(common.rnd_buffer_write_command_buffer);
 }
 
 /// in units of half blocks (half of largest render patch size)
@@ -881,41 +806,28 @@ fn calculateRemapDimensions() struct { src_start: common.Pos, dst_start: common.
     };
 }
 
-fn recordPatchPlaceCommandBuffer() void {
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = 0,
-        .pInheritanceInfo = null,
-    };
+fn recordPatchPlaceCommandBuffer() !void {
+    try vulkan.device.beginCommandBuffer(common.rnd_buffer_write_command_buffer, &.{
+        .flags = .{},
+        .p_inheritance_info = null,
+    });
 
-    if (c.vkBeginCommandBuffer(common.rnd_buffer_write_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording begin failed!", .{});
-    }
-
-    c.vkCmdBindPipeline(
-        common.rnd_buffer_write_command_buffer,
-        c.VK_PIPELINE_BIND_POINT_COMPUTE,
-        common.patch_place_pipeline,
-    );
+    vulkan.device.cmdBindPipeline(common.rnd_buffer_write_command_buffer, .compute, common.patch_place_pipeline);
 
     for (0.., &common.render_patches_status, common.render_patches) |i, *status, patch| {
         if (status.* != .complete) continue;
         status.* = .placing;
 
-        const descriptor_sets = [_]c.VkDescriptorSet{
-            common.render_patch_descriptor_sets[i],
-            common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
-        };
-
-        c.vkCmdBindDescriptorSets(
+        vulkan.device.cmdBindDescriptorSets(
             common.rnd_buffer_write_command_buffer,
-            c.VK_PIPELINE_BIND_POINT_COMPUTE,
+            .compute,
             common.patch_place_pipeline_layout,
             0,
-            descriptor_sets.len,
-            &descriptor_sets,
-            0,
-            0,
+            &.{
+                common.render_patch_descriptor_sets[i],
+                common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
+            },
+            null,
         );
 
         const patch_size: u32 = common.renderPatchSize(@intCast(patch.resolution_scale_exponent));
@@ -923,21 +835,21 @@ fn recordPatchPlaceCommandBuffer() void {
             patch.y_pos * common.escape_potential_buffer_block_num_x *
                 common.renderPatchSize(common.max_res_scale_exponent));
 
-        c.vkCmdPushConstants(
+        vulkan.device.cmdPushConstants(
             common.rnd_buffer_write_command_buffer,
             common.patch_place_pipeline_layout,
-            c.VK_SHADER_STAGE_COMPUTE_BIT,
+            .{ .compute_bit = true },
             0,
             @sizeOf(common.PatchPlaceConstants),
-            &common.PatchPlaceConstants{
+            &.{
                 .buffer_offset = buffer_offset,
                 .max_width = common.renderPatchSize(common.max_res_scale_exponent) *
                     common.escape_potential_buffer_block_num_x,
-                .resolution_scale_exponent = @intCast(patch.resolution_scale_exponent),
+                .resolution_scale_exponent = @as(u32, @intCast(patch.resolution_scale_exponent)),
             },
         );
 
-        c.vkCmdDispatch(
+        vulkan.device.cmdDispatch(
             common.rnd_buffer_write_command_buffer,
             common.sqrt_workgroup_num,
             common.sqrt_workgroup_num,
@@ -945,55 +857,41 @@ fn recordPatchPlaceCommandBuffer() void {
         );
     }
 
-    if (c.vkEndCommandBuffer(common.rnd_buffer_write_command_buffer) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording failed!", .{});
-    }
+    try vulkan.device.endCommandBuffer(common.rnd_buffer_write_command_buffer);
 }
 
 const RenderingParams = struct {
     offset: @Vector(2, i32),
     res_exp: i32,
     zoom_exp: i32,
-    patch_descriptor_set: c.VkDescriptorSet,
+    patch_descriptor_set: vk.DescriptorSet,
     active_ref: usize,
 };
 
-fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, params: RenderingParams) common.ACError!void {
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = 0,
-        .pInheritanceInfo = null,
-    };
+fn recordRenderingCommandBuffer(rendering_command_buffer: vk.CommandBuffer, params: RenderingParams) !void {
+    try vulkan.device.beginCommandBuffer(rendering_command_buffer, &.{
+        .flags = .{},
+        .p_inheritance_info = null,
+    });
 
-    if (c.vkBeginCommandBuffer(rendering_command_buffer, &begin_info) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording begin failed!", .{});
-    }
+    vulkan.device.cmdBindPipeline(rendering_command_buffer, .compute, common.rendering_pipeline);
 
-    const descriptor_sets = [_]c.VkDescriptorSet{
-        params.patch_descriptor_set,
-        common.cpu_to_render_descriptor_sets[params.active_ref],
-    };
-
-    c.vkCmdBindPipeline(
+    vulkan.device.cmdBindDescriptorSets(
         rendering_command_buffer,
-        c.VK_PIPELINE_BIND_POINT_COMPUTE,
-        common.rendering_pipeline,
-    );
-    c.vkCmdBindDescriptorSets(
-        rendering_command_buffer,
-        c.VK_PIPELINE_BIND_POINT_COMPUTE,
+        .compute,
         common.rendering_pipeline_layout,
         0,
-        descriptor_sets.len,
-        &descriptor_sets,
-        0,
-        0,
+        &.{
+            params.patch_descriptor_set,
+            common.cpu_to_render_descriptor_sets[params.active_ref],
+        },
+        null,
     );
 
-    c.vkCmdPushConstants(
+    vulkan.device.cmdPushConstants(
         rendering_command_buffer,
         common.rendering_pipeline_layout,
-        c.VK_SHADER_STAGE_COMPUTE_BIT,
+        .{ .compute_bit = true },
         0,
         @sizeOf(common.RenderingConstants),
         &common.RenderingConstants{
@@ -1005,77 +903,49 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: c.VkCommandBuffer, par
         },
     );
 
-    c.vkCmdDispatch(
-        rendering_command_buffer,
-        common.sqrt_workgroup_num,
-        common.sqrt_workgroup_num,
-        1,
-    );
-
-    if (c.vkEndCommandBuffer(rendering_command_buffer) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording failed!", .{});
-    }
+    vulkan.device.cmdDispatch(rendering_command_buffer, common.sqrt_workgroup_num, common.sqrt_workgroup_num, 1);
+    try vulkan.device.endCommandBuffer(rendering_command_buffer);
 }
 
-fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u32) void {
-    const begin_info: c.VkCommandBufferBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = 0,
-        .pInheritanceInfo = null,
-    };
+fn recordColoringCommandBuffer(command_buffer: vk.CommandBuffer, image_index: u32) !void {
+    try vulkan.device.beginCommandBuffer(command_buffer, &.{
+        .flags = .{},
+        .p_inheritance_info = null,
+    });
 
-    if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording begin failed!", .{});
-    }
-
-    const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0, 0, 0, 1 } } };
-    const render_pass_info: c.VkRenderPassBeginInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = vulkan.render_pass,
+    const clear_color: vk.ClearValue = .{ .color = .{ .float_32 = .{ 0, 0, 0, 1 } } };
+    vulkan.device.cmdBeginRenderPass(command_buffer, &.{
+        .render_pass = vulkan.render_pass,
         .framebuffer = common.swap_chain_framebuffers[image_index],
-        .renderArea = .{
+        .render_area = .{
             .offset = .{ .x = 0, .y = 0 },
             .extent = common.swap_chain_extent,
         },
-        .clearValueCount = 1,
-        .pClearValues = &clear_color,
-    };
+        .p_clear_values = &.{clear_color},
+        .clear_value_count = 1,
+    }, .@"inline");
 
-    c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
-    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, common.coloring_pipeline);
-
-    const viewport: c.VkViewport = .{
+    vulkan.device.cmdBindPipeline(command_buffer, .graphics, common.coloring_pipeline);
+    const viewport: vk.Viewport = .{
         .x = 0,
         .y = 0,
-        .width = @floatFromInt(common.swap_chain_extent.width),
-        .height = @floatFromInt(common.swap_chain_extent.height),
-        .minDepth = 0,
-        .maxDepth = 1,
+        .width = @as(f32, @floatFromInt(common.swap_chain_extent.width)),
+        .height = @as(f32, @floatFromInt(common.swap_chain_extent.height)),
+        .min_depth = 0,
+        .max_depth = 1,
     };
-    c.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+    vulkan.device.cmdSetViewport(command_buffer, 0, (&viewport)[0..1]);
 
-    const scissor: c.VkRect2D = .{
+    vulkan.device.cmdSetScissor(command_buffer, 0, &.{.{
         .offset = .{ .x = 0, .y = 0 },
         .extent = common.swap_chain_extent,
-    };
-    c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    }});
 
     // --------------- draw main rendered area ---------------
-    const descriptor_sets = [_]c.VkDescriptorSet{
+    vulkan.device.cmdBindDescriptorSets(command_buffer, .graphics, common.coloring_pipeline_layout, 0, &.{
         common.render_to_coloring_descriptor_sets[common.current_render_to_coloring_descriptor_index],
         common.back_r2c_descriptor_sets[common.current_back_r2c_descriptor_index],
-    };
-
-    c.vkCmdBindDescriptorSets(
-        command_buffer,
-        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        common.coloring_pipeline_layout,
-        0,
-        descriptor_sets.len,
-        &descriptor_sets,
-        0,
-        null,
-    );
+    }, null);
 
     const screen_center = common.getScreenCenter();
     const zoom_mult = @exp2(@as(f64, @floatFromInt(
@@ -1093,10 +963,10 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
             @as(f64, @floatFromInt(common.renderPatchSize(0))) / 2.0,
     };
 
-    c.vkCmdPushConstants(
+    vulkan.device.cmdPushConstants(
         command_buffer,
         common.coloring_pipeline_layout,
-        c.VK_SHADER_STAGE_FRAGMENT_BIT,
+        .{ .fragment_bit = true },
         0,
         @sizeOf(common.ColoringConstants),
         &common.ColoringConstants{
@@ -1122,21 +992,11 @@ fn recordColoringCommandBuffer(command_buffer: c.VkCommandBuffer, image_index: u
         },
     );
 
-    c.vkCmdDraw(
-        command_buffer,
-        6,
-        1,
-        0,
-        0,
-    );
-
+    vulkan.device.cmdDraw(command_buffer, 6, 1, 0, 0);
     gui.draw(command_buffer);
 
-    c.vkCmdEndRenderPass(command_buffer);
-
-    if (c.vkEndCommandBuffer(command_buffer) != c.VK_SUCCESS) {
-        std.debug.panic("Command buffer recording failed!", .{});
-    }
+    vulkan.device.cmdEndRenderPass(command_buffer);
+    try vulkan.device.endCommandBuffer(command_buffer);
 }
 
 fn get_update_delta_time(io: std.Io) f64 {
@@ -1152,6 +1012,7 @@ const patch_log = std.log.scoped(.render_patch);
 const Allocator = std.mem.Allocator;
 const RenderPatch = common.RenderPatch;
 
+const vk = @import("vulkan");
 const std = @import("std");
 const common = @import("common_defs.zig");
 const vulkan = @import("vulkan.zig");

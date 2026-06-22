@@ -16,38 +16,38 @@
 
 pub var cache_dir: std.Io.Dir = undefined;
 
-pub var coloring_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var rendering_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var patch_place_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var buffer_remap_pipeline_layout: c.VkPipelineLayout = undefined;
-pub var coloring_pipeline: c.VkPipeline = undefined;
-pub var rendering_pipeline: c.VkPipeline = undefined;
-pub var patch_place_pipeline: c.VkPipeline = undefined;
-pub var buffer_remap_pipeline: c.VkPipeline = undefined;
+pub var coloring_pipeline_layout: vk.PipelineLayout = undefined;
+pub var rendering_pipeline_layout: vk.PipelineLayout = undefined;
+pub var patch_place_pipeline_layout: vk.PipelineLayout = undefined;
+pub var buffer_remap_pipeline_layout: vk.PipelineLayout = undefined;
+pub var coloring_pipeline: vk.Pipeline = undefined;
+pub var rendering_pipeline: vk.Pipeline = undefined;
+pub var patch_place_pipeline: vk.Pipeline = undefined;
+pub var buffer_remap_pipeline: vk.Pipeline = undefined;
 
-pub var graphics_command_pool: c.VkCommandPool = undefined;
-pub var compute_command_pool: c.VkCommandPool = undefined;
-pub var graphics_command_buffers: []c.VkCommandBuffer = undefined;
-pub var rendering_command_buffers: [num_active_render_patches]c.VkCommandBuffer = undefined;
-pub var rnd_buffer_write_command_buffer: c.VkCommandBuffer = undefined;
+pub var graphics_command_pool: vk.CommandPool = undefined;
+pub var compute_command_pool: vk.CommandPool = undefined;
+pub var graphics_command_buffers: []vk.CommandBuffer = undefined;
+pub var rendering_command_buffers: [num_active_render_patches]vk.CommandBuffer = undefined;
+pub var rnd_buffer_write_command_buffer: vk.CommandBuffer = undefined;
 
-pub var swap_chain: c.VkSwapchainKHR = null;
-pub var swap_chain_images: []c.VkImage = undefined;
-pub var swap_chain_image_format: c.VkFormat = undefined;
-pub var swap_chain_extent: c.VkExtent2D = undefined;
-pub var swap_chain_image_views: []c.VkImageView = undefined;
-pub var swap_chain_framebuffers: []c.VkFramebuffer = undefined;
+pub var swap_chain: vk.SwapchainKHR = .null_handle;
+pub var swap_chain_images: []vk.Image = undefined;
+pub var swap_chain_image_format: vk.Format = undefined;
+pub var swap_chain_extent: vk.Extent2D = undefined;
+pub var swap_chain_image_views: []vk.ImageView = undefined;
+pub var swap_chain_framebuffers: []vk.Framebuffer = undefined;
 pub var current_frame: u32 = 0;
 pub var frame_buffer_needs_resize: bool = false;
 pub var frame_buffer_just_resized: bool = false;
 
-pub var image_availible_semaphores: []c.VkSemaphore = undefined;
-pub var render_finished_semaphores: []c.VkSemaphore = undefined;
-pub var in_flight_fences: []c.VkFence = undefined;
-pub var rendering_fences: [num_active_render_patches]c.VkFence = undefined;
-pub var render_buffer_write_fence: c.VkFence = undefined;
+pub var image_availible_semaphores: []vk.Semaphore = undefined;
+pub var render_finished_semaphores: []vk.Semaphore = undefined;
+pub var in_flight_fences: []vk.Fence = undefined;
+pub var rendering_fences: [num_active_render_patches]vk.Fence = undefined;
+pub var render_buffer_write_fence: vk.Fence = undefined;
 
-pub var compute_manager_future: std.Io.Future(ACError!void) = undefined;
+pub var compute_manager_future: std.Io.Future(ComputeManageError!void) = undefined;
 pub var gpu_interface_lock: std.Io.Mutex = .init;
 pub var compute_manager_should_close: bool = false;
 
@@ -63,14 +63,14 @@ pub var escape_potential_buffer_block_num_x: u32 = undefined;
 pub var escape_potential_buffer_block_num_y: u32 = undefined;
 
 pub var escape_potential_buffer_size: u32 = undefined;
-pub var escape_potential_buffer: c.VkBuffer = undefined;
-pub var escape_potential_buffer_memory: c.VkDeviceMemory = undefined;
+pub var escape_potential_buffer: vk.Buffer = undefined;
+pub var escape_potential_buffer_memory: vk.DeviceMemory = undefined;
 
-pub var render_patch_buffer: c.VkBuffer = undefined;
-pub var render_patch_buffer_memory: c.VkDeviceMemory = undefined;
+pub var render_patch_buffer: vk.Buffer = undefined;
+pub var render_patch_buffer_memory: vk.DeviceMemory = undefined;
 
-pub var back_pb_buffer: c.VkBuffer = undefined;
-pub var back_pb_buffer_memory: c.VkDeviceMemory = undefined;
+pub var back_r2c_buffer: vk.Buffer = undefined;
+pub var back_r2c_buffer_memory: vk.DeviceMemory = undefined;
 
 pub var placing_patches: bool = false;
 pub var remapping_buffer: bool = false;
@@ -78,30 +78,30 @@ pub var remapping_buffer: bool = false;
 pub var perturbation_vals: []@Vector(2, f32) = undefined;
 pub var max_iterations: u32 = 1 << 13;
 pub var allocated_iterations: u32 = 1 << 14;
-pub var perturbation_buffer: c.VkBuffer = undefined;
-pub var perturbation_buffer_memory: c.VkDeviceMemory = undefined;
-pub var perturbation_staging_buffer: c.VkBuffer = undefined;
-pub var perturbation_staging_buffer_memory: c.VkDeviceMemory = undefined;
+pub var perturbation_buffer: vk.Buffer = undefined;
+pub var perturbation_buffer_memory: vk.DeviceMemory = undefined;
+pub var perturbation_staging_buffer: vk.Buffer = undefined;
+pub var perturbation_staging_buffer_memory: vk.DeviceMemory = undefined;
 
-pub var descriptor_pool: c.VkDescriptorPool = undefined;
+pub var descriptor_pool: vk.DescriptorPool = undefined;
 
-pub var render_patch_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]c.VkDescriptorSet = undefined;
+pub var render_patch_descriptor_set_layout: vk.DescriptorSetLayout = undefined;
+pub var render_patch_descriptor_sets: [patch_buffer_factor * num_active_render_patches]vk.DescriptorSet = undefined;
 
 pub var current_render_to_coloring_descriptor_index: usize = 0;
-pub var render_to_coloring_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var render_to_coloring_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+pub var render_to_coloring_descriptor_set_layout: vk.DescriptorSetLayout = undefined;
+pub var render_to_coloring_descriptor_sets: [2]vk.DescriptorSet = undefined;
 
 pub const PanOffset = struct { x: f64, y: f64, zoom: i32 };
 pub var back_r2c_offset = [1]PanOffset{.{ .x = 0, .y = 0, .zoom = 0 }} ** 2;
 pub var back_r2c_is_rendering = [1]bool{false} ** 2;
 pub var background_needs_render = true;
 pub var current_back_r2c_descriptor_index: usize = 0;
-pub var back_r2c_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+pub var back_r2c_descriptor_sets: [2]vk.DescriptorSet = undefined;
 
 pub var current_cpu_to_render_descriptor_index: usize = 0;
-pub var cpu_to_render_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
-pub var cpu_to_render_descriptor_sets: [2]c.VkDescriptorSet = undefined;
+pub var cpu_to_render_descriptor_set_layout: vk.DescriptorSetLayout = undefined;
+pub var cpu_to_render_descriptor_sets: [2]vk.DescriptorSet = undefined;
 
 pub var render_patches: [patch_buffer_factor * num_active_render_patches]RenderPatch = undefined;
 pub var render_patches_status = [1]RenderPatchStatus{.empty} **
@@ -119,14 +119,6 @@ pub var mpf_intermediates: [3]c.mpf_t = undefined;
 
 pub var prev_frame_time: std.Io.Timestamp = .zero;
 pub var prev_update_time: std.Io.Timestamp = .zero;
-
-pub fn str_eq(a: [*:0]const u8, b: [*:0]const u8) bool {
-    var i: usize = 0;
-    while (a[i] == b[i]) : (i += 1) {
-        if (a[i] == 0) return true;
-    }
-    return false;
-}
 
 pub fn interpolate_val(start: f64, target: f64, progress: f64) f64 {
     if (progress > 1.0) {
@@ -190,53 +182,34 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
         try io.sleep(.fromMicroseconds(100), .awake);
     }
 
-    c.vkDestroyBuffer(vulkan.device, perturbation_buffer, null);
-    c.vkFreeMemory(vulkan.device, perturbation_buffer_memory, null);
+    vulkan.device.destroyBuffer(perturbation_buffer, null);
+    vulkan.device.freeMemory(perturbation_buffer_memory, null);
 
-    c.vkDestroyBuffer(vulkan.device, perturbation_staging_buffer, null);
-    c.vkFreeMemory(vulkan.device, perturbation_staging_buffer_memory, null);
+    vulkan.device.destroyBuffer(perturbation_staging_buffer, null);
+    vulkan.device.freeMemory(perturbation_staging_buffer_memory, null);
 
-    perturbation_buffer, perturbation_buffer_memory = vulkan.createBuffer(
+    perturbation_buffer, perturbation_buffer_memory = try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32) * cpu_to_render_descriptor_sets.len,
-        c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        .{ .device_local_bit = true },
         null,
     );
 
-    perturbation_staging_buffer, perturbation_staging_buffer_memory = vulkan.createBuffer(
+    perturbation_staging_buffer, perturbation_staging_buffer_memory = try vulkan.createBuffer(
         new_alloc_iterations * 2 * @sizeOf(f32),
-        c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        .{ .transfer_src_bit = true },
+        .{ .host_visible_bit = true, .host_coherent_bit = true },
         null,
     );
 
-    for (0..cpu_to_render_descriptor_sets.len) |i| {
-        const perturbation_buffer_info: c.VkDescriptorBufferInfo = .{
-            .buffer = perturbation_buffer,
-            .offset = new_alloc_iterations * 2 * @sizeOf(f32) * i,
-            .range = new_alloc_iterations * 2 * @sizeOf(f32),
-        };
-
-        const descriptor_writes = [_]c.VkWriteDescriptorSet{
-            .{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = cpu_to_render_descriptor_sets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &perturbation_buffer_info,
-            },
-        };
-
-        c.vkUpdateDescriptorSets(
-            vulkan.device,
-            @intCast(descriptor_writes.len),
-            &descriptor_writes,
-            0,
-            null,
-        );
-    }
+    try vulkan.createMultiBufferDescriptorSets(
+        alloc,
+        cpu_to_render_descriptor_set_layout,
+        cpu_to_render_descriptor_sets[0..],
+        descriptor_pool,
+        perturbation_buffer,
+        new_alloc_iterations * 2 * @sizeOf(f32),
+    );
 
     allocated_iterations = new_alloc_iterations;
 }
@@ -431,6 +404,14 @@ pub const RenderPatchStatus = enum {
 };
 
 pub const ACError = Allocator.Error || std.Io.Cancelable;
+pub const ComputeManageError = ACError || error{
+    Unknown,
+    DeviceLost,
+    ValidationFailed,
+    OutOfHostMemory,
+    OutOfDeviceMemory,
+    InvalidVideoStdParametersKHR,
+};
 const Allocator = std.mem.Allocator;
 
 const std = @import("std");
@@ -438,4 +419,5 @@ pub const c = @import("c");
 const big_float = @import("big_float.zig");
 const builtin = @import("builtin");
 const vulkan = @import("vulkan.zig");
+const vk = @import("vulkan");
 const window = @import("window.zig");

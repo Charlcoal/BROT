@@ -38,7 +38,7 @@ pub fn run(alloc: Allocator, io: std.Io, cache_dir: std.Io.Dir) !void {
     try vulkan.init(alloc, io);
     gui.init();
     try ref_calc.init(alloc);
-    ref_calc.update(io, common.max_iterations);
+    try ref_calc.update(io, common.max_iterations);
     common.compute_manager_future = try io.concurrent(
         main_loop.computeManage,
         .{ alloc, io },

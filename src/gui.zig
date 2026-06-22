@@ -16,10 +16,10 @@
 
 pub var context: *c.ImGuiContext = undefined;
 pub var frame_shown: bool = false;
-pub var descriptor_pool: c.VkDescriptorPool = undefined;
+pub var descriptor_pool: vk.DescriptorPool = undefined;
 
 fn vk_loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
-    return getInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
+    return c.glfwGetInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
 }
 
 fn checkVkResult(err: c.VkResult) callconv(.c) void {
@@ -36,7 +36,7 @@ pub fn deinit() void {
     c.cImGui_ImplVulkan_Shutdown();
     c.cImGui_ImplGlfw_Shutdown();
     c.ImGui_DestroyContext(context);
-    c.vkDestroyDescriptorPool(vulkan.device, descriptor_pool, null);
+    vulkan.device.destroyDescriptorPool(descriptor_pool, null);
 }
 
 pub fn init() void {
@@ -52,17 +52,17 @@ pub fn init() void {
 
     _ = c.cImGui_ImplVulkan_LoadFunctions(c.VK_VERSION_1_3, vk_loader);
     var info: c.struct_ImGui_ImplVulkan_InitInfo_t = .{
-        .Instance = vulkan.instance,
-        .PhysicalDevice = vulkan.physical_device,
-        .Device = vulkan.device,
+        .Instance = @ptrFromInt(@intFromEnum(vulkan.instance.handle)),
+        .PhysicalDevice = @ptrFromInt(@intFromEnum(vulkan.physical_device)),
+        .Device = @ptrFromInt(@intFromEnum(vulkan.device.handle)),
         .QueueFamily = vulkan.queue_families.graphics_family.?,
-        .Queue = vulkan.graphics_queue,
-        .DescriptorPool = descriptor_pool,
+        .Queue = @ptrFromInt(@intFromEnum(vulkan.graphics_queue)),
+        .DescriptorPool = @ptrFromInt(@intFromEnum(descriptor_pool)),
         .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
         .Allocator = null, // TODO
         .PipelineInfoMain = .{
-            .RenderPass = vulkan.render_pass,
+            .RenderPass = @ptrFromInt(@intFromEnum(vulkan.render_pass)),
             .Subpass = 0,
             .MSAASamples = c.VK_SAMPLE_COUNT_1_BIT,
         },
@@ -158,23 +158,23 @@ pub fn show(io: std.Io, alloc: Allocator) !void {
                 try common.reAllocPerturbation(io, alloc, new_max_iterations);
             common.max_iterations = new_max_iterations;
             common.buffer_invalidated = true;
-            reference_calc.update(io, new_max_iterations);
+            try reference_calc.update(io, new_max_iterations);
         }
     }
 }
 
-pub fn draw(command_buffer: c.VkCommandBuffer) void {
+pub fn draw(command_buffer: vk.CommandBuffer) void {
     c.ImGui_Render();
     c.cImGui_ImplVulkan_RenderDrawData(
         c.ImGui_GetDrawData(),
-        command_buffer,
+        @ptrFromInt(@intFromEnum(command_buffer)),
     );
     frame_shown = false;
 }
 
-const getInstanceProcAddress = c.glfwGetInstanceProcAddress;
 const Allocator = std.mem.Allocator;
 
+const vk = @import("vulkan");
 const std = @import("std");
 const common = @import("common_defs.zig");
 const window = @import("window.zig");

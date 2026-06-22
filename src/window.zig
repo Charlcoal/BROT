@@ -17,7 +17,7 @@
 pub var glfw: *c.GLFWwindow = undefined;
 pub var height: i32 = 600;
 pub var width: i32 = 800;
-pub var surface: c.VkSurfaceKHR = null;
+pub var surface: vk.SurfaceKHR = .null_handle;
 
 pub fn init() void {
     _ = c.glfwInit();
@@ -81,6 +81,7 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
     }
 }
 
+const vk = @import("vulkan");
 const std = @import("std");
 const common = @import("common_defs.zig");
 const c = @import("c");
