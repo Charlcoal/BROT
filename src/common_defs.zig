@@ -202,11 +202,8 @@ pub fn reAllocPerturbation(io: std.Io, alloc: Allocator, new_max_iterations: u32
         null,
     );
 
-    try vulkan.createMultiBufferDescriptorSets(
-        alloc,
-        cpu_to_render_descriptor_set_layout,
+    try vulkan.updateMultiBufferDescriptorSets(
         cpu_to_render_descriptor_sets[0..],
-        descriptor_pool,
         perturbation_buffer,
         new_alloc_iterations * 2 * @sizeOf(f32),
     );
