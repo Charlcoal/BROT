@@ -210,6 +210,13 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeManageError!voi
                     -@as(i32, @intCast((common.renderPatchSize(res_exp) / 2))),
                     -@as(i32, @intCast((common.renderPatchSize(res_exp) / 2))),
                 },
+                .center_pos = if (gui.current_method == .direct)
+                    .{
+                        c.mpf_get_d(&common.fractal_pos.x),
+                        c.mpf_get_d(&common.fractal_pos.y),
+                    }
+                else
+                    undefined,
                 .res_exp = res_exp,
                 .zoom_exp = common.fractal_pos.zoom_exp,
                 .patch_descriptor_set = common.back_r2c_descriptor_sets[bg_next_render_index],
@@ -259,6 +266,13 @@ pub fn computeManage(alloc: Allocator, io: std.Io) common.ComputeManageError!voi
                     @as(i32, @intCast(render_patch_size * patch_to_render.x_pos)) - center_screen_pos[0],
                     @as(i32, @intCast(render_patch_size * patch_to_render.y_pos)) - center_screen_pos[1],
                 },
+                .center_pos = if (gui.current_method == .direct)
+                    .{
+                        c.mpf_get_d(&common.fractal_pos.x),
+                        c.mpf_get_d(&common.fractal_pos.y),
+                    }
+                else
+                    undefined,
                 .res_exp = @intCast(patch_to_render.resolution_scale_exponent),
                 .zoom_exp = common.fractal_pos.zoom_exp,
                 .patch_descriptor_set = common.render_patch_descriptor_sets[buffer_to_render_to.?],
@@ -866,6 +880,7 @@ fn recordPatchPlaceCommandBuffer() !void {
 
 const RenderingParams = struct {
     offset: @Vector(2, i32),
+    center_pos: @Vector(2, f64),
     res_exp: i32,
     zoom_exp: i32,
     patch_descriptor_set: vk.DescriptorSet,
@@ -900,6 +915,10 @@ fn recordRenderingCommandBuffer(rendering_command_buffer: vk.CommandBuffer, para
         @sizeOf(common.RenderingConstants),
         &common.RenderingConstants{
             .screen_offset = params.offset,
+            .center_pos = .{
+                @floatCast(params.center_pos[0]),
+                @floatCast(params.center_pos[1]),
+            },
             .max_iterations = common.max_iterations,
             .height_scale_exp = params.zoom_exp,
             .resolution_scale_exponent = params.res_exp,

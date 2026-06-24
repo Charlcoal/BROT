@@ -17,6 +17,7 @@
 pub var context: *c.ImGuiContext = undefined;
 pub var frame_shown: bool = false;
 pub var descriptor_pool: vk.DescriptorPool = undefined;
+pub var current_method: AlgorithmMethod = .direct;
 
 fn vk_loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return c.glfwGetInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
@@ -161,6 +162,31 @@ pub fn show(io: std.Io, alloc: Allocator) !void {
             try reference_calc.update(io, new_max_iterations);
         }
     }
+
+    if (c.ImGui_CollapsingHeader("Algorithm", 0)) {
+        if (c.ImGui_BeginCombo("Method", @tagName(current_method), 0)) {
+            for (0..AlgorithmMethod.count) |i| {
+                const method: AlgorithmMethod = @enumFromInt(i);
+                var is_selected: bool = method == current_method;
+                if (c.ImGui_SelectableBoolPtr(@tagName(method), &is_selected, 0)) {
+                    current_method = method;
+
+                    common.gpu_interface_lock.lockUncancelable(io);
+                    common.buffer_invalidated = true;
+                    try vulkan.device.deviceWaitIdle();
+                    defer common.gpu_interface_lock.unlock(io);
+
+                    vulkan.device.destroyPipeline(common.rendering_pipeline, null);
+                    vulkan.device.destroyPipelineLayout(common.rendering_pipeline_layout, null);
+                    try vulkan.createRendingPipeline(alloc, io);
+                }
+
+                if (is_selected) c.ImGui_SetItemDefaultFocus();
+            }
+
+            c.ImGui_EndCombo();
+        }
+    }
 }
 
 pub fn draw(command_buffer: vk.CommandBuffer) void {
@@ -173,6 +199,16 @@ pub fn draw(command_buffer: vk.CommandBuffer) void {
 }
 
 const Allocator = std.mem.Allocator;
+
+const AlgorithmMethod = enum(u32) {
+    const count = 2;
+    direct = 0,
+    perturbation = 1,
+};
+pub const algorithm_method_glsls: []const [:0]const u8 = &.{
+    @embedFile("shaders/mandelbrot_direct.comp"),
+    @embedFile("shaders/mandelbrot_perturbation.comp"),
+};
 
 const vk = @import("vulkan");
 const std = @import("std");

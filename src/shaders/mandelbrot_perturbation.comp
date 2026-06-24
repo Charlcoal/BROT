@@ -1,0 +1,108 @@
+// BROT - A fast mandelbrot set explorer
+// Copyright (C) 2025 - 2026 Charles Reischer
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+// 
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#version 450
+
+layout(set = 0, std430, binding = 0) writeonly buffer render_patch_buffer {
+    float potential_vals[];
+};
+
+layout(set = 1, std430, binding = 0) readonly buffer storage_from_cpu {
+    vec2 perturbation_ref[];
+};
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout( push_constant ) uniform UniformBufferObject {
+    ivec2 screen_offset;
+    vec2 center_pos;
+    uint max_iterations;
+    int scale_exp;
+    int res_scale_exp;
+    uint cur_height;
+} ubo;
+
+float rad_sqr(vec2 a) {
+    return a.x*a.x + a.y*a.y;
+}
+
+void main() {
+    const float height_scale = exp2(float(ubo.scale_exp)) / ubo.cur_height;
+    const uint max_count = ubo.max_iterations;
+	const float escape_radius = 1e6;
+	const float interior_test_e_sqr = 1e-6;
+    const float pixel_scale = float(1u << ubo.res_scale_exp);
+
+    vec2 screen_loc = pixel_scale * vec2(gl_GlobalInvocationID.xy) + vec2(ubo.screen_offset);
+    // center within render patch
+    vec2 center_screen_loc = vec2(screen_loc) + pixel_scale/2.0;
+
+    vec2 delta_c = center_screen_loc * height_scale;
+    vec2 delta_pos = delta_c;
+    
+    uint count = 1;
+    int ref_index = 1;
+    float dx_sqr = delta_pos.x * delta_pos.x;
+    float dy_sqr = delta_pos.y * delta_pos.y;
+    float dxdy = delta_pos.x * delta_pos.y;
+    vec2 Z = perturbation_ref[1];
+    float tot_rad = rad_sqr(Z+delta_pos);
+    while (count < max_count && tot_rad < escape_radius) {
+        delta_pos = 2 * vec2(
+            delta_pos.x * Z.x - delta_pos.y * Z.y,
+            delta_pos.x * Z.y + delta_pos.y * Z.x
+        );
+        delta_pos += vec2(dx_sqr - dy_sqr, 2 * dxdy) + delta_c;
+
+        dx_sqr = delta_pos.x * delta_pos.x;
+        dy_sqr = delta_pos.y * delta_pos.y;
+        dxdy = delta_pos.x * delta_pos.y;
+        count++;
+        ref_index++;
+        Z = perturbation_ref[ref_index];
+        tot_rad = rad_sqr(Z+delta_pos);
+
+        float Z_rad = rad_sqr(Z);
+        float dz_rad = dx_sqr + dy_sqr;
+
+        if (tot_rad < dz_rad) {
+            ref_index = 0;
+            delta_pos += Z;
+            dx_sqr = delta_pos.x * delta_pos.x;
+            dy_sqr = delta_pos.y * delta_pos.y;
+            dxdy = delta_pos.x * delta_pos.y;
+            Z = vec2(0);
+            tot_rad = dx_sqr + dy_sqr;
+        }
+    }
+
+    vec2 pos = Z + delta_pos;
+    vec2 c = delta_c + perturbation_ref[0];
+
+    float x_sqr = pos.x * pos.x;
+    float y_sqr = pos.y * pos.y;
+	float rad_sqr = x_sqr + y_sqr;
+	float interior_test_sqr = rad_sqr;
+
+    float potential_val;
+    if (count == max_count || interior_test_sqr <= interior_test_e_sqr) {
+        potential_val = -1.0;
+    } else {
+		potential_val = log2(max(1.00001, count - log2(log2(rad_sqr) / 2.0f) + 1.0));
+	}
+
+    potential_vals[gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_WorkGroupSize.y * gl_NumWorkGroups.y] = potential_val;
+}

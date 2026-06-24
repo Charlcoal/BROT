@@ -222,6 +222,7 @@ pub const dbg = builtin.mode == std.builtin.OptimizeMode.Debug;
 
 pub const RenderingConstants = extern struct {
     screen_offset: @Vector(2, i32),
+    center_pos: @Vector(2, f32),
     max_iterations: u32,
     height_scale_exp: i32,
     resolution_scale_exponent: i32,

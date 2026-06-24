@@ -568,7 +568,7 @@ fn createPatchPlacePipeline(alloc: Allocator, io: std.Io) !void {
     );
 }
 
-fn createRendingPipeline(alloc: Allocator, io: std.Io) !void {
+pub fn createRendingPipeline(alloc: Allocator, io: std.Io) !void {
     const push_constant_range: vk.PushConstantRange = .{
         .offset = 0,
         .size = @sizeOf(common.RenderingConstants),
@@ -580,7 +580,15 @@ fn createRendingPipeline(alloc: Allocator, io: std.Io) !void {
         common.cpu_to_render_descriptor_set_layout,
     };
 
-    const module = try createShaderModule(alloc, io, null, c.GLSLANG_STAGE_COMPUTE, render_glsl, "render.comp", true);
+    const module = try createShaderModule(
+        alloc,
+        io,
+        null,
+        c.GLSLANG_STAGE_COMPUTE,
+        gui.algorithm_method_glsls[@intFromEnum(gui.current_method)],
+        @tagName(gui.current_method),
+        true,
+    );
     defer device.destroyShaderModule(module, null);
     common.rendering_pipeline, common.rendering_pipeline_layout = try createComputePipeline(
         module,
@@ -1338,7 +1346,7 @@ pub const QueueFamilyIndices = struct {
 
 const dummy_vert_glsl = @embedFile("shaders/triangle.vert");
 const color_glsl = @embedFile("shaders/triangle.frag");
-const render_glsl = @embedFile("shaders/mandelbrot.comp");
+// const render_glsl = @embedFile("shaders/mandelbrot.comp");
 const patch_place_glsl = @embedFile("shaders/patch_place.comp");
 const buffer_remap_glsl = @embedFile("shaders/buffer_remap.comp");
 
