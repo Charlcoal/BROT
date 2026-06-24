@@ -1181,7 +1181,7 @@ fn createSwapChain(alloc: Allocator) !void {
 
 fn chooseSwapSurfaceFormat(availible_formats: []const vk.SurfaceFormatKHR) vk.SurfaceFormatKHR {
     for (availible_formats) |format| {
-        if (format.format == .b8g8r8_srgb and format.color_space == .srgb_nonlinear_khr) {
+        if (format.format == .b8g8r8a8_srgb and format.color_space == .srgb_nonlinear_khr) {
             return format;
         }
     }
