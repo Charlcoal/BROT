@@ -22,6 +22,8 @@ pub fn main(init: std.process.Init) !void {
         try std.fs.path.resolveWindows(init.gpa, &.{ init.environ_map.get("APPDATA").?, "BROT", "Temp" })
     else if (builtin.os.tag == .linux) // ~/.cache/BROT
         try std.fs.path.resolvePosix(init.gpa, &.{ init.environ_map.get("HOME").?, ".cache", "BROT" })
+    else if (builtin.os.tag == .macos) // ~/Library/Caches/BROT
+        try std.fs.path.resolvePosix(init.gpa, &.{ init.environ_map.get("HOME").?, "Library", "Cache", "BROT" })
     else
         @compileError("OS cache location is not defined!!!");
 

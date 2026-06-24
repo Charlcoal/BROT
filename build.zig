@@ -22,22 +22,89 @@ const Resources = struct {
 };
 const resources: Resources = @import("resources.zon");
 
-fn addIncludePathsToTranslateC(translate_c: *std.Build.Step.TranslateC, lib: *std.Build.Step.Compile) void {
-    for (lib.root_module.include_dirs.items) |*included| {
-        switch (included.*) {
-            .path => translate_c.addIncludePath(included.path),
-            .config_header_step => translate_c.addConfigHeader(included.config_header_step),
-            .path_system => translate_c.addSystemIncludePath(included.path_system),
-            .other_step => addIncludePathsToTranslateC(translate_c, included.other_step),
-            else => unreachable,
-        }
+pub fn build(b: *std.Build) !void {
+    const optimize = b.standardOptimizeOption(.{});
+    const options = b.addOptions();
+    options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(pkg.version));
+
+    const native_module = try buildRootModuleForTarget(
+        b,
+        b.standardTargetOptions(.{}),
+        optimize,
+        options,
+    );
+
+    const native_exe = b.addExecutable(.{
+        .name = "BROT_debug",
+        .root_module = native_module,
+        .use_llvm = true,
+    });
+
+    const native_install_artifact = b.addInstallArtifact(native_exe, .{
+        .dest_dir = .{ .override = .prefix },
+    });
+    b.getInstallStep().dependOn(&native_install_artifact.step);
+
+    const run_cmd = b.addRunArtifact(native_exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+
+    const exe_unit_tests = b.addTest(.{
+        .name = "top level tests",
+        .root_module = native_module,
+    });
+
+    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_exe_unit_tests.step);
+
+    const cross_step = b.step("cross", "Compile for many targets");
+
+    for (targets) |target| {
+        const exe = b.addExecutable(.{
+            .name = b.fmt("BROT-{s}-{s}-{s}", .{
+                pkg.version,
+                @tagName(target.cpu_arch.?),
+                @tagName(target.os_tag.?),
+            }),
+            .root_module = try buildRootModuleForTarget(
+                b,
+                b.resolveTargetQuery(target),
+                optimize,
+                options,
+            ),
+        });
+
+        const target_output = b.addInstallArtifact(exe, .{
+            .dest_dir = .{ .override = .prefix },
+        });
+
+        cross_step.dependOn(&target_output.step);
     }
 }
 
-pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+const targets: []const std.Target.Query = &.{
+    .{ .cpu_arch = .aarch64, .os_tag = .linux },
+    .{ .cpu_arch = .aarch64, .os_tag = .macos },
+    .{ .cpu_arch = .aarch64, .os_tag = .windows },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux },
+    .{ .cpu_arch = .x86_64, .os_tag = .macos },
+    .{ .cpu_arch = .x86_64, .os_tag = .windows },
+};
 
+fn buildRootModuleForTarget(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    options: *std.Build.Step.Options,
+) !*std.Build.Module {
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
         .optimize = optimize,
@@ -72,8 +139,6 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    // translate_c.linkSystemLibrary("vulkan", .{});
-    // translate_c.linkSystemLibrary("gmp", .{});
     translate_c.link_libc = true;
     translate_c.step.dependOn(gmp.step);
     translate_c.addIncludePath(gmp.include);
@@ -82,7 +147,6 @@ pub fn build(b: *std.Build) !void {
     const cimgui_lib = cimgui_dep.artifact("cimgui");
     addIncludePathsToTranslateC(translate_c, cimgui_lib);
     const c_module = translate_c.createModule();
-    // c_module.linkLibrary(gmp.artifact("gmp"));
     c_module.addObjectFile(gmp.archive);
     c_module.linkLibrary(cimgui_lib);
     c_module.linkLibrary(glslang.artifact("glslang"));
@@ -96,41 +160,21 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "vulkan", .module = vulkan_module },
         },
     });
-
-    const options = b.addOptions();
-    options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(pkg.version));
     root_module.addOptions("build_options", options);
 
-    const exe = b.addExecutable(.{
-        .name = "BROT",
-        .root_module = root_module,
-        .use_llvm = true,
-    });
+    return root_module;
+}
 
-    const install_artifact = b.addInstallArtifact(exe, .{
-        .dest_dir = .{ .override = .prefix },
-    });
-    b.getInstallStep().dependOn(&install_artifact.step);
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
+fn addIncludePathsToTranslateC(translate_c: *std.Build.Step.TranslateC, lib: *std.Build.Step.Compile) void {
+    for (lib.root_module.include_dirs.items) |*included| {
+        switch (included.*) {
+            .path => translate_c.addIncludePath(included.path),
+            .config_header_step => translate_c.addConfigHeader(included.config_header_step),
+            .path_system => translate_c.addSystemIncludePath(included.path_system),
+            .other_step => addIncludePathsToTranslateC(translate_c, included.other_step),
+            else => unreachable,
+        }
     }
-
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
-
-    const exe_unit_tests = b.addTest(.{
-        .name = "top level tests",
-        .root_module = root_module,
-    });
-
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_exe_unit_tests.step);
 }
 
 /// Shells out to GMP's own configure + make, using zig cc/zig ar/
