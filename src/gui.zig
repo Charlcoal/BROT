@@ -146,10 +146,12 @@ pub fn show(io: std.Io, alloc: Allocator) !void {
     c.ImGui_SetNextWindowPos(.{ .x = 20.0, .y = 20.0 }, c.ImGuiCond_FirstUseEver);
     if (!c.ImGui_Begin("BROT", null, 0)) return;
 
-    if (c.ImGui_CollapsingHeader("Bailout", 0)) {
+    if (withToolTip(c.ImGui_CollapsingHeader, .{ "Bailout", 0 }, "When to quit calculation if orbit has not escaped")) {
         if (scalarInput(
             "Iterations",
-            "Caps the number of iterations before giving up",
+            \\Caps the total number of iterations at each pixel before giving up.
+            \\Also caps the number of iterations in the reference calculation. 
+        ,
             common.max_iterations,
             .{ .doubler_divider = true },
         )) |new_max_iterations| {
@@ -163,8 +165,12 @@ pub fn show(io: std.Io, alloc: Allocator) !void {
         }
     }
 
-    if (c.ImGui_CollapsingHeader("Algorithm", 0)) {
-        if (c.ImGui_BeginCombo("Method", @tagName(current_method), 0)) {
+    if (withToolTip(c.ImGui_CollapsingHeader, .{ "Algorithm", 0 }, "How the the fractal is calculated")) {
+        if (withToolTip(
+            c.ImGui_BeginCombo,
+            .{ "Method", @tagName(current_method), 0 },
+            algorith_method_tooltips[@intFromEnum(current_method)],
+        )) {
             for (0..AlgorithmMethod.count) |i| {
                 const method: AlgorithmMethod = @enumFromInt(i);
                 var is_selected: bool = method == current_method;
@@ -180,13 +186,19 @@ pub fn show(io: std.Io, alloc: Allocator) !void {
                     vulkan.device.destroyPipelineLayout(common.rendering_pipeline_layout, null);
                     try vulkan.createRendingPipeline(alloc, io);
                 }
+                toolTip(algorith_method_tooltips[@intFromEnum(method)]);
 
                 if (is_selected) c.ImGui_SetItemDefaultFocus();
             }
-
             c.ImGui_EndCombo();
         }
     }
+}
+
+fn withToolTip(comptime func: anytype, args: anytype, msg: [:0]const u8) @typeInfo(@TypeOf(func)).@"fn".return_type.? {
+    const ret = @call(.auto, func, args);
+    toolTip(msg);
+    return ret;
 }
 
 pub fn draw(command_buffer: vk.CommandBuffer) void {
@@ -204,6 +216,15 @@ const AlgorithmMethod = enum(u32) {
     const count = 2;
     direct = 0,
     perturbation = 1,
+};
+pub const algorith_method_tooltips: []const [:0]const u8 = &.{
+    \\Directly uses the actual position of each pixel in the fractal.
+    \\Breaks when zooming in too far.
+    \\Best for speed.
+    ,
+    \\Uses the difference of each pixel compared to a cpu-calculated reference orbit.
+    \\Allows for deep zooms.
+    \\Worst for gpu speed.
 };
 pub const algorithm_method_glsls: []const [:0]const u8 = &.{
     @embedFile("shaders/mandelbrot_direct.comp"),
