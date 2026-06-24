@@ -18,6 +18,9 @@ pub var glfw: *c.GLFWwindow = undefined;
 pub var height: i32 = 600;
 pub var width: i32 = 800;
 pub var surface: vk.SurfaceKHR = .null_handle;
+var l_click_drag: bool = false;
+var prev_x: f64 = 0.0;
+var prev_y: f64 = 0.0;
 
 pub fn init() void {
     _ = c.glfwInit();
@@ -26,9 +29,31 @@ pub fn init() void {
 
     glfw = c.glfwCreateWindow(width, height, "BROT", null, null) orelse
         std.debug.panic("Window creation failed!", .{});
+    _ = c.glfwSetCursorPosCallback(glfw, cursorPosCallback);
     _ = c.glfwSetFramebufferSizeCallback(glfw, framebufferResizeCallback);
     _ = c.glfwSetScrollCallback(glfw, scrollCallback);
     _ = c.glfwSetKeyCallback(glfw, keyCallback);
+}
+
+fn cursorPosCallback(glfw_window: ?*c.GLFWwindow, x_pos: f64, y_pos: f64) callconv(.c) void {
+    const pressed = c.glfwGetMouseButton(glfw_window, c.GLFW_MOUSE_BUTTON_LEFT) == c.GLFW_PRESS;
+    defer l_click_drag = pressed;
+    defer prev_x = x_pos;
+    defer prev_y = y_pos;
+
+    const gio = c.ImGui_GetIO();
+    if (gio.*.WantCaptureMouse) return;
+
+    if (l_click_drag and pressed) {
+        var diff_x = x_pos - prev_x;
+        var diff_y = y_pos - prev_y;
+
+        // normalize diff
+        diff_x = -diff_x / @as(f64, @floatFromInt(height));
+        diff_y = -diff_y / @as(f64, @floatFromInt(height));
+
+        common.fractal_pos.panScreen(diff_x, diff_y);
+    }
 }
 
 fn framebufferResizeCallback(glfw_window: ?*c.GLFWwindow, new_width: c_int, new_height: c_int) callconv(.c) void {
@@ -57,7 +82,7 @@ fn scrollCallback(glfw_window: ?*c.GLFWwindow, xoffset: f64, yoffset: f64) callc
     mouse_pos_x = mouse_pos_x / @as(f64, @floatFromInt(height));
     mouse_pos_y = mouse_pos_y / @as(f64, @floatFromInt(height));
 
-    common.fractal_pos.update_target(mouse_pos_x, mouse_pos_y, scroll_factor);
+    common.fractal_pos.zoomScreen(mouse_pos_x, mouse_pos_y, scroll_factor);
 }
 
 fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {

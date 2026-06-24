@@ -288,12 +288,27 @@ pub const FractalPosition = struct {
         return interpolate_val(self.last_zoom_diff, self.target_zoom_diff, prog);
     }
 
+    /// Pans the position (without interpolation), based on a change in screen center
+    pub fn panScreen(self: *@This(), screen_delta_x: f64, screen_delta_y: f64) void {
+        const zoom_diff_v = self.zoom_diff();
+
+        // change to mandelbrot coords
+        const mandel_screen_x = screen_delta_x * zoom_diff_v;
+        const mandel_screen_y = screen_delta_y * zoom_diff_v;
+
+        self.target_x_diff += mandel_screen_x;
+        self.target_y_diff += mandel_screen_y;
+
+        self.last_x_diff += mandel_screen_x;
+        self.last_y_diff += mandel_screen_y;
+    }
+
     /// Updates the position being interpolated to, effectivly
     /// zooming to a point on the screen. screen_x and screen_y should
     /// be normalized such that screen_y ranges from -0.5 (top of screen)
     /// to 0.5 (bottom of screen). zoom_delta is a multiplicitave factor
     /// indicated how much to zoom in (greater than 1) or out (less than 1).
-    pub fn update_target(self: *@This(), screen_x: f64, screen_y: f64, zoom_delta: f64) void {
+    pub fn zoomScreen(self: *@This(), screen_x: f64, screen_y: f64, zoom_delta: f64) void {
         const x_diff_v = self.x_diff();
         const y_diff_v = self.y_diff();
         const zoom_diff_v = self.zoom_diff();
@@ -351,7 +366,7 @@ pub const FractalPosition = struct {
         c.mpf_init2(&tmp, 32);
         defer c.mpf_clear(&tmp);
 
-        const needed_prec: c.mp_bitcnt_t = @intCast(32 + @abs(self.zoom_exp));
+        const needed_prec: usize = 32 + @abs(self.zoom_exp);
         var resized: bool = false;
         resized |= big_float.ensurePrecision(&self.x, needed_prec);
         resized |= big_float.ensurePrecision(&self.y, needed_prec);
