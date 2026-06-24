@@ -26,7 +26,7 @@ pub fn stringInit(str: [:0]const u8) c.mpf_t {
     var e_pos = std.mem.indexOfScalar(u8, str, 'e') orelse str.len;
     e_pos -= std.mem.findAny(u8, str, &.{ '1', '2', '3', '4', '5', '6', '7', '8', '9' }) orelse (str.len);
     const e_pos_flt: f64 = @floatFromInt(e_pos);
-    const bit_prec: usize = @trunc(e_pos_flt * dec_pow_to_bin_pow + 1.0);
+    const bit_prec: c.mp_bitcnt_t = @trunc(e_pos_flt * dec_pow_to_bin_pow + 1.0);
 
     var out: c.mpf_t = undefined;
     c.mpf_set_default_prec(bit_prec);
@@ -47,7 +47,7 @@ pub fn setAllocator(alloc: Allocator) void {
 
 /// Ensures val has at least prec_bits of precision, increasing its precision if not.
 /// Returns true if val's precision was increased
-pub fn ensurePrecision(val: *c.mpf_t, prec_bits: usize) bool {
+pub fn ensurePrecision(val: *c.mpf_t, prec_bits: c.mp_bitcnt_t) bool {
     if (prec_bits > c.mpf_get_prec(val)) {
         c.mpf_set_prec(val, prec_bits);
         return true;
