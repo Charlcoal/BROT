@@ -33,16 +33,21 @@ pub fn build(b: *std.Build) !void {
     vk_generate_cmd.addFileArg(registry);
     const vulkan_zig_src = vk_generate_cmd.addOutputFileArg("vk.zig");
 
+    const standard_target = b.standardTargetOptions(.{});
     const standard_module = try buildRootModuleForTarget(
         b,
-        b.standardTargetOptions(.{}),
+        standard_target,
         optimize,
         options,
         vulkan_zig_src,
     );
 
     const standard_exe = b.addExecutable(.{
-        .name = "BROT",
+        .name = if (optimize != .Debug) b.fmt("BROT-{s}-{s}-{s}", .{
+            pkg.version,
+            @tagName(standard_target.result.cpu.arch),
+            @tagName(standard_target.result.os.tag),
+        }) else "BROT_debug",
         .root_module = standard_module,
         .use_llvm = true,
     });

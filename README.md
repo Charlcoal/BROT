@@ -12,3 +12,10 @@ theoretically work for both x86_64 and aarm64 across
 linux, windows, and mac. **BROT statically links with GMP,
 using GMP's own configure script. This requires a POSIX
 shell, make, and m4 on the build system** (not the target).
+
+### Cross Compiling
+
+Cross compiling can be done with `zig build cross`,
+but is a work-in-progress, and requires -fqemu
+or similar emulation flags.
+
