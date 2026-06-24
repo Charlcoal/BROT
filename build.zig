@@ -27,25 +27,32 @@ pub fn build(b: *std.Build) !void {
     const options = b.addOptions();
     options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(pkg.version));
 
-    const native_module = try buildRootModuleForTarget(
+    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    const vk_gen = b.dependency("vulkan", .{}).artifact("vulkan-zig-generator");
+    const vk_generate_cmd = b.addRunArtifact(vk_gen);
+    vk_generate_cmd.addFileArg(registry);
+    const vulkan_zig_src = vk_generate_cmd.addOutputFileArg("vk.zig");
+
+    const standard_module = try buildRootModuleForTarget(
         b,
         b.standardTargetOptions(.{}),
         optimize,
         options,
+        vulkan_zig_src,
     );
 
-    const native_exe = b.addExecutable(.{
-        .name = "BROT_debug",
-        .root_module = native_module,
+    const standard_exe = b.addExecutable(.{
+        .name = "BROT",
+        .root_module = standard_module,
         .use_llvm = true,
     });
 
-    const native_install_artifact = b.addInstallArtifact(native_exe, .{
+    const standard_install_artifact = b.addInstallArtifact(standard_exe, .{
         .dest_dir = .{ .override = .prefix },
     });
-    b.getInstallStep().dependOn(&native_install_artifact.step);
+    b.getInstallStep().dependOn(&standard_install_artifact.step);
 
-    const run_cmd = b.addRunArtifact(native_exe);
+    const run_cmd = b.addRunArtifact(standard_exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {
@@ -57,7 +64,7 @@ pub fn build(b: *std.Build) !void {
 
     const exe_unit_tests = b.addTest(.{
         .name = "top level tests",
-        .root_module = native_module,
+        .root_module = standard_module,
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
@@ -79,6 +86,7 @@ pub fn build(b: *std.Build) !void {
                 b.resolveTargetQuery(target),
                 optimize,
                 options,
+                vulkan_zig_src,
             ),
         });
 
@@ -104,6 +112,7 @@ fn buildRootModuleForTarget(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     options: *std.Build.Step.Options,
+    vulkan_zig_src: std.Build.LazyPath,
 ) !*std.Build.Module {
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
@@ -117,16 +126,7 @@ fn buildRootModuleForTarget(
         .optimize = optimize,
     });
 
-    const vulkan_headers_dep = b.dependency("vulkan_headers", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const vulkan_dep = b.dependency("vulkan", .{
-        .registry = vulkan_headers_dep.path(b.pathJoin(&.{ "registry", "vk.xml" })),
-        .target = target,
-        .optimize = optimize,
-    });
-    const vulkan_module = vulkan_dep.module("vulkan-zig");
+    const vulkan_module = b.addModule("vulkan-zig", .{ .root_source_file = vulkan_zig_src });
 
     const gmp_dep = b.dependency("gmp", .{
         .target = target,
