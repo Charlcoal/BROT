@@ -33,6 +33,8 @@ pub fn build(b: *std.Build) !void {
     vk_generate_cmd.addFileArg(registry);
     const vulkan_zig_src = vk_generate_cmd.addOutputFileArg("vk.zig");
 
+    const strip_debug = b.option(bool, "strip-debug", "Emmited executable will not contain debug symbols");
+
     const standard_target = b.standardTargetOptions(.{});
     const standard_module = try buildRootModuleForTarget(
         b,
@@ -40,6 +42,7 @@ pub fn build(b: *std.Build) !void {
         optimize,
         options,
         vulkan_zig_src,
+        strip_debug orelse false,
     );
 
     const standard_exe = b.addExecutable(.{
@@ -92,7 +95,9 @@ pub fn build(b: *std.Build) !void {
                 optimize,
                 options,
                 vulkan_zig_src,
+                strip_debug orelse true,
             ),
+            .use_llvm = true,
         });
 
         const target_output = b.addInstallArtifact(exe, .{
@@ -118,6 +123,7 @@ fn buildRootModuleForTarget(
     optimize: std.builtin.OptimizeMode,
     options: *std.Build.Step.Options,
     vulkan_zig_src: std.Build.LazyPath,
+    strip_debug: bool,
 ) !*std.Build.Module {
     const cimgui_dep = b.dependency("cimgui_zig", .{
         .target = target,
@@ -160,6 +166,7 @@ fn buildRootModuleForTarget(
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = strip_debug,
         .imports = &.{
             .{ .name = "c", .module = c_module },
             .{ .name = "vulkan", .module = vulkan_module },
