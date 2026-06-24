@@ -64,7 +64,7 @@ fn drawFrame(alloc: Allocator, io: std.Io) !void {
         common.image_availible_semaphores[common.current_frame],
         .null_handle,
     );
-    const result = image_khr_result.result;
+    var result = image_khr_result.result;
     const image_index = image_khr_result.image_index;
 
     common.gpu_interface_lock.lockUncancelable(io);
@@ -91,14 +91,17 @@ fn drawFrame(alloc: Allocator, io: std.Io) !void {
         .p_signal_semaphores = &signal_semaphores,
     }}, common.in_flight_fences[common.current_frame]);
 
-    _ = try vulkan.device.queuePresentKHR(vulkan.present_queue, &.{
+    result = vulkan.device.queuePresentKHR(vulkan.present_queue, &.{
         .wait_semaphore_count = 1,
         .p_wait_semaphores = &signal_semaphores,
         .swapchain_count = 1,
         .p_swapchains = &.{common.swap_chain},
         .p_image_indices = &.{image_index},
         .p_results = null,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfDateKHR => .error_out_of_date_khr,
+        else => return err,
+    };
 
     if (result == .error_out_of_date_khr or result == .suboptimal_khr or common.frame_buffer_needs_resize) {
         common.frame_buffer_needs_resize = false;
