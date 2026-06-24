@@ -45,7 +45,6 @@
         "build.zig.zon",
         "resources.zon",
         "src",
-        "shaders",
         "LICENSE.txt",
         "README.md",
     },
