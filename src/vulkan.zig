@@ -399,7 +399,7 @@ fn createRndToClrDescriptorSetLayout() !void {
     }, null);
 }
 
-pub fn createMultiBufferDescriptorSets(
+fn createMultiBufferDescriptorSets(
     alloc: Allocator,
     layout: vk.DescriptorSetLayout,
     sets: []vk.DescriptorSet,
@@ -417,6 +417,32 @@ pub fn createMultiBufferDescriptorSets(
         .p_set_layouts = layouts.ptr,
     }, sets.ptr);
 
+    for (0..sets.len) |i| {
+        const buffer_info: vk.DescriptorBufferInfo = .{
+            .buffer = buffer,
+            .offset = chunk_size * i,
+            .range = chunk_size,
+        };
+
+        const descriptor_writes = [_]vk.WriteDescriptorSet{.{
+            .dst_set = sets[i],
+            .dst_binding = 0,
+            .dst_array_element = 0,
+            .descriptor_type = .storage_buffer,
+            .descriptor_count = 1,
+            .p_buffer_info = (&buffer_info)[0..1],
+            .p_image_info = undefined,
+            .p_texel_buffer_view = undefined,
+        }};
+
+        device.updateDescriptorSets(descriptor_writes[0..], null);
+    }
+}
+pub fn updateMultiBufferDescriptorSets(
+    sets: []vk.DescriptorSet,
+    buffer: vk.Buffer,
+    chunk_size: usize,
+) !void {
     for (0..sets.len) |i| {
         const buffer_info: vk.DescriptorBufferInfo = .{
             .buffer = buffer,

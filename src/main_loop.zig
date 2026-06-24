@@ -400,17 +400,17 @@ fn renderedBufferResolve(io: std.Io) !void {
 fn renderedBufferDispatch(io: std.Io) common.ComputeManageError!void {
     if (common.remap_needed) {
         common.remap_needed = false;
-        try remap_buffer(io);
+        try remapBuffer(io);
         common.remapping_buffer = true;
     } else if (common.render_patches_saturated and numCompletePatches() != 0 or
         numCompletePatches() >= common.rendering_command_buffers.len)
     {
-        try place_patches(io);
+        try placePatches(io);
         common.placing_patches = true;
     }
 }
 
-fn remap_buffer(io: std.Io) common.ComputeManageError!void {
+fn remapBuffer(io: std.Io) common.ComputeManageError!void {
     try vulkan.device.resetFences((&common.render_buffer_write_fence)[0..1]);
 
     common.gpu_interface_lock.lockUncancelable(io);
@@ -436,7 +436,7 @@ fn remap_buffer(io: std.Io) common.ComputeManageError!void {
     );
 }
 
-fn place_patches(io: std.Io) common.ComputeManageError!void {
+fn placePatches(io: std.Io) common.ComputeManageError!void {
     try vulkan.device.resetFences((&common.render_buffer_write_fence)[0..1]);
 
     common.gpu_interface_lock.lockUncancelable(io);
@@ -450,6 +450,7 @@ fn place_patches(io: std.Io) common.ComputeManageError!void {
         .wait_semaphore_count = 0,
         .p_wait_semaphores = null,
         .p_wait_dst_stage_mask = &.{.{}},
+        .command_buffer_count = 1,
         .p_command_buffers = (&common.rnd_buffer_write_command_buffer)[0..1],
     })[0..1], common.render_buffer_write_fence);
 }
