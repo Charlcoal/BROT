@@ -59,8 +59,8 @@ pub fn init() void {
         .QueueFamily = vulkan.queue_families.graphics_family.?,
         .Queue = @ptrFromInt(@intFromEnum(vulkan.graphics_queue)),
         .DescriptorPool = @ptrFromInt(@intFromEnum(descriptor_pool)),
-        .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
-        .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE,
+        .MinImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE,
+        .ImageCount = c.IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE,
         .Allocator = null, // TODO
         .PipelineInfoMain = .{
             .RenderPass = @ptrFromInt(@intFromEnum(vulkan.render_pass)),

@@ -340,7 +340,8 @@ fn createDescriptorPool() !void {
 
 fn createGuiDescriptorPool() !void {
     const pool_sizes = [_]vk.DescriptorPoolSize{
-        .{ .type = .combined_image_sampler, .descriptor_count = c.IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
+        .{ .type = .sampled_image, .descriptor_count = c.IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE },
+        .{ .type = .sampler, .descriptor_count = c.IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE },
     };
 
     var count: u32 = 0;
