@@ -367,7 +367,7 @@ pub const FractalPosition = struct {
         c.mpf_init2(&tmp, 32);
         defer c.mpf_clear(&tmp);
 
-        const needed_prec: usize = 32 + @abs(self.zoom_exp);
+        const needed_prec: c.mp_bitcnt_t = @intCast(32 + @abs(self.zoom_exp));
         var resized: bool = false;
         resized |= big_float.ensurePrecision(&self.x, needed_prec);
         resized |= big_float.ensurePrecision(&self.y, needed_prec);
