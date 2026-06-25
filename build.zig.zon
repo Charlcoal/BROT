@@ -19,8 +19,8 @@
     .version = "0.0.0-dev",
     .dependencies = .{
         .cimgui_zig = .{
-            .url = "git+https://github.com/tiawl/cimgui.zig.git#c9e675ac230a1e810f20b6f5fdeb57b0a2ca4f5c",
-            .hash = "cimgui_zig-1.0.0-2XubksTPvwBTiY2zY3vtm3gszwxX-sWBC_5rN7lvc2fI",
+            .url = "https://github.com/tiawl/cimgui.zig/archive/0e75d3e.tar.gz",
+            .hash = "cimgui_zig-1.0.0-2Xubkn0ywgCURwnkyBUcnaQRXOWkjEOxQLk-PdELdQtz",
         },
         .gmp = .{
             .url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
@@ -35,10 +35,10 @@
             .hash = "vulkan-0.0.0-r7Ytx7N9AwD7IZt5_XNHtkJ4G9qY0pCH-cpcOsbL8wzD",
         },
         // WARNING: must be kept in synce with cimgui_zig
-        .vulkan_headers = .{
-            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers?ref=v1.4.351#0e9de566b7d4051c5cc1b762e242c46565956bdf",
-            .hash = "N-V-__8AAJjgdwKSB9FMJoQcTm9ZO5bWDc1nWSaCu1Se53ie",
-        },
+        // .vulkan_headers = .{
+        //     .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/01393c3.tar.gz",
+        //     .hash = "N-V-__8AAEu6eQLGuoPmVY5dM6IQxznJGorQMHhLn5xFnn_8",
+        // },
     },
     .paths = .{
         "build.zig",

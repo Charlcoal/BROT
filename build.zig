@@ -27,10 +27,15 @@ pub fn build(b: *std.Build) !void {
     const options = b.addOptions();
     options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(pkg.version));
 
-    const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    // const registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+    const vulkan_headers_dep = b.dependency("cimgui_zig", .{
+        .platforms = &[_]cimgui.Platform{},
+        .renderers = &[_]cimgui.Renderer{.Vulkan},
+        .no_platform = true,
+    }).builder.dependency("vulkan_zig", .{});
     const vk_gen = b.dependency("vulkan", .{}).artifact("vulkan-zig-generator");
     const vk_generate_cmd = b.addRunArtifact(vk_gen);
-    vk_generate_cmd.addFileArg(registry);
+    vk_generate_cmd.addFileArg(vulkan_headers_dep.path(b.pathJoin(&.{ "vulkan", "registry", "vk.xml" })));
     const vulkan_zig_src = vk_generate_cmd.addOutputFileArg("vk.zig");
 
     const strip_debug = b.option(bool, "strip-debug", "Emmited executable will not contain debug symbols");
@@ -109,11 +114,11 @@ pub fn build(b: *std.Build) !void {
 }
 
 const targets: []const std.Target.Query = &.{
-    .{ .cpu_arch = .aarch64, .os_tag = .linux },
-    .{ .cpu_arch = .aarch64, .os_tag = .macos },
-    .{ .cpu_arch = .aarch64, .os_tag = .windows },
+    // .{ .cpu_arch = .aarch64, .os_tag = .linux },
+    // .{ .cpu_arch = .aarch64, .os_tag = .macos },
+    // .{ .cpu_arch = .aarch64, .os_tag = .windows },
     .{ .cpu_arch = .x86_64, .os_tag = .linux },
-    .{ .cpu_arch = .x86_64, .os_tag = .macos },
+    // .{ .cpu_arch = .x86_64, .os_tag = .macos },
     .{ .cpu_arch = .x86_64, .os_tag = .windows },
 };
 

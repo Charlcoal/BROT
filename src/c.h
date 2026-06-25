@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #define GLFW_INCLUDE_NONE 1
 #define GLFW_INCLUDE_VULKAN 1
 #include "GLFW/glfw3.h"
