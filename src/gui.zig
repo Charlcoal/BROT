@@ -17,7 +17,7 @@
 pub var context: *c.ImGuiContext = undefined;
 pub var frame_shown: bool = false;
 pub var descriptor_pool: vk.DescriptorPool = undefined;
-pub var current_method: AlgorithmMethod = .direct;
+pub var current_method: AlgorithmMethod = .perturbation;
 
 fn vk_loader(name: [*c]const u8, instance: ?*anyopaque) callconv(std.builtin.CallingConvention.c) ?*const fn () callconv(std.builtin.CallingConvention.c) void {
     return c.glfwGetInstanceProcAddress(@ptrCast(@alignCast(instance)), name);
