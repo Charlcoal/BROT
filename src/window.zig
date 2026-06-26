@@ -28,15 +28,16 @@ fn errCallback(err: c_int, desc: [*c]const u8) callconv(.c) void {
 
 pub fn init() void {
     _ = c.glfwSetErrorCallback(errCallback);
-    std.log.debug("init: {}", .{c.glfwInit()});
+    _ = c.glfwInit();
 
-    std.log.debug("selected platform: {}\n", .{c.glfwGetPlatform()});
-
-    std.log.debug("(cocoa): {}", .{c.GLFW_PLATFORM_COCOA});
-    std.log.debug("(wayland): {}", .{c.GLFW_PLATFORM_WAYLAND});
-    std.log.debug("(windows): {}", .{c.GLFW_PLATFORM_WIN32});
-    std.log.debug("(X11): {}", .{c.GLFW_PLATFORM_X11});
-    std.log.debug("(none): {}", .{c.GLFW_PLATFORM_NULL});
+    log.info("selected platform: {s} ({d})", .{ switch (c.glfwGetPlatform()) {
+        c.GLFW_PLATFORM_COCOA => "cocoa",
+        c.GLFW_PLATFORM_WAYLAND => "wayland",
+        c.GLFW_PLATFORM_WIN32 => "windows",
+        c.GLFW_PLATFORM_X11 => "X11",
+        c.GLFW_PLATFORM_NULL => "none",
+        else => "unknown",
+    }, c.glfwGetPlatform() });
 
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
@@ -119,6 +120,7 @@ fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_in
     }
 }
 
+pub const log = std.log.scoped(.glfw);
 const vk = @import("vulkan");
 const std = @import("std");
 const common = @import("common_defs.zig");
