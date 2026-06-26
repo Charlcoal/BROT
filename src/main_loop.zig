@@ -374,9 +374,9 @@ fn renderedBufferResolve(io: std.Io) !void {
             offset.x += @as(f64, @floatFromInt(common.remap_x)); // * scale;
             offset.y += @as(f64, @floatFromInt(common.remap_y)); // * scale;
 
-            if (offset.y * @as(f64, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent))) >=
+            if (@abs(offset.y) * @as(f64, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent))) >=
                 @as(f64, @floatFromInt(window.height)) / 2.0) common.background_needs_render = true;
-            if (offset.x * @as(f64, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent))) >=
+            if (@abs(offset.x) * @as(f64, @floatFromInt(common.renderPatchSize(common.max_res_scale_exponent))) >=
                 @as(f64, @floatFromInt(window.width)) / 2.0) common.background_needs_render = true;
         }
 
