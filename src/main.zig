@@ -37,6 +37,8 @@ pub const std_options: std.Options = .{
     .log_level = std.log.default_level,
     .log_scope_levels = &.{
         .{ .scope = .render_patch, .level = std.log.Level.info },
+        .{ .scope = .vulkan, .level = std.log.Level.info },
+        .{ .scope = .glfw, .level = std.log.Level.info },
     },
 };
 
